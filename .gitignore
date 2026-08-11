@@ -1,0 +1,4 @@
+.claude/
+.tmp.driveupload/
+__pycache__/
+*.pyc

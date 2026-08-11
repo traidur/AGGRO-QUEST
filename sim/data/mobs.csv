@@ -1,0 +1,6 @@
+mob_id,name,tier,hp,atk,mob_type
+tier1_grunt,Tier 1 Grunt,1,8,3,melee
+tier1_archer,Tier 1 Archer,1,7,4,ranged
+tier2_brute,Tier 2 Brute,2,14,5,melee
+tier2_caster,Tier 2 Caster,2,12,6,ranged
+tier3_elite,Tier 3 Elite,3,20,7,melee

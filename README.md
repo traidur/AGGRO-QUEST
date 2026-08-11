@@ -8,8 +8,13 @@ A prequel/companion to **AGGRO** (the StS × WoW raid-boss deckbuilder at `C:\Us
 
 | File | What it is |
 |---|---|
+| `SOTG.md` | **AI onboarding — read first.** Rules and decisions AI models keep getting wrong on this project, simulator gotchas, anti-patterns. |
 | `DESIGN_DOC.md` | Current design draft — golden rules, core systems, decided properties |
+| `DECK_CONDENSING_GUIDE.md` | Process doc for translating an AGGRO class's ~10-card kit into a legal 6-card condensed kit — what to cut, what to reframe, how to fit the slot budget |
+| `CLASS_BALANCE_GUIDE.md` | Process doc for per-pull card/mob balance methodology and tooling, once a kit already exists |
+| `MACRO_LOOP_GUIDE.md` | Process doc for the Town/Bag/Quest/Gold macro loop — reward formulas, pricing, risk policy |
 | `OPEN_QUESTIONS.md` | Design tensions and unresolved mechanics to settle before prototyping |
+| `CLASSES.md` | Stale — predates the condensed-combat rewrite. Flavor reference only. |
 
 ## Relationship to AGGRO
 

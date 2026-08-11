@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>QUEST — Result</title>
+    <style>
+        body { font-family: sans-serif; max-width: 640px; margin: 40px auto; }
+        h1.win { color: #2e7d32; }
+        h1.loss { color: #c62828; }
+        h1.fled { color: #ef6c00; }
+        .box { border: 1px solid #ccc; border-radius: 6px; padding: 16px; margin-top: 16px; }
+        a.again { display: inline-block; margin-top: 24px; font-size: 16px; }
+    </style>
+</head>
+<body>
+    <h1 class="{{ state.outcome }}">{{ state.outcome|upper }}</h1>
+    <p>{{ state.class_name|capitalize }} vs {{ state.mob_name }}</p>
+    <p>Final HP: {{ state.hero_hp|round(0)|int }} / {{ state.hero_max_hp|int }}
+       — Mob HP remaining: {{ state.mob_hp_remaining|round(0)|int }} / {{ state.mob_hp_total|int }}</p>
+    <p>Hand dealt: {{ state.hand|join(', ') }}</p>
+    <p>You played: {{ state.played|join(', ') }}</p>
+
+    <div class="box">
+        <strong>Solver's optimal line for this exact hand:</strong><br>
+        {{ reveal.sequence|join(', ') }}
+        {% if reveal.stance_sequence %} (stances: {{ reveal.stance_sequence|join(', ') }}){% endif %}
+        <br>
+        → {{ 'WIN' if reveal.win else 'LOSS / TIMEOUT' }}, HP left: {{ reveal.hp_left|round(0)|int }}
+    </div>
+
+    <a class="again" href="/">Play again</a>
+</body>
+</html>

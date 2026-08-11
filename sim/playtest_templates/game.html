@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>QUEST — {{ state.class_name|capitalize }} vs {{ state.mob_name }}</title>
+    <style>
+        body { font-family: sans-serif; max-width: 720px; margin: 40px auto; }
+        .hp-row { display: flex; justify-content: space-between; font-size: 20px; margin-bottom: 16px; }
+        table.pattern { border-collapse: collapse; margin-bottom: 16px; width: 100%; }
+        table.pattern td, table.pattern th { border: 1px solid #ccc; padding: 6px 10px; text-align: center; }
+        tr.current-round { background: #fff3cd; font-weight: bold; }
+
+        #mob-zone {
+            border: 3px dashed #999; border-radius: 10px; padding: 20px; text-align: center;
+            margin-bottom: 20px; font-size: 18px; transition: background 0.15s, border-color 0.15s;
+        }
+        #mob-zone.drop-hover { background: #fff3cd; border-color: #e0a800; }
+        #mob-zone .hint { font-size: 13px; color: #777; margin-top: 4px; }
+
+        .hand-row { display: flex; flex-wrap: wrap; gap: 12px; }
+        .card-wrap { width: 190px; }
+        .card-wrap[draggable="true"] { cursor: grab; }
+        .card-wrap.dragging { opacity: 0.4; }
+        .card {
+            border: 1px solid #ccc; border-radius: 8px; padding: 10px; background: #fff;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+        }
+        .card.unplayable { background: #f2f2f2; color: #999; cursor: not-allowed; }
+        .card-name { font-weight: bold; font-size: 15px; margin-bottom: 4px; }
+        .card-tags { font-size: 11px; color: #7a4b00; margin-bottom: 6px; }
+        .card-tags span { display: block; background: #fff3cd; border-radius: 4px; padding: 2px 5px; margin-bottom: 3px; }
+        .card-preview { font-size: 12px; color: #444; }
+        .card-preview .stance-row { padding: 2px 0; border-top: 1px dashed #ddd; margin-top: 4px; }
+        .card-stats { font-weight: bold; font-size: 13px; color: #1a1a1a; }
+
+        #picker-backdrop {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.25); z-index: 10;
+        }
+        #action-picker {
+            display: none; position: fixed; z-index: 11; background: #fff; border: 1px solid #999;
+            border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.3); padding: 8px; min-width: 220px;
+        }
+        .picker-choice {
+            padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: 13px;
+        }
+        .picker-choice:hover { background: #fff3cd; }
+        .picker-choice .tags { font-size: 11px; color: #7a4b00; }
+    </style>
+</head>
+<body>
+    <h2>{{ state.class_name|capitalize }} vs {{ state.mob_name }} — Round {{ state.round_num + 1 }} / 3</h2>
+
+    <div class="hp-row">
+        <div>Your HP: <strong>{{ state.hero_hp|round(0, 'floor')|int }}</strong> / {{ state.hero_max_hp|int }}</div>
+        <div>Mob HP: <strong>{{ state.mob_hp_remaining|round(0, 'floor')|int }}</strong> / {{ state.mob_hp_total|int }}</div>
+    </div>
+
+    <table class="pattern">
+        <tr><th>Round</th><th>Mob ATK</th><th>Mob Block</th></tr>
+        {% for i, rnd in pattern %}
+        <tr class="{{ 'current-round' if i == state.round_num else '' }}">
+            <td>{{ i + 1 }}</td><td>{{ rnd[0] }}</td><td>{{ rnd[1] }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+
+    <form method="POST" action="/action" id="action-form">
+        <input type="hidden" name="action_idx" id="action-idx" value="">
+    </form>
+
+    <div id="mob-zone">
+        {{ state.mob_name }} — drop a card here to play it
+        <div class="hint">or click a card (a picker will open if it has more than one option)</div>
+    </div>
+
+    <div class="hand-row" id="hand-zone">
+        {% for card_name, entries in grouped.items() %}
+        {% set legal_entries = entries|selectattr('1.legal')|list %}
+        <div class="card-wrap{{ '' if legal_entries else ' unplayable' }}"
+             {% if legal_entries %}
+             draggable="true"
+             data-actions='{{ legal_actions_json[card_name] }}'
+             {% endif %}>
+            <div class="card{{ '' if legal_entries else ' unplayable' }}">
+                <div class="card-name">{{ card_name }}</div>
+                {% if entries[0][1].tags %}
+                <div class="card-tags">{% for t in entries[0][1].tags %}<span>{{ t }}</span>{% endfor %}</div>
+                {% endif %}
+                <div class="card-preview">
+                    {% if not legal_entries %}
+                        illegal this round
+                    {% else %}
+                        {% for i, a in legal_entries %}
+                        <div class="stance-row">
+                            {% if a.stance %}[{{ a.stance }}] {% endif %}
+                            <span class="card-stats">
+                                {% if a.raw_dmg %}{{ a.raw_dmg|round(0)|int }} dmg{% endif %}
+                                {% if a.block %}{{ ' / ' if a.raw_dmg }}{{ a.block|round(0)|int }} block{% endif %}
+                                {% if a.heal %}{{ ' / ' if a.raw_dmg or a.block }}{{ a.heal|round(0)|int }} heal{% endif %}
+                                {% if not a.raw_dmg and not a.block and not a.heal %}no effect{% endif %}
+                            </span><br>
+                            this round → dmg {{ a.dmg_dealt|round(0)|int }} to mob, take {{ a.dmg_taken|round(0)|int }}
+                            &nbsp;(you {{ a.resulting_hp|round(0)|int }}, mob {{ a.resulting_mob_hp|round(0)|int }})
+                        </div>
+                        {% endfor %}
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div id="picker-backdrop" onclick="hidePicker()"></div>
+    <div id="action-picker"></div>
+
+    <script>
+    function submitAction(idx) {
+        document.getElementById('action-idx').value = idx;
+        document.getElementById('action-form').submit();
+    }
+
+    function showActionPicker(x, y, matches) {
+        const picker = document.getElementById('action-picker');
+        picker.innerHTML = matches.map(([idx, a]) => {
+            const stanceLabel = a.stance ? `[${a.stance}] ` : '';
+            const tags = (a.tags || []).map(t => `<div class="tags">${t}</div>`).join('');
+            const cardStats = [
+                a.raw_dmg ? `${Math.round(a.raw_dmg)} dmg` : '',
+                a.block ? `${Math.round(a.block)} block` : '',
+                a.heal ? `${Math.round(a.heal)} heal` : '',
+            ].filter(Boolean).join(' / ') || 'no effect';
+            return `<div class="picker-choice" onclick="submitAction(${idx})">` +
+                   `${stanceLabel}<strong>${cardStats}</strong><br>` +
+                   `this round &rarr; dmg ${Math.round(a.dmg_dealt)} to mob, take ${Math.round(a.dmg_taken)} ` +
+                   `(you ${Math.round(a.resulting_hp)}, mob ${Math.round(a.resulting_mob_hp)})${tags}</div>`;
+        }).join('');
+        picker.style.left = Math.min(x, window.innerWidth - 260) + 'px';
+        picker.style.top  = Math.min(y, window.innerHeight - (matches.length * 64 + 16)) + 'px';
+        document.getElementById('picker-backdrop').style.display = 'block';
+        picker.style.display = 'block';
+    }
+    function hidePicker() {
+        document.getElementById('action-picker').style.display = 'none';
+        document.getElementById('picker-backdrop').style.display = 'none';
+    }
+
+    function chooseFrom(actions, x, y) {
+        if (actions.length === 1) {
+            submitAction(actions[0][0]);
+        } else {
+            showActionPicker(x, y, actions);
+        }
+    }
+
+    // Drag sources
+    let draggedActions = null;
+    let isDragActive = false;
+    document.querySelectorAll('.card-wrap[draggable="true"]').forEach(wrap => {
+        wrap.addEventListener('dragstart', e => {
+            try { draggedActions = JSON.parse(wrap.dataset.actions); }
+            catch (_) { draggedActions = null; e.preventDefault(); return; }
+            isDragActive = true;
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', wrap.dataset.actions);
+            wrap.classList.add('dragging');
+        });
+        wrap.addEventListener('dragend', () => {
+            wrap.classList.remove('dragging');
+            document.getElementById('mob-zone').classList.remove('drop-hover');
+            setTimeout(() => { draggedActions = null; }, 100);
+            setTimeout(() => { isDragActive = false; }, 200);
+        });
+    });
+
+    // Click-to-play fallback (also the primary path on touch devices)
+    document.querySelectorAll('.card-wrap[draggable="true"]').forEach(wrap => {
+        wrap.addEventListener('click', e => {
+            if (isDragActive) return;
+            let actions;
+            try { actions = JSON.parse(wrap.dataset.actions); } catch (_) { return; }
+            if (!actions || actions.length === 0) return;
+            chooseFrom(actions, e.clientX || 100, e.clientY || 100);
+        });
+    });
+
+    // The mob area is the single drop target
+    const mobZone = document.getElementById('mob-zone');
+    mobZone.addEventListener('dragover', e => {
+        if (!draggedActions) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        mobZone.classList.add('drop-hover');
+    });
+    mobZone.addEventListener('dragleave', () => mobZone.classList.remove('drop-hover'));
+    mobZone.addEventListener('drop', e => {
+        e.preventDefault();
+        mobZone.classList.remove('drop-hover');
+        const actions = draggedActions || (() => {
+            try { return JSON.parse(e.dataTransfer.getData('text/plain')); } catch (_) { return null; }
+        })();
+        if (!actions || actions.length === 0) return;
+        chooseFrom(actions, e.clientX, e.clientY);
+    });
+    </script>
+</body>
+</html>

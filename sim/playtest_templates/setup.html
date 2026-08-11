@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>QUEST — Condensed Combat Playtest</title>
+    <style>
+        body { font-family: sans-serif; max-width: 480px; margin: 60px auto; }
+        label { display: block; margin-top: 16px; font-weight: bold; }
+        select { font-size: 16px; padding: 6px; width: 100%; margin-top: 4px; }
+        button { margin-top: 24px; font-size: 18px; padding: 10px 20px; width: 100%; }
+    </style>
+</head>
+<body>
+    <h1>QUEST — Condensed Combat</h1>
+    <form method="POST" action="/start">
+        <label for="class_name">Class</label>
+        <select name="class_name" id="class_name">
+            {% for c in classes %}
+            <option value="{{ c }}">{{ c|capitalize }}</option>
+            {% endfor %}
+        </select>
+
+        <label for="mob_name">Mob</label>
+        <select name="mob_name" id="mob_name">
+            {% for m in mobs %}
+            <option value="{{ m }}">{{ m }}</option>
+            {% endfor %}
+        </select>
+
+        <button type="submit">Start Pull</button>
+    </form>
+</body>
+</html>

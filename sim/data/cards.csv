@@ -1,0 +1,27 @@
+class,name,cost,card_type,dmg,dot_dmg,block,heal,hot_heal,draw,tags,copies
+warrior,Heavy Swing,1,Instant,2,0,0,0,0,0,attack;brutal;pay1_for_4dmg,1
+warrior,Vanguard Blade,1,Instant,2,0,0,0,0,0,attack;champion_atk2;guardian_block2;exhaust,1
+warrior,Sundering Blow,1,Instant,1,0,0,0,0,0,attack;sunder1,1
+warrior,Vanguard Shield,1,Instant,2,0,2,0,0,0,attack;guardian_atk1;exhaust,1
+warrior,Stomp,1,Instant,2,0,0,0,0,0,attack;brutal,1
+warrior,Execute,1,Instant,5,0,0,0,0,0,attack;brutal;execute_below_50pct,1
+warrior,Shield Block,1,Instant,0,0,4,0,0,0,exhaust,1
+warrior,Stance Dance,1,Instant,0,0,0,0,0,0,guardian_counter3,1
+cleric,Blessed Barrier,0,Instant,0,0,4,0,0,0,waives_cast_penalty,1
+cleric,Quick Mend,1,Instant,0,0,0,4,0,0,exhaust,1
+cleric,Blessed Recovery,1,Instant,0,0,0,2,2,0,exhaust,1
+cleric,Smite,1,Cast,2,0,0,0,0,0,attack;sacred_balance,2
+cleric,Call of the Void,2,Cast,5,0,0,0,0,0,attack;sacred_balance,1
+cleric,Cleansing Fire,1,Cast,2,1,0,0,0,0,attack;sacred_balance,1
+cleric,Blessed Fortitude,1,Instant,0,0,0,4,0,0,power_card;max_hp_buff4,1
+cleric,Heal,2,Cast,0,0,0,6,0,0,exhaust,1
+cleric,Void Mark,0,Instant,1,2,0,0,0,0,attack,1
+wizard,Fireball,2,Cast,6,0,0,0,0,0,attack,2
+wizard,Frozen Shot,1,Cast,3,0,0,0,0,0,attack,1
+wizard,Fire Blast,1,Instant,3,0,0,0,0,0,attack,1
+wizard,Arcane Volley,2,Cast,6,0,0,0,0,0,attack,1
+wizard,Shoot Wand,1,Instant,2,0,0,0,0,1,attack,1
+wizard,Teleport,1,Instant,0,0,0,0,0,0,disengage,1
+wizard,Snap Freeze,1,Instant,2,0,0,0,0,0,attack;evades_melee,1
+wizard,Ice Barricade,0,Instant,0,0,10,0,0,0,exhaust,1
+wizard,Confound,1,Cast,0,0,0,0,0,0,incapacitate;exhaust,1
