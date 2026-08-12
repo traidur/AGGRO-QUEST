@@ -31,9 +31,11 @@ WIZARD_HP = 14
 # the macro-loop level: Wizard's food_only Nothing-tier decay dropped from
 # 32.6% to 28.2% and death rate from 0.39 to 0.31 per 20-trip run, landing
 # it next to Cleric instead of standing alone as the clear worst class.
+# aggro: co-op Party Pull targeting value (0-4), locked via direct user
+# review -- see OPEN_QUESTIONS.md's "Co-op multi-hero vs. one Elite" entry.
 CARDS = {
-    "Fire Blast":    dict(dmg=(3, 3), block=0,  grants_range=False, weave_source=True,  payoff=False),
-    "Arcane Volley": dict(dmg=(6, 8), block=0,  grants_range=False, weave_source=False, payoff=True),
+    "Fire Blast":    dict(dmg=(3, 3), block=0,  grants_range=False, weave_source=True,  payoff=False, aggro=1),
+    "Arcane Volley": dict(dmg=(6, 8), block=0,  grants_range=False, weave_source=False, payoff=True, aggro=3),
     # Snap Freeze's block=1 (was 0) is deliberately silent against every
     # existing melee mob -- grants_range already zeroes melee damage
     # outright, so added block underneath it can never help there, and
@@ -43,10 +45,10 @@ CARDS = {
     # partial recovery there without touching WIZARD_HP (explicitly ruled
     # out) or anything else already locked. See CLASS_BALANCE_GUIDE.md's
     # ranged-mob section for the before/after numbers.
-    "Snap Freeze":   dict(dmg=(1, 1), block=1,  grants_range=True,  weave_source=True,  payoff=False),
-    "Ice Barricade": dict(dmg=(0, 0), block=10, grants_range=False, weave_source=True,  payoff=False),
-    "Fire Ball":     dict(dmg=(5, 7), block=0,  grants_range=False, weave_source=False, payoff=True),
-    "Frozen Shot":   dict(dmg=(2, 4), block=0,  grants_range=True,  weave_source=False, payoff=True),
+    "Snap Freeze":   dict(dmg=(1, 1), block=1,  grants_range=True,  weave_source=True,  payoff=False, aggro=3),
+    "Ice Barricade": dict(dmg=(0, 0), block=10, grants_range=False, weave_source=True,  payoff=False, aggro=2),
+    "Fire Ball":     dict(dmg=(5, 7), block=0,  grants_range=False, weave_source=False, payoff=True, aggro=3),
+    "Frozen Shot":   dict(dmg=(2, 4), block=0,  grants_range=True,  weave_source=False, payoff=True, aggro=3),
 }
 DECK = list(CARDS.keys())
 

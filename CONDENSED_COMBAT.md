@@ -1,10 +1,11 @@
 # Condensed Combat — Design Log
 
-This is a parallel track to `CLASSES.md`. `CLASSES.md` documents a direct, 1:1-scale
-translation of AGGRO's 10-card deck / 5-card hand / 3-Energy system into QUEST terms —
-that translation and its simulator (`engine.py`, `simulate.py`) still exist untouched.
-This document tracks a different, smaller combat model being explored as a possible
-replacement, prototyped so far only for Warrior.
+This is the current combat model, and has been since it replaced an earlier, direct
+1:1-scale translation of AGGRO's 10-card deck / 5-card hand / 3-Energy system. That earlier
+translation and its simulator (`sim/engine.py`, `sim/simulate.py`) are superseded, isolated
+legacy code, not in active use or maintained — see `sim/README.md`'s "Legacy, superseded"
+section. This document is the design log for the model that actually won and is in use
+today, all six classes (Warrior/Wizard/Cleric/Paladin/Rogue/Ranger), not just Warrior.
 
 ## Why this exists
 
@@ -233,12 +234,16 @@ sequencing: playing a Spellweave-tagged card arms a single-use trigger; the *nex
 payoff card played consumes it for a bonus. Does not stack — a second Spellweave source only
 re-arms the trigger for a future payoff, it doesn't double up on the current one.
 
-| Card | Effect | Notes |
+**This table is a snapshot as originally built -- two values below have since changed; see
+`condensed_wizard.py`'s own `CARDS` dict for the real, current, authoritative values and its
+module docstring for why each changed.**
+
+| Card | Effect (as originally built) | Notes |
 |---|---|---|
 | Fire Blast | 3 DMG | Spellweave source |
 | Arcane Volley | 6 DMG, 8 if consuming an armed Spellweave trigger | Payoff |
-| Snap Freeze | 1 DMG + grants At Range this round | Spellweave source; positioning |
-| Ice Barricade | 10 Block | No Spellweave/positioning interaction — pure flat defense |
+| Snap Freeze | 1 DMG + grants At Range this round | Spellweave source; positioning. **Since gained `block=1`** (a Scout/ranged-mob compensating fix -- silent against melee, only matters vs. a ranged mob) |
+| Ice Barricade | 10 Block | **Since made a Spellweave source too** (was "no interaction" originally; changed to partially recover tempo lost to defense, fixing a flee/death-rate gap) |
 | Fire Ball | 5 DMG, 7 if consuming Spellweave | Payoff |
 | Frozen Shot | 2 DMG + grants At Range, 4 DMG if consuming Spellweave | Payoff; positioning |
 
@@ -584,7 +589,18 @@ can't live in this trick once it exists. Fine for a first/base kit; will need it
 whenever Paladin gets an upgrade tier, same as Holy Fortress's simplified reactive mechanic
 above.
 
-## Cleric kit (built, damage-floor problem resolved)
+## Cleric kit — draft, superseded
+
+**Superseded.** This section (and the "cannot die equilibrium" finding below it) documents an
+intermediate Cleric draft -- card names (Blessed Barrier, Blessed Fortitude), the binary
+Sacred Balance setup/payoff system, and the mob roster referenced (the old 8-mob draft) are
+all retired. Kept for historical narration only, same convention as "Warrior kit -- v1 draft
+(superseded)" above. **For Cleric's real, current kit, read `sim/condensed_cleric.py`'s
+`CARDS` dict directly** -- current mechanic is a flat, automatic +1 self-heal on playing
+Smite only (no setup/payoff, no bonus damage on any other card), current locked values
+documented in `CLASS_BALANCE_GUIDE.md`'s "Cleric and Wizard card fixes" section. This
+mismatch was found for real, the hard way -- an AI session presented these superseded values
+as current mid-conversation before catching it against the actual file.
 
 Third axis is **Heal** — resolves before the mob acts (same timing slot as Block/Positioning),
 capped at max HP (no overhealing banked forward), and unlike Block/Positioning it isn't tied

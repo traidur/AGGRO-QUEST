@@ -161,7 +161,7 @@ Player arcs from Level 1 Adventurer to Level 6 Raider.
 
 ## Class Archetypes (Field-Lever Identity)
 
-QUEST reuses AGGRO's nine classes and their existing role identities, but the field-lever framing above (§4) gives each archetype a distinct *shape* against the Slower-downer/Speeder-upper axis, not just a distinct card list. See `CLASSES.md` for the actual card-by-card AGGRO→QUEST translations, starting with Warrior/Cleric/Wizard.
+QUEST reuses AGGRO's nine classes and their existing role identities, but the field-lever framing above (§4) gives each archetype a distinct *shape* against the Slower-downer/Speeder-upper axis, not just a distinct card list. See `DECK_CONDENSING_GUIDE.md` for how an AGGRO class's kit gets translated into QUEST's condensed 6-card format, and each class's own `sim/condensed_<name>.py` `CARDS` dict for the actual current, authoritative card-by-card values (six classes built so far: Warrior/Wizard/Cleric/Paladin/Rogue/Ranger).
 
 - **Block-sustain (Warrior, Rogue).** Passive Block generation — Warrior's shield/Stance, Rogue's dodge — mitigates the Slog directly. The original framing here was about avoiding Winded/deck pollution (now cut, see §3); the surviving, still-relevant identity is that these classes' failure mode is running out of HP/Block margin, not out of Bag capacity for Food/Potions the way a non-self-sufficient class might be.
 - **Glass cannon (Wizard).** ~0 Block. Must OTK or eat unmitigated ATK. Highest outcome variance of any archetype by design — see the Opening Range rule above, which compounds a whiffed round one into a materially worse round two via the Cast Penalty.

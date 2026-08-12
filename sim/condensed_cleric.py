@@ -33,13 +33,15 @@ SACRED_BALANCE_HEAL = 1  # automatic heal on playing Smite
 # "cannot die" equilibrium bug on Grunt/Skirmisher -- traced to the extra
 # instant HP, not the raised ceiling itself (a controlled ceiling-only
 # variant stays clean at every starting-HP level). Ceiling-only it is.
+# aggro: co-op Party Pull targeting value (0-4), locked via direct user
+# review -- see OPEN_QUESTIONS.md's "Co-op multi-hero vs. one Elite" entry.
 CARDS = {
-    "Void Mark":         dict(dmg=3, heal=0, block=0, sacred_balance=False, max_hp_buff=0),
-    "Smite":             dict(dmg=5, heal=0, block=0, sacred_balance=True,  max_hp_buff=0),
-    "Call of the Void":  dict(dmg=6, heal=0, block=0, sacred_balance=False, max_hp_buff=0),
-    "Cleansing Barrier": dict(dmg=3, heal=0, block=5, sacred_balance=False, max_hp_buff=0),
-    "Fiery Fortitude":   dict(dmg=3, heal=2, block=0, sacred_balance=False, max_hp_buff=2),
-    "Heal":              dict(dmg=0, heal=3, block=0, sacred_balance=False, max_hp_buff=0),
+    "Void Mark":         dict(dmg=3, heal=0, block=0, sacred_balance=False, max_hp_buff=0, aggro=1),
+    "Smite":             dict(dmg=5, heal=0, block=0, sacred_balance=True,  max_hp_buff=0, aggro=2),
+    "Call of the Void":  dict(dmg=6, heal=0, block=0, sacred_balance=False, max_hp_buff=0, aggro=3),
+    "Cleansing Barrier": dict(dmg=3, heal=0, block=5, sacred_balance=False, max_hp_buff=0, aggro=1),
+    "Fiery Fortitude":   dict(dmg=3, heal=2, block=0, sacred_balance=False, max_hp_buff=2, aggro=2),
+    "Heal":              dict(dmg=0, heal=3, block=0, sacred_balance=False, max_hp_buff=0, aggro=3),
 }
 DECK = list(CARDS.keys())
 

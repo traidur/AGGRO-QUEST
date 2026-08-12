@@ -16,37 +16,6 @@ The Opening Range rule (mob starts at range, Engagement applies the Cast Penalty
 ### 5. Ranged-mob-never-engages implication
 If a mob is a ranged type and never Engages, does the Cast Penalty ever apply against it, even across a multi-round Slog? If not, that's a real matchup axis (hero archetype vs. mob range-type, not just hero archetype vs. mob HP/ATK) — worth deciding whether that's a feature to lean into or a wrinkle to dampen.
 
-### 6. Co-op multi-hero vs. one Elite mob (a "Hogger battle")
-
-Future idea, not yet decided, deliberately different from multi-hero-vs-multi-mob (considered
-and set aside — doesn't seem like it'd work). The shape instead: multiple heroes (e.g. a
-Warrior and a Cleric) all fight one shared Elite mob together, co-op only. Elite mobs would
-live in their own pool, pulled out only in co-op mode — implies **deck/content composition
-already varies by mode (solo/competitive/co-op)**, a broader principle worth noting on its
-own, not just for Elites specifically.
-
-Structure: still 3 rounds, still one card per hero per round, but each round every present
-hero's card gets totaled together against the Elite's number that round — a pooled-party-
-damage model, not parallel independent 1-on-1 fights the way every pull works today. If the
-Elite's damage that round exceeds what the party's combined cards absorb, something has to
-actually take the leftover as real HP loss. Two candidate ways to decide who:
-
-1. **No splitting — the players choose who absorbs it all**, each round, by agreement. Zero
-   extra bookkeeping, easy to teach, but risks being a solved, no-tension choice in practice
-   (the obvious highest-HP/tankiest hero just always volunteers, same choice every round).
-2. **A simplified Aggro number printed on every card** — whoever played the highest-Aggro
-   card that round takes the leftover damage. Real tactical texture (do you play your best
-   card even though it paints a target on you?), and ties the damage-distribution question to
-   an actual play choice instead of pure negotiation. Real cost: a new number to track on
-   every card, and it's a scoped reintroduction of something close to AGGRO's real Threat
-   system — worth flagging directly, since "Threat is gone entirely, no aggro/targeting
-   system exists in QUEST at all" has been a stated design pillar since the very first
-   translation pass (`CLASSES.md`). If this direction is taken, it should be treated the same
-   way the blind-refill exception was: a deliberate, narrow, called-out exception scoped to
-   this one co-op mode, not a quiet reopening of the general rule.
-
-Not decided which of the two (or something else) is right. Not yet built.
-
 ## Resolved
 
 ### The Claim phase's failure mode (priority at a hot node)
@@ -75,13 +44,18 @@ risk" reflection (a finite, visible pile changes the puzzle's texture differentl
 memoryless draw does).
 
 **Deck composition, decided:** a literal finite deck, not the existing weighted-random
-system reused — 3 copies each of the 5 locked Standard-tier mobs (Grunt/Bruiser/Enforcer/
-Raider/Ambusher), 15 cards total. Reshuffles the discard back in whenever it runs dry
-(possible mid-turn, since multiple heroes can pull multiple times before a turn ends) —
-never actually stays empty.
+system reused — 3 copies each of the 6 locked Standard-tier mobs (Grunt/Bruiser/Enforcer/
+Raider/Ambusher/Scout), 18 cards total (updated from an earlier 15-card/5-mob count, before
+Scout existed). Reshuffles the discard back in whenever it runs dry (possible mid-turn,
+since multiple heroes can pull multiple times before a turn ends) — never actually stays
+empty. See "Elite Spikes" below for how a zone's deck can extend past a pure single-tier
+pull.
 
 **Node refill, decided:** replace, not stack. A node always holds exactly one current mob;
 dealing a new one over an unclaimed mob simply replaces it. No node-congestion sub-system.
+**Exception, co-op only:** see "Multi-mob co-op nodes vs. single-Elite nodes" below -- in
+co-op play specifically, a node can hold more than one simultaneous mob. Solo and competitive
+play never see this; a node there always holds exactly one mob, no exception.
 
 **Turn order for multiple heroes at the same zone, decided, and this is also the resolution
 to Open Question #1 above (the Claim phase's failure mode):** turns are simultaneous —
@@ -114,9 +88,125 @@ conditional rules. When two active quests share an eligible node and a kill happ
 the player chooses which quest's loot they receive — a real decision, and it interacts
 usefully with the existing 2-slot Bag capacity squeeze (pick whichever you need more of).
 
+**Elite Spikes, and zone decks as an explicit recipe rather than a raw tier pull, decided:**
+mob tiers are scoped by level (e.g. a "Tier 1 Standard" pool, eventually a "Tier 1 Elite"
+pool once Spike-tier mobs exist, then Tier 2 versions of both later). A zone's actual deck
+is its own authored recipe built from those pools, not just "draw from one tier" -- e.g. a
+Tier 1 zone's deck could be "18-card Tier 1 Standard + 2-3 Tier 1 Elite" shuffled together,
+rather than pure Standard. This replaces treating `MOB_TIERS`'s two pools as the only unit a
+node can draw from; the deck-building step itself becomes the authored content, of which a
+pure-Standard deck is just the simplest case. **Zone deck composition (how many of each
+mob, including how many Elites) is public knowledge** -- printed on the zone, not hidden --
+so contesting a node with Elites mixed in is a calculable risk, not a blind unknown, matching
+how risk is handled everywhere else in this project.
+
+**Blind refills draw from the full zone deck, Elites included -- no special-case exception.**
+An earlier draft (from an external design pass) proposed Elites could never be drawn on a
+blind refill, redirected to a held state instead -- rejected as unnecessary complexity once
+traced through: it would have needed a new card-lifecycle state (where does a skipped Elite
+go, is it visible before its deferred deal, does it override the node's normal next-turn
+deal) with no clean answer to any of those questions. The simpler rule needs none of that
+machinery: a blind refill is just a real draw from the whole deck, and `macro_sim.py`'s
+existing `_pull_exceeds_risk` risk-tolerance check already covers the consequence -- a
+player (or the simulated agent) who doesn't like the zone's known Elite odds simply declines
+to contest that node this turn, exactly like any other lethal-pull decision already modeled.
+Nothing new to build here beyond not carving Elites out of the pool.
+
+**Blocked on task #20 (deriving Spike-tier mob stats) for real validation.** The whole
+premise -- that facing an Elite on a blind pull is a real, playable-around gamble rather
+than a disguised trap -- depends on Spike's actual numbers, which don't exist yet. Once they
+do, the thing to check is a **survival rate** (not win rate) for a fresh, full-HP hero
+against a Tier-1 Elite: what fraction of hands leave the hero above 0 HP, even if they can't
+win outright. This is a direct extension of the existing hand-level kill-feasibility check
+(`CLASS_BALANCE_GUIDE.md`'s tool inventory -- the same kind of check that found "8 of 15
+hands can't kill Brute" for early Paladin), just reframed around survival instead of victory.
+If most hands can survive (even while fleeing/losing the fight), "play defensively" is a
+real lever and this design holds up. If a meaningful fraction of hands are simply
+unsurvivable regardless of play, this reintroduces the exact unfair-trap problem the
+rejected held-Elite exception was originally trying to prevent, and needs revisiting.
+
 Not yet built — this is a real addition to the macro-loop engine (zone/node state, turn-based
-dealing logic), sized more like a new subsystem than a parameter change. No task tracked for
-the build yet.
+dealing logic, deck-recipe authoring), sized more like a new subsystem than a parameter
+change. No task tracked for the build yet; Elite Spikes specifically are additionally
+blocked on task #20.
+
+### Co-op multi-hero vs. Elite/multi-mob nodes (a "Hogger battle")
+
+Multiple heroes (e.g. a Warrior and a Cleric) fight a shared mob threat together, co-op only.
+Each round, every present hero's card totals together against the mob's number that round --
+a pooled-party-damage model, not parallel independent 1-on-1 fights the way every solo pull
+works. **Combat resolution mechanic: locked and built**, see `sim/condensed_party.py`
+(2-4 heroes, damage/Block pool into a shared mob HP that whittles across rounds same as solo,
+validated via a 540-check regression proving it reproduces every existing solo result exactly
+when run with one hero).
+
+**Targeting, locked:** whoever played the highest-Aggro card that round takes the leftover
+damage the party's pooled Block didn't absorb. Aggro is a dedicated, flat per-card number
+(0-4, class-weighted, no cumulative tracking), replacing an earlier "derive it from
+Damage/Block/Heal" idea that couldn't resolve real ties. **All 36 per-card values are
+assigned and locked** (in each class's own `CARDS` dict, the `aggro` field -- the single
+source of truth, not a separate table). Tie: highest raw damage among the tied cards tanks
+it (checked directly -- damage narrows most ties but not all, e.g. three different classes'
+Aggro=1 cards all deal exactly 3 damage). Still-tied: left to table agreement, no third
+automatic number. `grants_range` only voids the leftover if the evading hero would have been
+that round's target (otherwise irrelevant that round, not a broad party-wide negation).
+Killing-blow riders (Warrior's Execute, Rogue's Cutthroat) prevent the mob's attack for the
+whole party if played by anyone and the pooled damage kills that round. If the targeted hero
+can't absorb the leftover, they die -- no spillover. A dead hero stops contributing and is no
+longer a valid target; survivors keep fighting (win = mob dies before every hero does, loss =
+every hero dies first). This *is* the scoped, called-out Aggro exception to "no
+aggro/targeting system exists in QUEST" that was flagged as a risk when this was still an
+open question -- confirmed narrow to this one co-op mode, not a quiet reopening of the
+general rule.
+
+**Multi-mob co-op nodes vs. single-Elite nodes, decided (mode-gated) -- reverses an earlier
+call.** Previously this entry considered "multi-hero vs. multi-mob" and set it aside as
+seeming unworkable, in favor of "multi-hero vs. one Elite" only. That's now reversed for
+co-op specifically: **a single tougher Elite mob is available in every mode (solo,
+competitive, co-op) and never changes node behavior -- a node still holds exactly one mob.
+A node holding *more than one simultaneous mob* is a co-op-exclusive option** (some or all
+co-op nodes, not yet decided which -- see open items below). This isn't arbitrary: a solo
+hero facing two mobs' pooled stats would be facing an unwinnable wall by construction (mob HP
+above ~15-16 was already found literally unwinnable against one hero's damage ceiling, see
+`CLASS_BALANCE_GUIDE.md`'s "Elite trio, derived" section) -- multi-mob nodes are only ever
+survivable with a party's pooled cards, so gating them to co-op isn't a restriction, it's the
+only mode where the content is playable at all. Practically, this also means co-op difficulty
+doesn't need a separately hand-authored "Elite" content pool -- the existing Standard (and
+future Spike/Elite) mob rosters can be reused directly as raw material, with **how many mobs
+get dealt to a node** becoming the real co-op-difficulty lever instead of bespoke stat design.
+This is an amendment to "Zone-node mob dealing"'s already-resolved "a node always holds
+exactly one current mob" rule (above) -- co-op is now a deliberate, narrow, called-out
+exception to that rule, same treatment as the blind-refill exception gets.
+
+**Validated empirically that the underlying mechanic works, not yet that any specific content
+is right.** Summing two mobs' stats directly (HP added, each round's atk/block added -- a
+tabletop-executable rule, no new authoring) was tested through `condensed_party.py` against
+every 2-Standard-mob combination and every Elite+Standard combination, for a representative
+hero pair. Two Standard mobs alone couldn't reach a genuine coinflip even at the hardest
+combo (best case 70.2% win rate) -- the Standard tier's max combined HP (20, from the
+tankiest mob paired with itself) is below where a 2-hero coinflip plausibly needs to sit.
+Elite+Standard combos did much better (best found: Bulwark+Grunt, HP=19, 52.4% win/23.0%
+cost against one hero pair) -- but checked against all 15 possible hero pairs, that same combo
+ranged 49.3%-75.6% win rate, not class-agnostic. This is the same structural finding already
+locked from the original solo Elite derivation: no single mob (or, now, no single *multi-mob
+combo*) is class-agnostically tight on its own -- pool-averaging across several combinations
+is what actually closes the spread (got the solo trio down to ~11pp), and the same
+pool-search methodology should transfer here once real derivation work starts.
+
+**Still genuinely open, not decided:**
+- **Trigger/frequency for multi-mob nodes** -- every co-op node, a subset of designated
+  "hot" nodes always dealing multiple mobs, some probability, or something else. Not decided.
+- **Elite mob content/stats for real party math** -- the existing solo-baseline Elite trio
+  (Bulwark/Berserker/Warlord, HP=12) is confirmed too weak for 2-hero party math (100% win
+  rate, near-zero cost, everywhere) and needs its own re-derivation; today's combining tests
+  were exploratory system-validation, not a proposed final answer.
+- **Mixed `mob_type` when multiple mobs share a node.** Every test so far flattened a
+  multi-mob encounter into one combined pattern with a single hardcoded `mob_type` -- a real
+  simplification, not a decision. If a node genuinely holds two separate mob cards (say a
+  melee one and Scout, the one ranged Standard mob), the more faithful model is probably that
+  each mob keeps its own type independently -- a `grants_range` hero could plausibly evade the
+  melee one's damage while still eating the ranged one's. Not built or decided either way.
+- **Loot/reward scaling for a multi-mob kill** -- not addressed at all yet.
 
 ### Solved-hand risk in OTK combat
 Original concern: static mob stat blocks + deterministic math means once a player finds the optimal 3-Energy line for a given HP/ATK threshold, the fight stops being a decision.

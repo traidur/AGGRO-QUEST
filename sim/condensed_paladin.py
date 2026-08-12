@@ -36,13 +36,15 @@ PALADIN_HP = 17  # locked: settled at Warrior-1 after the Sacred Light/HP dial-b
 # dmg/heal/block are flat, unconditional base values. strike=True marks the
 # two cards the Invocation bonus chain keys off. invocation={"sanctuary",
 # "grace",None} marks the two Invocation cards.
+# aggro: co-op Party Pull targeting value (0-4), locked via direct user
+# review -- see OPEN_QUESTIONS.md's "Co-op multi-hero vs. one Elite" entry.
 CARDS = {
-    "Might of the Aegis":     dict(dmg=4, heal=0, block=2, strike=True,  invocation=None),
-    "Bastion's Hammer":       dict(dmg=6, heal=0, block=0, strike=True,  invocation=None),
-    "Sacred Light":           dict(dmg=0, heal=3, block=0, strike=False, invocation=None),
-    "Holy Fortress":          dict(dmg=2, heal=0, block=4, strike=False, invocation=None),
-    "Invocation of Sanctuary": dict(dmg=3, heal=0, block=0, strike=False, invocation="sanctuary"),
-    "Invocation of Grace":     dict(dmg=4, heal=0, block=0, strike=False, invocation="grace"),
+    "Might of the Aegis":     dict(dmg=4, heal=0, block=2, strike=True,  invocation=None, aggro=4),
+    "Bastion's Hammer":       dict(dmg=6, heal=0, block=0, strike=True,  invocation=None, aggro=2),
+    "Sacred Light":           dict(dmg=0, heal=3, block=0, strike=False, invocation=None, aggro=2),
+    "Holy Fortress":          dict(dmg=2, heal=0, block=4, strike=False, invocation=None, aggro=4),
+    "Invocation of Sanctuary": dict(dmg=3, heal=0, block=0, strike=False, invocation="sanctuary", aggro=3),
+    "Invocation of Grace":     dict(dmg=4, heal=0, block=0, strike=False, invocation="grace", aggro=3),
 }
 DECK = list(CARDS.keys())
 

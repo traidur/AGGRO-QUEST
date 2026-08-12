@@ -789,6 +789,111 @@ Whoever derives Spike -- or any future tier -- needs a ranged candidate from the
 discovered as a gap again later. Also written as a code comment directly above
 `MOB_TIERS` in `condensed_trip.py`.
 
+## Elite trio, derived -- solo single-hero baseline for the future Party Pull mechanic
+
+Derived while designing the Loudness co-op targeting system (see `OPEN_QUESTIONS.md`'s
+"Co-op multi-hero vs. one Elite" entry) -- before any party-vs-Elite math could be built, the
+solo single-hero matchup needed a real answer first, since that's the baseline everything
+else measures against. **Not yet wired into `condensed_trip.py`** -- these are a locked
+design decision with real validated numbers, not live game content yet. Wiring them into
+`MOB_TIERS`/`MOBS` should happen once the multi-hero Party Pull engine actually exists to use
+them against (see the phased build plan in `OPEN_QUESTIONS.md`), not before.
+
+**Target, as given:** a single near-max-HP hero should be able to solo an Elite, but it
+shouldn't be much better than a real coinflip -- "no better than a 50/50 prospect."
+
+**Single-mob search was tried first and abandoned -- not because the search was weak, but
+because the target is structurally unreachable by a single mob.** Two full brute-force
+sweeps (one scoped to HP 12-14/damage 14-18 per the original ask, one much wider at HP
+9-16/damage 0-24/block 0-2, ~157K combinations each) both converged on the same result:
+**every mob shape close to a genuine 50% win rate produced a 30-40 percentage-point spread
+between classes**, with Cleric (and often Paladin) trailing badly and Wizard/Rogue/Ranger
+comfortably ahead, regardless of how the damage was shaped (concentrated into 1-2 big hits,
+spread evenly across all 3 rounds, front-loaded, back-loaded -- all tested directly, all
+showed the same gap). Traced the actual mechanism by hand-tracing real optimal lines:
+**classes with a full-negation tool (Warrior/Rogue's killing-blow riders, Wizard/Ranger's
+`grants_range` evasion) can cancel an entire round's damage outright; Cleric and Paladin only
+have partial mitigation (flat Block), which can't compete with full negation once damage per
+round gets high enough to matter.** This isn't a shape-dependent artifact -- it held across
+every damage distribution tested, meaning it's a property of which classes have which tools,
+not of any particular mob's numbers.
+
+**A separate, harder structural finding: mob HP above ~15-16 makes the fight literally
+unwinnable for every class, regardless of the mob's own damage.** Confirmed directly --
+even a monstrous 8/8/8 (24 total damage) mob at HP=20 produced a flat 0% win rate for all
+six classes. Hero damage ceilings top out at 14-16 across the fixed 3-round pull structure
+this game always uses (see the "What is the ceiling range of our heroes" numbers earlier in
+this session); once mob HP exceeds that, no hand from any class can finish it in 3 rounds,
+full stop. This sets a hard, unavoidable HP ceiling for anything meant to be solo-winnable
+under the current combat rules -- a genuinely "big, tanky" Elite in the sense of far
+exceeding hero damage ceilings is only achievable via the Party mechanic (combined multi-hero
+damage), never solo.
+
+**Cost% (average HP spent, win or lose) turned out to be the metric that pool-averaging
+actually fixes -- win rate does not.** Tested directly, side by side: pools of 2-3 candidate
+mobs optimized for tight win-rate spread plateaued at 13.3 percentage points no matter how
+much the search space was widened (200K random pool combinations, both 2- and 3-mob pools,
+all converging on the same floor) and came with real class-agnostic-roster costs (30-38pp
+cost spread hidden underneath a superficially tighter win-rate number). The same pool-search
+process aimed at cost% instead found meaningfully tighter results (down to ~10-11pp spread)
+with more headroom to keep improving. The mechanism: win rate is a hard binary cliff,
+quantized to multiples of 1/15 (6.67 percentage points) with only 15 possible hands per
+class -- there is no way to hit exactly 50.0% by construction, and pool-averaging two
+already-coarse numbers doesn't smooth the underlying cliff-like collapse near a hand's
+survival threshold. Cost% is a continuous average with no such quantization floor, and
+responds to pool-averaging the way pool-averaging is supposed to work. **Locked takeaway:
+for any future multi-mob balance target, cost% is the more tractable metric to pool-optimize
+against -- win rate looks like the more natural target but doesn't actually cooperate with
+averaging the way cost does.**
+
+**Locked rule, reconfirmed here from the Standard-tier derivation: search whole pools, not
+single mobs, for any target that depends on the roster as a whole.** Directly parallels the
+"one favorite mob per class doesn't work" finding from the original Standard-tier derivation
+(see "The stat gauntlet" section above) -- trying to force one mob shape to be individually
+fair to all six classes was asking one data point to do a job a pool does far better. Not
+every mob in a pool needs to be individually fair; the pool's *average* needs to be.
+
+**Final locked trio** (all HP=12, searched from a 2,890-candidate pool within HP 12-14/total
+damage 13-18/block 0-3, optimized for cost% closest to 50 with tightest cross-class spread,
+deliberately including one mob with real Block for shape variety):
+
+| Mob | Pattern | Notes |
+|---|---|---|
+| Bulwark | `[(3,1), (4,0), (6,0)]` | Only one of the three with any Block (1, round 1); damage also ramps 3->4->6 |
+| Berserker | `[(6,0), (6,0), (3,0)]` | Heavy up front (6/6), fades to 3 -- an early rage that burns out |
+| Warlord | `[(5,0), (4,0), (5,0)]` | Consistent, sustained pressure across all 3 rounds, no big peak or valley |
+
+Drawn uniformly at random (no special weighting, matching the class-agnostic-roster
+discipline used everywhere else), aggregate per-class cost%/win% across the trio:
+
+| Class | Cost% | Win% |
+|---|---|---|
+| Warrior | 44.7% | 68.9% |
+| Wizard | 44.3% | 66.7% |
+| Cleric | 55.7% | 55.6% |
+| Paladin | 54.0% | 68.9% |
+| Rogue | 48.5% | 75.6% |
+| Ranger | 48.0% | 73.3% |
+
+Cost spread 11.0pp -- the tightest found across every search this session. Cleric remains
+the most expensive and Wizard the cheapest, same underlying pattern found in every single-mob
+search, but compressed from a 30-40pp gap down to about 11.
+
+**Backup trio kept in reserve** (one mob each at HP 12, 13, and 14, for visual/thematic size
+variety at a modest real cost -- 14.2pp cost spread instead of 11.0pp):
+
+| Mob | Pattern |
+|---|---|
+| Elite D | HP=14, `[(3,0), (4,0), (6,0)]` |
+| Elite E | HP=12, `[(6,0), (6,0), (5,0)]` |
+| Elite F | HP=13, `[(3,0), (5,0), (5,1)]` |
+
+**Not yet done:** wiring either trio into `condensed_trip.py`'s `MOB_TIERS`/`MOBS`; building
+the actual multi-hero Party Pull combat resolution (combined party damage vs. Elite HP,
+combined party Block vs. Elite attack, Loudness-based leftover assignment); re-validating
+these specific numbers once that engine exists, since everything here was derived against
+the *solo* single-hero baseline only, per the phased plan in `OPEN_QUESTIONS.md`.
+
 ## Retired roster, and mobs are derived by brute force now, not hand-designed
 
 The original 8-mob draft roster (Whelp/Grunt/Skirmisher/Ambusher/Sentinel/Brute/Elite/

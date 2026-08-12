@@ -25,7 +25,6 @@ instead of writing a new diagnostic script from scratch.**
 | `CLASS_BALANCE_GUIDE.md` | Process doc for per-pull card/mob balance — how to balance a class once its 6-card kit already exists, the diagnostic toolkit, methodology. |
 | `MACRO_LOOP_GUIDE.md` | Process doc for the Town/Bag/Quest/Gold layer — how the reward formulas, risk policy, and pricing were derived and validated. |
 | `OPEN_QUESTIONS.md` | Design tensions and unresolved mechanics, with a Resolved section for settled ones and their reasoning. |
-| `CLASSES.md` | **Stale.** Predates the condensed-combat rewrite, still describes the old Energy/Stance/Cast-Penalty system. Useful only for card-identity/flavor inspiration, not mechanics. |
 | `CONDENSED_COMBAT.md` | The condensed per-pull combat model itself. |
 | `sim/` | All simulator code — exact solvers per class (`condensed_<name>.py`), mob roster (`condensed_trip.py`), macro loop (`macro_sim.py`), and permanent derivation tools (`stat_gauntlet.py`, `pool_search*.py`, `quest_cost_gauntlet.py`). |
 
@@ -99,6 +98,18 @@ SOTG — same discipline AGGRO's SOTG uses.
   correctly blocked by the permission system — treat that as the right outcome, not an
   obstacle to route around. If a task seems to require extracting a credential, stop and ask
   the user instead of finding a workaround.
+- **Never present a class's card values or mechanics from memory — read the actual
+  `condensed_<class>.py` file fresh, every time, before saying anything about what a card
+  does.** Caught concretely: mid-session, presented Cleric's Sacred Balance mechanic as an
+  earlier, since-redesigned version (a setup/payoff combo system) instead of checking the
+  file, which had already moved to a simpler flat-heal-on-Smite design — the class had been
+  redesigned earlier in the *same* conversation, and memory of the old version didn't update.
+  This session is long enough that recollection of a class discussed hours (or many
+  compactions) ago is a real, live risk, not a hypothetical one. Also: **the `CARDS` dict is
+  authoritative over a module's own docstring prose** — found a real case (Paladin's
+  Invocation of Grace) where the docstring said one damage value and the executing `CARDS`
+  dict had a different one. When they disagree, trust the dict that actually runs, not the
+  English description next to it, and flag the drift rather than silently picking one.
 
 ## Git / GitHub
 
