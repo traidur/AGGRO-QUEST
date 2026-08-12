@@ -34,7 +34,16 @@ WIZARD_HP = 14
 CARDS = {
     "Fire Blast":    dict(dmg=(3, 3), block=0,  grants_range=False, weave_source=True,  payoff=False),
     "Arcane Volley": dict(dmg=(6, 8), block=0,  grants_range=False, weave_source=False, payoff=True),
-    "Snap Freeze":   dict(dmg=(1, 1), block=0,  grants_range=True,  weave_source=True,  payoff=False),
+    # Snap Freeze's block=1 (was 0) is deliberately silent against every
+    # existing melee mob -- grants_range already zeroes melee damage
+    # outright, so added block underneath it can never help there, and
+    # every already-tuned melee number is unaffected by construction. It
+    # only ever activates against a ranged mob, where grants_range
+    # currently does nothing at all -- added specifically to give Wizard
+    # partial recovery there without touching WIZARD_HP (explicitly ruled
+    # out) or anything else already locked. See CLASS_BALANCE_GUIDE.md's
+    # ranged-mob section for the before/after numbers.
+    "Snap Freeze":   dict(dmg=(1, 1), block=1,  grants_range=True,  weave_source=True,  payoff=False),
     "Ice Barricade": dict(dmg=(0, 0), block=10, grants_range=False, weave_source=True,  payoff=False),
     "Fire Ball":     dict(dmg=(5, 7), block=0,  grants_range=False, weave_source=False, payoff=True),
     "Frozen Shot":   dict(dmg=(2, 4), block=0,  grants_range=True,  weave_source=False, payoff=True),

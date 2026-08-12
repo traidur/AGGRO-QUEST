@@ -16,34 +16,61 @@ a queryable data generator, regenerate as needed rather than treat as
 sacred (~2.5 minutes for the full sweep). Query the resulting CSV with
 csv.DictReader afterward rather than reading it directly; see
 pool_search.py for the next step (searching whole mob-pool combinations
-against the chained diagnostic using this CSV's output as candidates)."""
+against the chained diagnostic using this CSV's output as candidates).
+
+Covers all 6 classes now (Rogue and Ranger added when this predated their
+build). stats() also takes an explicit mob_type ('melee' or 'ranged'),
+applied only to classes in RANGE_TAGGED (currently Wizard and Ranger --
+the only two with a grants_range-style mechanic that actually reads
+mob_type). Every other class's numbers are provably identical regardless
+of mob_type, since their simulate() never looks at it. The full CSV sweep
+below is still melee-only by default (doubling it to cover both mob_types
+would double the ~2.5-minute runtime for a dimension only 2 of 6 classes
+care about) -- for a specific ranged-mob candidate, call stats() directly
+with mob_type='ranged' rather than regenerating the whole sweep."""
 import csv
 import itertools
 import time
 
 import condensed_cleric as C
 import condensed_paladin as P
+import condensed_ranger as G
+import condensed_rogue as R
 import condensed_trip as T
 import condensed_warrior as W
 import condensed_wizard as Z
 
-CARD_SOURCE = {'warrior': W, 'wizard': Z, 'cleric': C, 'paladin': P}
-HP_ATTR = {'warrior': 'WARRIOR_HP', 'wizard': 'WIZARD_HP', 'cleric': 'CLERIC_HP', 'paladin': 'PALADIN_HP'}
-HAS_STANCE = {'warrior': True, 'wizard': False, 'cleric': False, 'paladin': False}
-CLASSES = ['warrior', 'wizard', 'cleric', 'paladin']
+CARD_SOURCE = {'warrior': W, 'wizard': Z, 'cleric': C, 'paladin': P, 'rogue': R, 'ranger': G}
+HP_ATTR = {'warrior': 'WARRIOR_HP', 'wizard': 'WIZARD_HP', 'cleric': 'CLERIC_HP', 'paladin': 'PALADIN_HP',
+           'rogue': 'ROGUE_HP', 'ranger': 'RANGER_HP'}
+HAS_STANCE = {'warrior': True, 'wizard': False, 'cleric': False, 'paladin': False, 'rogue': False, 'ranger': False}
+CLASSES = ['warrior', 'wizard', 'cleric', 'paladin', 'rogue', 'ranger']
+
+# Ranger isn't locked into condensed_trip.py's permanent structures yet, so
+# its 3-tuple requirement wouldn't otherwise be registered -- do it here so
+# this module works standalone regardless of what the caller already set up.
+T.register_class_for_testing('ranger', needs_range_tag=True)
+
+# Classes whose simulate() unpacks a 3-tuple (atk, block, mob_type) instead
+# of the plain 2-tuple -- structurally required for Wizard/Rogue/Ranger
+# (Rogue's simulate() still unpacks mob_type even though it never reads it,
+# leftover from an earlier iteration with a grants_range mechanic). Reuses
+# condensed_trip.py's own set directly rather than keeping a second,
+# drift-prone copy in sync by hand.
+RANGE_TAGGED = T._RANGE_TAGGED_MOB_KEYS
 
 DMG_RANGE = range(0, 6)
 BLOCK_RANGE = range(0, 3)  # capped at 2, matching the real roster's ceiling
 HP_RANGE = range(4, 13)
 
 
-def stats(pattern, mob_hp):
+def stats(pattern, mob_hp, mob_type='melee'):
     out = {}
     for cls in CLASSES:
         mod = CARD_SOURCE[cls]
         has_stance = HAS_STANCE[cls]
         max_hp = float(getattr(mod, HP_ATTR[cls]))
-        p = pattern if cls != 'wizard' else [(a, b, 'melee') for a, b in pattern]
+        p = pattern if cls not in RANGE_TAGGED else [(a, b, mob_type) for a, b in pattern]
         costs, wins, r1kills = [], [], 0
         for hand in mod.ALL_HANDS:
             seq, stance, hp_left, rounds = T._best_line(mod, has_stance, hand, p, mob_hp, max_hp)

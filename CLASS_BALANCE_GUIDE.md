@@ -145,6 +145,20 @@ Run these roughly in this order on a new class:
    cost anything extra. Parity on pulls-survived alone doesn't rule this out — always check
    both.
 
+7. **`register_class_for_testing(mob_key, needs_range_tag=...)` + `tuning_report(...)`** —
+   the standard way to iterate on a class *before* it's locked into `CLASSES`. Register once
+   (wires the class into `MOBS` and, if it has a `grants_range`-style mechanic, into
+   `_dummy_pattern`'s range-aware set — no more hand-editing `_dummy_pattern` for a new
+   class, it's automatic now), then call `tuning_report(label, mod, has_stance, mob_key,
+   max_hp, max_hp_attr, run_trip_fn)` for the complete picture in one call: `full_diagnostic`,
+   per-mob win rate, flee-preference, and a chained trip comparison against every locked
+   class with the pack's min/max range and an explicit in-range/out-of-range verdict per
+   metric. Replaces the ad hoc monkey-patch-`MOBS`-then-copy-a-60-line-script pattern used
+   throughout the Rogue and Ranger builds — that pattern got retyped by hand well over a
+   dozen times across those two sessions before this got promoted to a real function. See
+   "Numeric tuning playbook" below for what the numbers this prints actually mean and which
+   levers move which of them.
+
 Every one of these is class-agnostic by construction (`has_stance` flag, generic
 `mob_key`) — a fourth class plugs in without modifying any tool, only by adding its own
 `(label, mod, has_stance, max_hp)` tuple to a `class_specs` list.
@@ -411,6 +425,134 @@ Both fixes share the same shape worth naming: find the specific mechanism (not j
 symptom), test whether a small change actually closes the mechanism or just masks it, and
 validate against the real, currently-locked roster before calling it done.
 
+## Numeric tuning playbook — what moves which number, and by how much
+
+Extracted from the Rogue and Ranger builds, where the same handful of questions kept coming
+up in the same shape. Read this before hand-guessing which lever to pull on a new class;
+every claim here was measured, not assumed, and `tuning_report()` (see the tool inventory
+above) is what to actually run to check any of it on a new kit.
+
+**The five numbers that matter, and what each one actually is:**
+- **Damage floor/ceiling** (`damage_distribution`) — best/worst single-pull raw damage
+  output, exact enumeration across all 15 hands. Full distribution + mean/stdev/range, not
+  just the two endpoints — see "single-pull parity" section above for why the shape matters.
+- **Win rate per mob** (`win_rate`) — single-pull, full starting HP, exact.
+- **Flee-preference** (`flee_preference`) — single-pull, full starting HP: does the best
+  *non*-winning line preserve more HP than the best *winning* line, for hands where a win is
+  achievable at all. A relative comparison between two lines for the *same* hand — not
+  affected by anything that shifts both lines by the same amount.
+- **Pulls-survived / wins-per-trip** (`run_trip_<class>`, chained) — Monte Carlo, HP carries
+  forward pull-to-pull with no recovery, random mob and hand each pull, "always take the
+  win" policy (never voluntarily flees — see that section above for why this is correct
+  under the current reward scheme).
+- **Wins/pull** (= wins-per-trip ÷ pulls-survived) — of the pulls a class actually gets, what
+  fraction end in an actual kill. A genuinely different question from either chained number
+  alone; see the tool-inventory entry above for the Rogue case where pulls-survived matched
+  the pack while wins/pull didn't.
+
+**HP moves the three chained numbers and is mathematically inert on flee-preference.**
+Proven, not just observed: `flee_preference` compares two outcomes' *relative* HP-left for
+the same hand; a uniform HP shift can't change which one comes out ahead. Confirmed
+empirically on Rogue across three separate HP passes (14/15/16) that moved pulls-survived
+and wins/pull every time while leaving flee-preference bit-for-bit identical, and again on
+Ranger (14 vs. 15) with the same result. If flee-preference is the number you're trying to
+move, HP will never do it — full stop, not "usually doesn't."
+
+**Wins/pull is dominated by survivability, not raw damage capability — true on every class
+checked, not just one.** Measured directly: for every non-win in a chained trip, re-check
+whether the same hand+mob draw would have won with *unlimited* HP. If yes, the miss was
+survivability-driven (ran out of HP before finishing something winnable); if no, it's
+damage-driven (can't kill this mob with this hand, full stop, regardless of HP). Across all
+five locked classes: survivability accounts for **84.4-94.8%** of misses, damage-
+insufficiency for the rest. This is *why* HP is consistently the reliable lever for
+wins/pull — it directly attacks the dominant failure mode — and why a flat damage bump is a
+blunter substitute (see below).
+
+**A flat damage bump moves everything at once and tends to overshoot.** Tested directly on
+Rogue: +1 DMG on one card closed most of a pulls-survived gap, but also dragged
+flee-preference back out of range in the wrong direction *and* pushed wins/pull over the top
+of its own range — undoing two already-fixed numbers to fix a third. Damage changes kill
+speed, mitigation-relative-to-offense, and floor/ceiling all simultaneously; HP only touches
+the chained-survival numbers. Prefer HP when the goal is narrowly "move pulls-survived/
+wins-per-pull without disturbing anything else."
+
+**When HP is off the table (a real design constraint, not just a preference) and one chained
+number still needs to move, trim the least-entangled offense-only card, not a defensive
+one.** Worked cleanly on Ranger: with `RANGER_HP` fixed at 15 for identity reasons (see the
+Ranger section below), wins/pull needed to come down without disturbing pulls-survived/
+wins-per-trip, which were already correctly positioned. Trimming the one purely-offensive
+card with no block/evasion/persistent-effect attached (Sure Shot, 5→4) landed all three
+chained numbers inside the pack range at once, because it made fights close out slightly
+less reliably without touching any of the already-calibrated defensive tools. Trimming a
+card that also carries defense instead (as tried earlier in the same session, cutting a
+persistent Block value) moves pulls-survived *and* wins/pull together, which is the right
+tool when both need to move the same direction, and the wrong one when they don't.
+
+**Flee-preference's lever is the balance between kill-committed lines and hold-back-only
+lines, not any single number.** It reads as "how often does the best non-winning line beat
+the best winning line" — so anything that makes a *committed, kill-securing* line cheaper in
+HP terms (a killing-blow rider, a defensive tool that applies *during* the kill round) pushes
+it **down**; anything that gives a strong *standalone* defensive option that doesn't require
+chasing the kill (a pure 0-DMG/high-Block card) pushes it **up**. Diagnosed directly on
+Ranger: a pure-defense card (Beast's Challenge, 0 DMG/5 Block) was in 8 of that mob's 10
+flee-preferred hold-back lines, while the two purely-offensive cards (Sure Shot, the class's
+finisher) appeared in *zero* of them — the split is usually this clean once you look at
+which cards actually populate the hold-back lines vs. the winning ones (dig in with a script
+like the one used there: for every hand where flee beats winning, print both lines and tally
+card frequency in each).
+
+**Low flee-preference isn't automatically a problem — check whether it's bundled with an
+overall power problem or standing alone.** Rogue's early overtuned drafts had near-zero
+flee-preference *and* were 2x the pack on every other metric — one symptom of a shared cause.
+Ranger's final build has flee-preference sitting a bit under the pack's floor while every
+other number is in range — a texture signal (the class rarely presents a genuine hold-back
+dilemma), not a power imbalance. `CLASS_BALANCE_GUIDE.md`'s own locked design conclusion
+(flee is worth ~nothing under the real reward scheme) means it doesn't change outcomes
+either way — treat it as informational unless it's moving in lockstep with everything else.
+
+**Small-sample hidden-domination flags can be coincidence, not structure — check the overlap
+count before trusting one.** `pairwise_genuine_difference` flagged two Ranger cards as tied
+100% of the time on only 2 overlap cases early in tuning; it resolved on its own as other
+values changed and never recurred. A later flag on the same two cards held at 13-14 overlap
+cases across several iterations — that one was real: both cards ended up dealing identical
+damage and granting identical evasion, and against an all-melee roster evasion already
+zeroes the hit outright, so one card's extra point of Block can never actually matter.
+
+This observation turned out to generalize past a "check it by hand when something looks
+off" habit — auditing every already-locked class the same way found several "clean" pairs
+resting on just 2-3 real observations (Warrior's Vanguard Shield/Vanguard Blade among them,
+a pair *deliberately designed* to differ). The tool itself has since been redesigned to
+report evidence, not just a verdict — see the "Ranger, locked" section's writeup and
+`pairwise_genuine_difference`'s docstring for the full fix (`MIN_CONFIDENT_SAMPLE`,
+`flagged`/`flagged-thin`/`clean`/`clean-thin`). Don't eyeball the overlap count from
+`full_diagnostic`'s raw print anymore — the tool now does the confidence check itself, and
+any pair still printed with a `-thin` verdict needs the same direct, out-of-aggregate
+confirmation described there before trusting either a flag or a clean pass.
+
+**Ambiguous card text needs two concrete readings spelled out, not a guess — ask.** A
+stacking-bonus curve ("+1 then also +3") and a replacement curve ("+1 or +3") produce
+opposite dominance relationships between two cards that were otherwise supposed to be a real
+choice. Same for "played before" (does it mean the immediately preceding round only, or any
+earlier round this pull) — different cards in the same Ranger kit turned out to mean
+different things by design (one checked only the previous round, the other checked the whole
+pull so far), and guessing either one wrong would have meant building and testing the wrong
+mechanic. Costs one message to ask; costs a full tuning pass to discover after the fact.
+
+## Locking a class in — the checklist, once tuning is actually done
+
+1. Wire the class into every shared lookup table in `condensed_trip.py`: `CLASSES`,
+   `MOBS` (or just confirm `register_class_for_testing` already did this correctly),
+   `HAS_STANCE_BY_LABEL`, `CARD_SOURCE_BY_LABEL`, `HP_ATTR_BY_LABEL`, `MOB_KEY_BY_LABEL`,
+   `WIN_RATE_FNS`. Add a `run_trip_<class>` function matching the existing pattern.
+2. Update the class's own module docstring with the final kit, the mechanic reasoning, and
+   the validated numbers at lock-in (see `condensed_rogue.py` for the template).
+3. Add a "`<Class>`, locked" section to this file — mechanic summary, the real findings that
+   came out of tuning it (not just the final numbers), validated numbers at lock-in.
+4. Propose (don't silently edit — SOTG requires explicit permission) adding the class to
+   `SOTG.md`'s class roster table.
+5. Update the task list: mark the class-build task's description to reflect what's done and
+   what classes remain.
+
 ## Rogue, locked -- fifth class, and a different kind of build than the first four
 
 Warrior/Wizard/Cleric/Paladin were each built AI-first (a solo drafting pass, checked and
@@ -471,6 +613,181 @@ the wins/pull overshoot isn't a real outlier once combined with pulls-survived, 
 wins/trip = pulls-survived x wins/pull exactly). Damage floor/ceiling 9/15, win rate
 93.3-100% across all 5 Standard mobs, equilibrium clean, no hidden-domination. Full kit and
 reasoning in `condensed_rogue.py`'s module docstring.
+
+(Numbers above were measured against the 5-mob Standard tier, before Scout -- see below --
+was added. Re-measured against the current 6-mob roster at lock-in time: pulls 5.49, wins/
+trip 4.31, wins/pull 78.5%. Still in the same relative position versus the rest of the
+roster; Scout doesn't change the read on Rogue.)
+
+## Ranger, locked -- sixth class, built entirely by the user card-by-card
+
+Same collaborative process as Rogue's eventual build (not its first, reverted attempt) --
+every card value proposed by the user directly, with the AI running `tuning_report()` after
+each change and reporting the numbers. No AI-solo drafting happened at any point in this
+build.
+
+**The mechanics, both new to this codebase:** a persistent, multi-round Block effect (Beast
+Bond: Wolf -- every other class's Block clears each round; this is the first exception), and
+a previous-card-dependent damage payoff (Sniper/Point Blank Shot, reusing Warrior's existing
+Vanguard-pair chain-bonus pattern but keyed on the `grants_range` property instead of a
+specific card name).
+
+**A design worry, raised before any numbers existed, that turned out real but not absolute:**
+would Beast Bond's persistent Block be a card you'd robotically play round 1 every time it's
+drawn, making that decision boring? Measured directly once built: chased in 76.0% of hands
+where drawn (round 1), 18.0% round 2, 6.0% round 3 -- a real pull, not a hard lock, similar
+in shape (if stronger) to Rogue's Ambush round-1 bonus (58.8%). The mechanism for the round-2+
+cases: against a mob with a heavy round-1 hit and no block on Beast Bond itself, tanking that
+hit with a dedicated block card first and delaying Beast Bond one round can genuinely beat
+taking the bonus immediately -- a real mob-reading decision, not noise.
+
+**Numeric tuning, the actual sequence:** the first working draft (Beast's Challenge: flat 0
+DMG / 5 Block) pushed single-pull win rate to 100% on every mob -- no hand could lose,
+regardless of play. Fixed by making Beast's Challenge's damage conditional on Beast Bond
+having been played first (5 DMG if so, 2 otherwise) instead of flat block, which restored a
+real floor below the toughest mob's HP. That fix alone didn't touch the chained numbers,
+which were still roughly double the rest of the roster (pulls-survived ~13, vs. everyone
+else's ~5.3) -- diagnosed directly as Beast Bond's persistent Block compounding across a
+chain, the same shape Cleric's early healing overshoot took earlier in the project. Halving
+its per-round value (2 -> 1 Block) cut that gap roughly in half by itself. The remaining gap
+was closed two different ways, tested and compared explicitly rather than picked blind:
+dropping `RANGER_HP` 15 -> 14 closed it completely but was explicitly rejected by design
+judgment (Ranger reads as Mail-armor tier in AGGRO's own design, distinct from the Cloth-tier
+classes already sitting at 14 -- a real identity signal worth more than a fully-closed
+integer gap); trimming Sure Shot's flat damage 5 -> 4 instead closed the same gap without
+touching HP, landing all three chained metrics in-range simultaneously. This is the
+"least-entangled offense-only card" lever from the tuning playbook above, applied for real.
+
+**Locked, validated at 5000-trial chained comparison against the rest of the roster** (at
+lock-in time, against the 6-mob Standard tier including Scout, see below): `RANGER_HP = 15`.
+Pulls-survived 5.11 (pack: 5.11-5.63 -- tied at the floor). Wins/trip 3.83 (pack: 3.83-4.33 --
+also tied at the floor). Wins/pull 75.0% (pack: 73.9-78.5%). Damage floor/ceiling 8/14, win
+rate 93.3-100% across all 6 Standard mobs, equilibrium clean. Flee-preference 13.3-16.0%
+across the tuning session's various roster states, sitting a bit under the rest of the
+roster's range -- a texture signal (see the tuning playbook's flee-preference section above),
+not chased further once every other metric landed in range. Full kit, mechanic reasoning, and
+the complete tuning sequence in `condensed_ranger.py`'s module docstring.
+
+One hidden-domination flag remains on the diagnostic: Withdrawing Hip Shot vs. Crippling
+Shot, both 2 DMG and both grant Range. This one is real, strong evidence, not a fluke --
+`[flagged]`, 14 real (non-vacuous) observed comparisons, all tied, zero genuine differences.
+Nearly all 14 come from the other 5 (melee) mobs, where the cards truly are identical --
+`grants_range` already zeroes melee damage outright, so Crippling Shot's extra +1 Block can
+never do anything there. Confirmed separately, by forcing the swap directly outside the
+diagnostic, that the two cards *do* genuinely differ against Scout specifically (the 1-point
+Block difference shows up correctly the instant the differing card is actually played) --
+but that real difference produced zero valid observations in the natural 15-hand dataset
+for that one mob (every hand either played both cards together, or landed the differing card
+in a round the fight never reached). Both things are true at once and aren't in tension: the
+pair is legitimately near-identical across the large majority of the roster (strong, correct
+evidence), and it has one confirmed real exception that this particular check's small,
+fixed sample just never happened to catch for that one mob. A future card-pool expansion
+(more Standard-tier ranged mobs, more hand-count) would very likely surface it on its own.
+
+**This investigation started because the user pushed back hard on how the original version
+of this check reported results, and that pushback was correct.** The pre-redesign version
+printed a bare "flagged" or "not flagged" per pair, with no indication of how many real
+observations backed the verdict. Auditing every already-locked class against this question
+("how much evidence is actually behind each 'clean' verdict?") found the problem wasn't
+Ranger-specific: Warrior's Vanguard Shield vs. Vanguard Blade -- a pair *deliberately
+designed* to differ, with separate order-sensitive chain bonuses -- had its "not flagged,
+these genuinely differ" verdict resting on just **3** real observations out of the whole
+roster. Wizard, Cleric, Paladin, and Rogue each had at least one pair in the same 2-3-real-
+observation range. None of these were actually wrong (every one had genuine > 0), but the
+*method* that produced "not flagged" for them was, in each case, barely more reliable than
+the method that produced Ranger's misleading-looking flag -- getting the right answer off
+2-3 data points is luck, not confidence, and the tool gave no way to tell the difference
+between a verdict built on 3 observations and one built on 20.
+
+**Fixed by redesigning the check itself, not by re-explaining the Ranger result.**
+`pairwise_genuine_difference` now returns `(genuine, tied, vacuous, verdict)` per pair
+instead of a bare flagged/not-flagged, with `verdict` one of `flagged` / `flagged-thin` /
+`clean` / `clean-thin`, gated on `MIN_CONFIDENT_SAMPLE = 5` real (non-vacuous) observations.
+`full_diagnostic()` now only prints pairs that aren't a confident `clean` -- so a real,
+well-evidenced flag (Ranger's, 14 observations) and a technically-clean-but-thin verdict
+(Warrior's, 3 observations) both surface for a human to look at, instead of one being loudly
+flagged and the other silently trusted. **Locked rule going forward: never read a single
+flagged/not-flagged verdict from this check as settled without also looking at how many real
+observations back it** -- a pair sitting below `MIN_CONFIDENT_SAMPLE` (flagged-thin or
+clean-thin) needs the same direct, out-of-aggregate confirmation used to resolve the Ranger
+case (force the differing card into an actually-played round and check the outcome by hand)
+before treating either verdict as fact.
+
+## Sixth Standard-tier mob: Scout (ranged), and the compensating Wizard fix
+
+Two classes (Wizard, Ranger) have a `grants_range`-style evasion mechanic (evades a melee
+mob's attack entirely) that was permanently inert with an all-melee Standard tier -- there
+was no mob it didn't work against, so the mechanic never actually mattered as a decision, and
+one Ranger card pair (Withdrawing Hip Shot / Crippling Shot) was genuinely dead-tied as a
+direct result (see the Ranger section above). Fixing this needed a real ranged mob added to
+the roster, not a hypothetical.
+
+**The actual question worth naming explicitly, because getting it wrong the first time
+produced a wrong recommendation:** "least disruptive" was initially read as "changes
+Wizard/Ranger's numbers the least, relative to how much everyone else gains" -- i.e.
+maximizing how differentiated the ranged tag reads. That's the wrong question. **The right
+one is total footprint across the whole roster** -- how much does adding this mob move
+*everyone's* numbers, not just how unevenly it splits between the two affected classes. Five
+candidate shapes were compared on both readings and the ranking flipped completely: the
+candidate that looked "best" under the first framing (front-loaded, fading damage --
+maximally differentiated the two range-aware classes from the rest) had one of the *largest*
+total footprints on the whole roster; the candidate that actually minimized total disruption
+(`[(2,0),(3,0),(4,0)]`, HP 8 -- a mild, roster-typical escalation, not deliberately
+weak-and-forgettable) had less than half the average per-class disturbance of anything else
+tested. The mechanism: the weaker candidates were so far below the existing roster's
+difficulty that adding them acted like a free win for every class, inflating everyone's
+chained numbers substantially -- that's disruption too, just in the generous direction, and
+it dwarfed the actual ranged-tag effect being measured. **Locked methodology: when adding
+content to an already-balanced pool, measure total footprint across every affected class
+first, not just the differential on the classes the new content is "for."**
+
+**Deliberately no Block on Scout.** Considered and rejected: block represents durability
+against being hit, a melee-tank trait; a ranged attacker's identity is staying out of the
+fight entirely, not tanking it. Giving Scout block would also have stacked a second,
+unrelated advantage on top of the one it already has (its evasion-nullifying effect on two
+classes) for no real reason -- the same "don't stack uncertainty/advantage on itself" instinct
+that shaped the zone-node loot-sourcing decision in `OPEN_QUESTIONS.md`.
+
+**Wizard's small, deliberately narrow compensating fix, precisely because `WIZARD_HP` was
+explicitly ruled out as a lever here** (already a locked, previously-tuned number; the user
+was clear it wasn't up for revision just because a new mob shifted its numbers slightly):
+Snap Freeze (grants Range, 1 DMG, Weave source) gained a flat `block=1`. This is provably
+silent against every melee mob in the roster -- `grants_range` already reduces melee damage
+to zero, so added Block underneath it can never do anything there, confirmed by re-running
+the full 5-mob-baseline diagnostic bit-for-bit identical before and after. It only ever
+activates against Scout, where `grants_range` currently does nothing at all. Recovers about
+23% of Wizard's pulls-survived loss and 57% of its wins/pull loss from Scout's addition --
+partial, deliberately, since the loss itself was small (~0.5 pulls, ~0.7 percentage points).
+This is the generalizable pattern for "a new mob costs one class something specific and HP
+is off the table": find the exact mechanic the new content defeats, and patch *that*
+mechanic narrowly enough that it's structurally inert everywhere else, rather than reaching
+for a blanket buff.
+
+**Final shape, locked:** `Scout: ([(2,0), (3,0), (4,0)], 8)`, `mob_type="ranged"`, added to
+`MOB_TIERS["standard"]` at the same uniform weight as every other Standard-tier mob (no
+special-case weighting -- deliberately, per the existing class-agnostic-roster discipline
+extended to "don't special-case a mob either"). Full 6-class chained comparison at lock-in:
+
+| Class | Pulls survived | Wins/trip | Wins/pull |
+|---|---|---|---|
+| Warrior | 5.59 | 4.14 | 73.9% |
+| Wizard | 5.34 | 3.97 | 74.4% |
+| Cleric | 5.63 | 4.33 | 77.0% |
+| Paladin | 5.57 | 4.28 | 76.9% |
+| Rogue | 5.49 | 4.31 | 78.5% |
+| Ranger | 5.11 | 3.83 | 75.0% |
+
+All six classes cluster within a roughly 0.5-pull / 4.6-percentage-point band -- no outliers
+introduced by the addition. This table is the new locked baseline for any future roster or
+mob-pool comparison; the "5-mob" numbers reported in the Rogue section above and elsewhere
+predate Scout and are historical, not current.
+
+**Locked rule, going forward: every mob tier must contain at least one ranged mob.** Standard
+went all-melee for most of this project before Scout, and it took until Ranger's build (the
+second class with a `grants_range` mechanic) for that gap to actually get noticed and fixed.
+Whoever derives Spike -- or any future tier -- needs a ranged candidate from the start, not
+discovered as a gap again later. Also written as a code comment directly above
+`MOB_TIERS` in `condensed_trip.py`.
 
 ## Retired roster, and mobs are derived by brute force now, not hand-designed
 

@@ -15,6 +15,7 @@ import condensed_wizard as Z
 import condensed_cleric as C
 import condensed_paladin as P
 import condensed_rogue as R
+import condensed_ranger as G
 
 # Standard tier, locked. Entire prior roster (the original 8-mob draft plus
 # Footman/Marauder/Brawler, added incrementally by hand across this
@@ -32,6 +33,18 @@ import condensed_rogue as R
 # abandoned as a methodology. Future mobs (a Spike tier, later zones) get
 # derived the same way -- brute-force search against the real chained
 # diagnostics, not hand-picked and hoped to average out.
+#
+# Scout added as the roster's 6th mob and first ranged one, once Ranger's
+# build surfaced a real need: two classes (Wizard, Ranger) have a
+# grants_range-style evasion mechanic that was permanently inert with an
+# all-melee roster (nothing to differentiate melee-evasion from). Chosen
+# from a five-candidate comparison (see CLASS_BALANCE_GUIDE.md's "Sixth
+# Standard-tier mob" section) specifically for LEAST total disruption to
+# the whole roster's chained numbers when added at equal (uniform) weight
+# -- not for maximizing how much the ranged tag "counts," which was tried
+# first and rejected as the wrong question. No block, deliberately -- see
+# that section for why block reads thematically backwards on a mob meant
+# to represent a ranged attacker.
 _RAW_MOBS = {
     # Grunt and Ambusher are reused names from the retired roster -- both
     # are close shape-matches for what used to sit here (same HP, same
@@ -44,25 +57,72 @@ _RAW_MOBS = {
     "Enforcer": ([(5, 2), (3, 0), (4, 2)], 6),
     "Raider":   ([(3, 2), (4, 0), (5, 1)], 5),
     "Ambusher": ([(4, 1), (4, 0), (2, 0)], 8),
+    "Scout":    ([(2, 0), (3, 0), (4, 0)], 8),
 }
+
+# mob_type per mob, read only by classes in _RANGE_TAGGED_MOB_KEYS (below).
+# Defaults to "melee" for anything not listed here -- Scout is currently
+# the only ranged mob in the game.
+_MOB_TYPES = {
+    "Scout": "ranged",
+}
+
 MOBS = {
     name: dict(
         warrior=(pattern, hp),
-        wizard=([(a, b, "melee") for a, b in pattern], hp),
+        wizard=([(a, b, _MOB_TYPES.get(name, "melee")) for a, b in pattern], hp),
         cleric=(pattern, hp),
         paladin=(pattern, hp),
-        rogue=([(a, b, "melee") for a, b in pattern], hp),
+        rogue=([(a, b, _MOB_TYPES.get(name, "melee")) for a, b in pattern], hp),
+        ranger=([(a, b, _MOB_TYPES.get(name, "melee")) for a, b in pattern], hp),
     )
     for name, (pattern, hp) in _RAW_MOBS.items()
 }
 MOB_NAMES = list(MOBS.keys())
 
+# mob_keys whose simulate() unpacks a 3-tuple (atk, block, mob_type) instead
+# of the plain 2-tuple -- i.e. any class with a grants_range-style mechanic.
+# Grows via register_class_for_testing() for a class still being tuned;
+# listed here are the ones already permanently locked into MOBS above.
+_RANGE_TAGGED_MOB_KEYS = {"wizard", "rogue", "ranger"}
+
+
+def register_class_for_testing(mob_key, needs_range_tag=False):
+    """Temporarily wires a class into MOBS (and _dummy_pattern, if it needs
+    the 3-tuple range-aware pattern) so the standard diagnostic tools --
+    full_diagnostic, flee_preference, tuning_report, etc. -- work on it
+    before it's actually locked in (i.e. before adding it to CLASSES /
+    HAS_STANCE_BY_LABEL / CARD_SOURCE_BY_LABEL / HP_ATTR_BY_LABEL /
+    MOB_KEY_BY_LABEL / WIN_RATE_FNS for real). Safe to call more than once.
+
+    Deliberately does NOT add the class to CLASSES itself -- tools that
+    iterate CLASSES (mob_difficulty_ranking, full_report's default roster)
+    won't see a class registered only this way, which is correct: it isn't
+    locked in yet. See CLASS_BALANCE_GUIDE.md's "Locking a class in" section
+    for the full checklist once tuning is actually done."""
+    for name, entry in MOBS.items():
+        pattern, hp = _RAW_MOBS[name]
+        if needs_range_tag:
+            entry[mob_key] = ([(a, b, _MOB_TYPES.get(name, "melee")) for a, b in pattern], hp)
+            _RANGE_TAGGED_MOB_KEYS.add(mob_key)
+        else:
+            entry[mob_key] = (pattern, hp)
+
 # Spike tier deliberately empty -- the old one (Sentinel/Brute/Elite/
 # Champion) was retired along with everything else. Derive it the same
 # brute-force way, against a higher cost/lower win-rate target, whenever
 # the Elite node actually gets built (still deferred).
+#
+# Locked rule: every tier must contain at least one ranged mob (mob_type=
+# "ranged" in _MOB_TYPES), same as Standard's Scout. Two classes (Wizard,
+# Ranger) have a grants_range-style mechanic that's structurally inert
+# against an all-melee pool -- confirmed for real when Standard was
+# all-melee for most of this project (see CLASS_BALANCE_GUIDE.md's "Sixth
+# Standard-tier mob" section). Whoever derives Spike (or any future tier)
+# needs a ranged candidate in it from the start, not bolted on after the
+# same gap gets rediscovered.
 MOB_TIERS = {
-    "standard": ["Grunt", "Bruiser", "Enforcer", "Raider", "Ambusher"],
+    "standard": ["Grunt", "Bruiser", "Enforcer", "Raider", "Ambusher", "Scout"],
     "spike": [],
 }
 
@@ -171,22 +231,40 @@ def run_trip_rogue(rng, max_pulls=50, fixed_mob=None):
     return pulls, wins
 
 
+def run_trip_ranger(rng, max_pulls=50, fixed_mob=None):
+    hp = G.RANGER_HP
+    pulls, wins = 0, 0
+    while hp > 0 and pulls < max_pulls:
+        mob_name = fixed_mob or rng.choice(MOB_NAMES)
+        pattern, mob_hp = MOBS[mob_name]["ranger"]
+        hand = rng.choice(G.ALL_HANDS)
+        seq, hp_left, rounds = G.best_line_for_hand(hand, pattern, mob_hp, starting_hp=hp)
+        win, _, _ = G.simulate(seq, pattern, mob_hp, starting_hp=hp)
+        hp = hp_left
+        pulls += 1
+        wins += 1 if win else 0
+        if hp <= 0:
+            break
+    return pulls, wins
+
+
 CLASSES = [("Warrior", run_trip_warrior), ("Wizard", run_trip_wizard), ("Cleric", run_trip_cleric),
-           ("Paladin", run_trip_paladin), ("Rogue", run_trip_rogue)]
+           ("Paladin", run_trip_paladin), ("Rogue", run_trip_rogue), ("Ranger", run_trip_ranger)]
 
 # Shared per-class lookup tables -- used anywhere a diagnostic needs to
-# treat all four classes uniformly (mobs are tuned class-agnostic, so any
+# treat all classes uniformly (mobs are tuned class-agnostic, so any
 # roster-level stat, like mob difficulty, should be averaged across all
-# four rather than read off a single class).
-HAS_STANCE_BY_LABEL = {"Warrior": True, "Wizard": False, "Cleric": False, "Paladin": False, "Rogue": False}
-CARD_SOURCE_BY_LABEL = {"Warrior": W, "Wizard": Z, "Cleric": C, "Paladin": P, "Rogue": R}
+# of them rather than read off a single class).
+HAS_STANCE_BY_LABEL = {"Warrior": True, "Wizard": False, "Cleric": False, "Paladin": False, "Rogue": False,
+                        "Ranger": False}
+CARD_SOURCE_BY_LABEL = {"Warrior": W, "Wizard": Z, "Cleric": C, "Paladin": P, "Rogue": R, "Ranger": G}
 HP_ATTR_BY_LABEL = {"Warrior": "WARRIOR_HP", "Wizard": "WIZARD_HP", "Cleric": "CLERIC_HP", "Paladin": "PALADIN_HP",
-                     "Rogue": "ROGUE_HP"}
+                     "Rogue": "ROGUE_HP", "Ranger": "RANGER_HP"}
 MOB_KEY_BY_LABEL = {"Warrior": "warrior", "Wizard": "wizard", "Cleric": "cleric", "Paladin": "paladin",
-                     "Rogue": "rogue"}
+                     "Rogue": "rogue", "Ranger": "ranger"}
 WIN_RATE_FNS = {"Warrior": (W.win_rate, "warrior"), "Wizard": (Z.win_rate, "wizard"),
                  "Cleric": (C.win_rate, "cleric"), "Paladin": (P.win_rate, "paladin"),
-                 "Rogue": (R.win_rate, "rogue")}
+                 "Rogue": (R.win_rate, "rogue"), "Ranger": (G.win_rate, "ranger")}
 
 
 def kill_round_distribution(mod, has_stance, mob_key, max_hp):
@@ -290,7 +368,7 @@ def _simulate(mod, has_stance, seq, stance, pattern, mob_hp, starting_hp):
 
 
 def _dummy_pattern(mob_key, atk=0, block=0):
-    if mob_key in ("wizard", "rogue"):
+    if mob_key in _RANGE_TAGGED_MOB_KEYS:
         return [(atk, block, "melee")] * 3
     return [(atk, block)] * 3
 
@@ -363,18 +441,59 @@ def equilibrium_check(mod, has_stance, mob_key, max_hp):
     return results
 
 
+MIN_CONFIDENT_SAMPLE = 5  # below this many real (non-vacuous) observed
+# comparisons, a verdict -- flagged OR clean -- isn't trustworthy enough to
+# report as settled. See pairwise_genuine_difference's docstring for why
+# this exists: a binary flagged/not-flagged call with no visible sample
+# size produced both a false "these are dead-identical" flag (Ranger,
+# Withdrawing Hip Shot vs. Crippling Shot, 0 real observations) and, when
+# audited across every already-locked class, several "clean" verdicts that
+# turned out to rest on just 2-3 observations -- including Warrior's
+# Vanguard Shield vs. Vanguard Blade, a pair *deliberately designed* to
+# differ (separate order-sensitive chain bonuses), whose "not flagged"
+# verdict was resting on only 3 real comparisons out of the whole roster.
+# Getting the right answer off 2-3 data points is luck, not confidence; a
+# genuinely bad test doesn't get fixed by explaining away one wrong-looking
+# result, so this redesign reports the evidence itself, not just a verdict.
+
+
 def pairwise_genuine_difference(mod, has_stance, mob_key, max_hp):
     """Generalizes the Smite/Call-of-the-Void check to every card pair in the
     deck automatically. For hands containing both cards of a pair, where the
     optimal line uses one but not the other, checks whether forcibly swapping
-    produces a real (non-tied) outcome difference. A pair that's 100% ties
-    whenever both are drawn is a hidden-domination red flag -- one card is
-    dead weight the moment the other is available, same as the old Smite/CoV
-    bug, just not yet noticed."""
+    produces a real (non-tied) outcome difference.
+
+    Skips (doesn't count either way) any overlap case where the swapped
+    card's slot falls in a round the fight never actually reaches (i.e. the
+    mob already died in an earlier round) -- a vacuous comparison, not
+    evidence the cards are interchangeable.
+
+    Returns a dict of every pair (not just the flagged ones) to
+    (genuine, tied, vacuous, verdict). verdict is one of:
+      "flagged"     -- 0 genuine differences, >= MIN_CONFIDENT_SAMPLE real
+                        observations. Real evidence of hidden domination.
+      "flagged-thin"-- 0 genuine differences, but fewer than
+                        MIN_CONFIDENT_SAMPLE real observations. Looks
+                        identical to a "flagged" pair on a single number,
+                        but isn't backed by enough evidence to trust --
+                        verify with a direct out-of-aggregate check (force
+                        the differing card into an actually-played round,
+                        same method that resolved the Ranger case) before
+                        treating it as a real finding.
+      "clean"       -- at least one genuine difference found, and
+                        >= MIN_CONFIDENT_SAMPLE total real observations.
+      "clean-thin"  -- at least one genuine difference found, but fewer
+                        than MIN_CONFIDENT_SAMPLE total real observations.
+                        Not wrong, but don't treat it as a strong
+                        confirmation the cards are meaningfully distinct
+                        across the board -- it might just be the one
+                        lucky data point that happened to differ.
+    full_diagnostic() only prints pairs whose verdict isn't a confident
+    "clean" -- i.e. anything flagged (either confidence) or clean-thin."""
     import itertools
-    flagged = {}
+    results = {}
     for card_a, card_b in itertools.combinations(mod.DECK, 2):
-        genuine, tied = 0, 0
+        genuine, tied, vacuous = 0, 0, 0
         for hand in mod.ALL_HANDS:
             if card_a not in hand or card_b not in hand:
                 continue
@@ -387,6 +506,9 @@ def pairwise_genuine_difference(mod, has_stance, mob_key, max_hp):
                     other, mine = card_a, card_b
                 else:
                     continue
+                if seq.index(mine) >= rounds:
+                    vacuous += 1  # swapped slot was never actually played
+                    continue
                 forced = tuple(other if c == mine else c for c in seq)
                 win1, hp1, _ = _simulate(mod, has_stance, seq, stance, pattern, mob_hp, max_hp)
                 win2, hp2, _ = _simulate(mod, has_stance, forced, stance, pattern, mob_hp, max_hp)
@@ -395,9 +517,15 @@ def pairwise_genuine_difference(mod, has_stance, mob_key, max_hp):
                 else:
                     genuine += 1
         total = genuine + tied
-        if total > 0 and genuine == 0:
-            flagged[(card_a, card_b)] = total
-    return flagged
+        confident = total >= MIN_CONFIDENT_SAMPLE
+        if genuine == 0 and total > 0:
+            verdict = "flagged" if confident else "flagged-thin"
+        elif genuine > 0:
+            verdict = "clean" if confident else "clean-thin"
+        else:
+            verdict = "no-data"  # both cards never co-occur in any playable comparison at all
+        results[(card_a, card_b)] = (genuine, tied, vacuous, verdict)
+    return results
 
 
 def permutation_variance_rate(mod, has_stance, mob_key, max_hp):
@@ -612,13 +740,18 @@ def full_diagnostic(label, mod, has_stance, mob_key, max_hp, max_hp_attr):
     print("Unplayed Card diagnostic:")
     for card, count in left_out.most_common():
         print(f"    {card:20s} {count:4d}  ({count/total:.1%})")
-    flagged = pairwise_genuine_difference(mod, has_stance, mob_key, max_hp)
-    if flagged:
-        print("Hidden-domination flags (100% tied whenever both drawn):")
-        for (a, b), n in flagged.items():
-            print(f"    {a} vs {b}  ({n} overlap cases, all tied)")
+    pair_results = pairwise_genuine_difference(mod, has_stance, mob_key, max_hp)
+    worth_showing = {pair: r for pair, r in pair_results.items() if r[3] != "clean"}
+    if worth_showing:
+        print("Hidden-domination check (only pairs NOT confidently clean shown; "
+              f"confident = >={MIN_CONFIDENT_SAMPLE} real observed comparisons):")
+        for (a, b), (genuine, tied, vacuous, verdict) in worth_showing.items():
+            total = genuine + tied
+            print(f"    {a} vs {b}  [{verdict}]  genuine={genuine} tied={tied} "
+                  f"vacuous={vacuous}  ({total} real observations)")
     else:
-        print("No hidden-domination pairs found.")
+        print(f"No hidden-domination pairs found (all pairs confidently clean, "
+              f">={MIN_CONFIDENT_SAMPLE} real observations each).")
     avg_frac, fully_indep_rate = permutation_variance_rate(mod, has_stance, mob_key, max_hp)
     print(f"Permutation Variance: avg {avg_frac:.1%} of orderings tie the best; "
           f"{fully_indep_rate:.1%} of hand/mob cases are fully order-independent")
@@ -650,7 +783,7 @@ def full_report(trials=3000, seed=42, label=None):
 
     results = {"mixed": {}, "per_mob": {}, "win_rate": {}}
 
-    print("=== Mixed roster (random mob each pull, full 8-mob roster) ===")
+    print(f"=== Mixed roster (random mob each pull, full {len(MOB_NAMES)}-mob roster) ===")
     for lbl, fn in CLASSES:
         all_pulls, all_wins = [], []
         for _ in range(trials):
@@ -723,8 +856,8 @@ def compare_reports(before, after, before_label="BEFORE", after_label="AFTER"):
 
 def mob_difficulty_ranking():
     """Ranks the current roster by difficulty using two exact,
-    class-agnostic measures, each averaged across all four classes so no
-    single class's kit quirks (e.g. Cleric's healing) can skew a mob's
+    class-agnostic measures, each averaged across every class in CLASSES so
+    no single class's kit quirks (e.g. Cleric's healing) can skew a mob's
     difficulty label -- mobs are tuned the same for every class (see
     MOBS), so their difficulty should be reported the same way.
 
@@ -762,11 +895,87 @@ def mob_difficulty_ranking():
         winrate_by_mob[mob_name] = sum(winrates) / len(winrates)
 
     ranked = sorted(MOB_NAMES, key=lambda m: cost_by_mob[m])
-    print("=== Mob difficulty ranking (avg HP cost % per pull, avg win rate -- both averaged across all 4 classes) ===")
+    n = len(CLASSES)
+    print(f"=== Mob difficulty ranking (avg HP cost % per pull, avg win rate -- both averaged across all {n} classes) ===")
     for mob_name in ranked:
         print(f"{mob_name:12s} avg cost {cost_by_mob[mob_name]:5.1f}%   avg win rate {winrate_by_mob[mob_name]:6.1%}")
 
     return dict(cost=cost_by_mob, win_rate=winrate_by_mob, ranked=ranked)
+
+
+def tuning_report(label, mod, has_stance, mob_key, max_hp, max_hp_attr, run_trip_fn,
+                   trials=3000, pack_classes=None, seed=1000):
+    """The standard, one-call harness for evaluating a class mid-tuning --
+    built and playable, whether or not it's locked into CLASSES yet. Runs
+    full_diagnostic, per-mob win_rate, flee_preference, and a chained trip
+    comparison (pulls survived, wins/trip, wins/pull) against every class
+    in `pack_classes` (defaults to the currently-locked CLASSES list),
+    printing the pack's min-max range next to the new class's own numbers
+    so "is this in range" is a direct read instead of five lines to
+    eyeball by hand. Recomputes the pack's numbers fresh every call rather
+    than caching, so it's always correct even if another class's cards
+    changed since the last run.
+
+    If the class isn't wired into MOBS/CLASSES yet, call
+    register_class_for_testing(mob_key, needs_range_tag=...) first -- see
+    that function's docstring. `run_trip_fn` must match the same
+    (rng, max_pulls=50) signature every run_trip_<class> function in this
+    file already uses.
+
+    Built after retyping this exact harness by hand well over a dozen
+    times across the Rogue and Ranger tuning sessions -- see
+    CLASS_BALANCE_GUIDE.md's "Numeric tuning playbook" section for the
+    lever-by-lever findings this tool exists to make cheap to re-check."""
+    if pack_classes is None:
+        pack_classes = CLASSES
+
+    full_diagnostic(label, mod, has_stance, mob_key, max_hp, max_hp_attr)
+
+    print("win rate per mob:")
+    for mob_name in MOB_NAMES:
+        pattern, mob_hp = MOBS[mob_name][mob_key]
+        rate = mod.win_rate(pattern, mob_hp, starting_hp=max_hp)
+        print(f"  {mob_name:10s} HP={mob_hp:2.0f} -> {rate:.1%}")
+
+    flee_rate, flee_margin = flee_preference(mod, has_stance, mob_key, max_hp)
+    print(f"flee-preference: {flee_rate:.1%} (margin {flee_margin:.2f} HP)")
+
+    print()
+    print(f"=== chained trip comparison ({trials} trials) ===")
+    pack_results = {}
+    for lbl, run_fn in pack_classes:
+        total_pulls = total_wins = 0
+        for i in range(trials):
+            p, w = run_fn(random.Random(seed + i))
+            total_pulls += p
+            total_wins += w
+        avg_p, avg_w = total_pulls / trials, total_wins / trials
+        pack_results[lbl] = (avg_p, avg_w, 100 * avg_w / avg_p)
+        print(f"  {lbl:10s} pulls={avg_p:.2f}  wins/trip={avg_w:.2f}  wins/pull={100*avg_w/avg_p:.1f}%")
+
+    total_pulls = total_wins = 0
+    for i in range(trials):
+        p, w = run_trip_fn(random.Random(seed + i))
+        total_pulls += p
+        total_wins += w
+    avg_p, avg_w = total_pulls / trials, total_wins / trials
+    wpp = 100 * avg_w / avg_p
+    print(f"  {label:10s} pulls={avg_p:.2f}  wins/trip={avg_w:.2f}  wins/pull={wpp:.1f}%   <-- this class")
+
+    pulls_range = (min(r[0] for r in pack_results.values()), max(r[0] for r in pack_results.values()))
+    wins_range = (min(r[1] for r in pack_results.values()), max(r[1] for r in pack_results.values()))
+    wpp_range = (min(r[2] for r in pack_results.values()), max(r[2] for r in pack_results.values()))
+    print()
+    print(f"pack range: pulls {pulls_range[0]:.2f}-{pulls_range[1]:.2f}   "
+          f"wins/trip {wins_range[0]:.2f}-{wins_range[1]:.2f}   wins/pull {wpp_range[0]:.1f}-{wpp_range[1]:.1f}%")
+
+    def _tag(v, r):
+        return "in range" if r[0] <= v <= r[1] else "OUT OF RANGE"
+
+    print(f"{label}: pulls {_tag(avg_p, pulls_range)}   wins/trip {_tag(avg_w, wins_range)}   "
+          f"wins/pull {_tag(wpp, wpp_range)}")
+
+    return dict(pulls=avg_p, wins=avg_w, wins_per_pull=wpp, flee_rate=flee_rate, pack=pack_results)
 
 
 if __name__ == "__main__":

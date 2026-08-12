@@ -93,9 +93,18 @@ zone's content -- at ~7 pulls/trip (measured, the real 3-active-quest system), 4
 means each mob comes up ~5-7 times, enough to master the matchups without the puzzle going
 stale.
 
+**Stale as of the Standard tier's 6th mob (Scout, ranged) and the Rogue/Ranger builds:**
+this derivation was measured against 5 mobs and 4 classes (`condensed_trip.py`'s roster and
+class count at the time). Both have since grown -- the underlying logic likely still holds
+(more mobs means the "master the matchups" repetition count per mob goes down slightly, not
+up, which if anything makes the current 16-gold price a little more generous than intended,
+not less), but this hasn't been re-swept against the current 6-mob/6-class state. Re-run
+`run_to_bag_upgrade` before treating 16 as still-exactly-right rather than roughly-right.
+
 Solved for the actual price by sweeping `run_to_bag_upgrade` across candidate gold goals
-against the real (non-isolated) 4-quest system, all four classes, `food_only`, 300 trials
-each, until the measured trips landed in the target band. **Locked at 16 gold**, validated:
+against the real (non-isolated) 4-quest system, all four classes locked at the time
+(Warrior/Cleric/Wizard/Paladin), `food_only`, 300 trials each, until the measured trips
+landed in the target band. **Locked at 16 gold**, validated:
 
 | Metric | avg | median |
 |---|---|---|

@@ -4,9 +4,6 @@ Design tensions and undefined interactions flagged before prototyping starts. Mo
 
 ## Unresolved
 
-### 1. The Claim phase's failure mode
-One claim per node per round, priority passed clockwise via the First Player Token — good for drafting tension, but what happens to a player who's consistently last in turn order at a hot node? Does priority rotate (AGGRO uses threat-based targeting order for something structurally similar), or is turn order fixed, meaning the same player can get shut out repeatedly?
-
 ### 2. Rest vs. the Claim structure
 Clearing Winded requires Resting (forfeiting a pull) + consuming Food/Water. Undefined: does Resting happen *instead of* claiming a target in Phase 2, or is it a separate action outside the 4-phase loop? If it competes with claiming, a low-priority player could get starved out of both combat and recovery in the same round.
 
@@ -19,7 +16,107 @@ The Opening Range rule (mob starts at range, Engagement applies the Cast Penalty
 ### 5. Ranged-mob-never-engages implication
 If a mob is a ranged type and never Engages, does the Cast Penalty ever apply against it, even across a multi-round Slog? If not, that's a real matchup axis (hero archetype vs. mob range-type, not just hero archetype vs. mob HP/ATK) — worth deciding whether that's a feature to lean into or a wrinkle to dampen.
 
+### 6. Co-op multi-hero vs. one Elite mob (a "Hogger battle")
+
+Future idea, not yet decided, deliberately different from multi-hero-vs-multi-mob (considered
+and set aside — doesn't seem like it'd work). The shape instead: multiple heroes (e.g. a
+Warrior and a Cleric) all fight one shared Elite mob together, co-op only. Elite mobs would
+live in their own pool, pulled out only in co-op mode — implies **deck/content composition
+already varies by mode (solo/competitive/co-op)**, a broader principle worth noting on its
+own, not just for Elites specifically.
+
+Structure: still 3 rounds, still one card per hero per round, but each round every present
+hero's card gets totaled together against the Elite's number that round — a pooled-party-
+damage model, not parallel independent 1-on-1 fights the way every pull works today. If the
+Elite's damage that round exceeds what the party's combined cards absorb, something has to
+actually take the leftover as real HP loss. Two candidate ways to decide who:
+
+1. **No splitting — the players choose who absorbs it all**, each round, by agreement. Zero
+   extra bookkeeping, easy to teach, but risks being a solved, no-tension choice in practice
+   (the obvious highest-HP/tankiest hero just always volunteers, same choice every round).
+2. **A simplified Aggro number printed on every card** — whoever played the highest-Aggro
+   card that round takes the leftover damage. Real tactical texture (do you play your best
+   card even though it paints a target on you?), and ties the damage-distribution question to
+   an actual play choice instead of pure negotiation. Real cost: a new number to track on
+   every card, and it's a scoped reintroduction of something close to AGGRO's real Threat
+   system — worth flagging directly, since "Threat is gone entirely, no aggro/targeting
+   system exists in QUEST at all" has been a stated design pillar since the very first
+   translation pass (`CLASSES.md`). If this direction is taken, it should be treated the same
+   way the blind-refill exception was: a deliberate, narrow, called-out exception scoped to
+   this one co-op mode, not a quiet reopening of the general rule.
+
+Not decided which of the two (or something else) is right. Not yet built.
+
 ## Resolved
+
+### The Claim phase's failure mode (priority at a hot node)
+
+Original concern: one claim per node per round, priority passed clockwise via the First
+Player Token — what happens to a player consistently last in turn order at a hot node?
+
+Resolved as part of the zone-node mob dealing system below: co-op groups self-organize turn
+order by table agreement; competitive play uses a rotating "pass the box" priority so lead
+position isn't fixed to one player every time. The mechanism also gives priority real
+stakes beyond just "who acts first" — see the blind-refill rule below.
+
+### Zone-node mob dealing, and node-based (not mob-based) loot sourcing
+
+Replaces the current per-pull memoryless random mob draw (`macro_sim.py`'s `rng.choices`
+against a tier's weighted pool, independent every single pull) with a visible, turn-based
+board state. Each occupied Zone (only zones with a hero actually present need this tracked,
+not every zone every turn) has a set of Nodes (e.g. a Tier 1 Zone: 4 farmable nodes + Town)
+and a shared pile of mob cards drawn from that zone's tier. At the start of every turn, deal
+the top card of the pile onto each node in order (A, B, C, D...) — this is what's actually
+sitting at that node until it's dealt over again. Gives players real information to act on
+(what's currently at each node, visible before committing to a pull) instead of a blind
+random encounter every time — directly answers the still-open "brainstorm variety/anti-
+repetition mechanics" task, and connects to `CONDENSED_COMBAT.md`'s existing "memorization
+risk" reflection (a finite, visible pile changes the puzzle's texture differently than a
+memoryless draw does).
+
+**Deck composition, decided:** a literal finite deck, not the existing weighted-random
+system reused — 3 copies each of the 5 locked Standard-tier mobs (Grunt/Bruiser/Enforcer/
+Raider/Ambusher), 15 cards total. Reshuffles the discard back in whenever it runs dry
+(possible mid-turn, since multiple heroes can pull multiple times before a turn ends) —
+never actually stays empty.
+
+**Node refill, decided:** replace, not stack. A node always holds exactly one current mob;
+dealing a new one over an unclaimed mob simply replaces it. No node-congestion sub-system.
+
+**Turn order for multiple heroes at the same zone, decided, and this is also the resolution
+to Open Question #1 above (the Claim phase's failure mode):** turns are simultaneous —
+every hero moves and declares their node at the same time. The token only breaks ties when
+two or more heroes land on the *same* node the same round. Co-op groups self-organize who
+goes in what order by table agreement. Competitive play uses a rotating "pass the buck"
+Player-One token that shifts one seat to the left every round, giving a straight 1-2-3
+priority count from whoever's holding it that round (not fixed to one player, and not a
+sequential-turn-order system — it only matters for resolving an actual node conflict).
+Whoever's first at a contested node sees the mob already dealt there (fully visible, same
+as the normal per-turn deal) before committing. Whoever's second (etc.) at that *same* node
+the *same* round draws a fresh replacement blind — no preview before committing.
+
+**This blind-refill case is a deliberate, narrow exception to this project's otherwise
+strict "no hidden information, no dice" combat pillar** (HP, mob intents, everything else
+always visible everywhere else in the design) — not an oversight, and not a general
+reintroduction of hidden information. It only applies to a same-turn re-deal at an
+already-claimed node, and it does real design work: it gives the priority/turn-order
+mechanic actual stakes (going first isn't just "you act first," it's "you get full
+information and whoever pulls behind you at the same node doesn't"), which is a sharper
+answer to Question #1 than a flat priority rule alone would have been.
+
+**Loot is sourced from the Node, not the Mob** — deliberately, after considering and
+rejecting mob-sourced loot as "randomness on top of randomness" (which mob shows up is
+already random; making what it drops *also* random independently stacks two layers of
+uncertainty with no decision in between). Instead, a quest card prints a fixed instruction
+("Silver Trinkets drop from Node A or B") that never needs to reference which specific mob
+is currently dealt there — matches the project's established bias toward flat, no-hidden-
+conditional rules. When two active quests share an eligible node and a kill happens there,
+the player chooses which quest's loot they receive — a real decision, and it interacts
+usefully with the existing 2-slot Bag capacity squeeze (pick whichever you need more of).
+
+Not yet built — this is a real addition to the macro-loop engine (zone/node state, turn-based
+dealing logic), sized more like a new subsystem than a parameter change. No task tracked for
+the build yet.
 
 ### Solved-hand risk in OTK combat
 Original concern: static mob stat blocks + deterministic math means once a player finds the optimal 3-Energy line for a given HP/ATK threshold, the fight stops being a decision.

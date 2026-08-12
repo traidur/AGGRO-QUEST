@@ -8,6 +8,13 @@ proactively. Do not be a yes-man.
 **Before responding to any design or balance question, read `SOTG.md` first if you don't
 already have it in context.**
 
+**Before building a brand-new class, read `DECK_CONDENSING_GUIDE.md` first — do not start
+writing a `condensed_<name>.py` module without it.** **Before tuning, balancing, or touching
+the numbers of any class (new or already-built), read `CLASS_BALANCE_GUIDE.md` first,
+specifically the "Numeric tuning playbook" and "Locking a class in" sections — use
+`condensed_trip.py`'s `register_class_for_testing()` / `tuning_report()` for iteration
+instead of writing a new diagnostic script from scratch.**
+
 ## Document Structure
 
 | File | Purpose |

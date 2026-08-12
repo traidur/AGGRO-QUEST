@@ -2,8 +2,10 @@
 
 *AI onboarding handoff. Read this before engaging with any QUEST design or balance question.
 Not a rules reference — for the macro Town/Bag/Quest loop, read `MACRO_LOOP_GUIDE.md`; for
-per-class card balance methodology, read `CLASS_BALANCE_GUIDE.md`; for undecided design
-tensions, read `OPEN_QUESTIONS.md`. Modeled directly on AGGRO's own `sotg_vX_X.md` — same
+translating an AGGRO class's kit into a legal 6-card condensed kit, read
+`DECK_CONDENSING_GUIDE.md`; for per-class card balance methodology (once that kit exists),
+read `CLASS_BALANCE_GUIDE.md`; for undecided design tensions, read `OPEN_QUESTIONS.md`.
+Modeled directly on AGGRO's own `sotg_vX_X.md` — same
 job (prevent the specific mistakes a fresh AI keeps making on this project), same discipline
 (narrow scope, not a comprehensive summary). Adapted with one addition AGGRO's version
 doesn't need: QUEST's simulator *is* the primary design tool here, not a secondary
@@ -23,9 +25,10 @@ Gold, trip chaining) — the macro loop is the real game; combat is the toll gat
 
 1. **The mob roster is not what it used to be.** The old 11-mob hand-designed roster
    (Whelp/Grunt/Skirmisher/Ambusher/Sentinel/Brute/Elite/Champion/Footman/Marauder/Brawler)
-   is retired. Current Standard tier is 5 mobs — **Grunt/Bruiser/Enforcer/Raider/Ambusher** —
-   derived by brute-force search (`sim/stat_gauntlet.py`, `sim/pool_search.py`), not
-   hand-designed. Don't reference or resurrect the old names. Spike tier is empty/deferred.
+   is retired. Current Standard tier is 6 mobs — **Grunt/Bruiser/Enforcer/Raider/Ambusher/
+   Scout** — derived by brute-force search (`sim/stat_gauntlet.py`, `sim/pool_search.py`), not
+   hand-designed. Scout is the first and only ranged mob; everything else is melee. Don't
+   reference or resurrect the old names. Spike tier is empty/deferred.
 2. **Mob stats must stay class-agnostic.** Never tune a mob's numbers to fix one class's
    matchup — any hero can face any mob. Per-class mob tuning was explicitly tried and
    rejected.
@@ -47,6 +50,9 @@ Gold, trip chaining) — the macro loop is the real game; combat is the toll gat
    (1 XP per loot required) — that part was never the hard part.
 7. **Warrior's stance is locked once per pull, no mid-pull flip.** Guardian or Champion is
    chosen at the start of a pull and held for all 3 rounds.
+8. **`grants_range` evasion is no longer always-on.** Scout (Standard tier's 6th mob) is
+   ranged — Wizard's and Ranger's evasion cards do nothing against it. Don't assume every
+   mob is melee anymore; that assumption is stale as of Scout's addition.
 
 ## Simulator gotchas
 
@@ -72,7 +78,7 @@ Gold, trip chaining) — the macro loop is the real game; combat is the toll gat
 - Do not price a bigger quest's gold reward as a flat multiple of its loot-count without
   measuring real trip/decay cost first (`sim/quest_cost_gauntlet.py`).
 
-## Class roster (built so far — 5 of 9)
+## Class roster (built so far — 6 of 9)
 
 | Class | HP | Identity |
 |---|---|---|
@@ -81,7 +87,9 @@ Gold, trip chaining) — the macro loop is the real game; combat is the toll gat
 | Wizard | 14 | Weave (arms a bonus for the next payoff card) + Positioning (evades melee when playing a ranged-tagged card) |
 | Paladin | 17 | Invocation of Sanctuary/Grace — pick exactly one per pull, simultaneously a payoff for earlier STRIKE cards and a setup bonus for later ones |
 | Rogue | 16 | Cutthroat/Envenom — finishers scaling off STRIKE cards played since the last finisher, resetting on use; killing-blow rider on Cutthroat only |
+| Ranger | 15 | Beast Bond: Wolf — persistent multi-round Block (unique in this codebase); Positioning payoff reads whether the previous round granted Range |
 
-Ranger, Necromancer, Druid, Runecaster remain unbuilt. Rogue was built through a fully
-user-driven iterative process, not an AI-first draft — see `CLASS_BALANCE_GUIDE.md`'s
-"Rogue, locked" section and `DECK_CONDENSING_GUIDE.md`'s checkpoint-discipline section.
+Necromancer, Druid, Runecaster remain unbuilt. Rogue and Ranger were both built through a
+fully user-driven iterative process, not an AI-first draft — see `CLASS_BALANCE_GUIDE.md`'s
+"Rogue, locked" and "Ranger, locked" sections and `DECK_CONDENSING_GUIDE.md`'s
+checkpoint-discipline section.
