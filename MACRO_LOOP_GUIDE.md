@@ -6,6 +6,64 @@ and chains individual pulls into trips, trips into a Town economy. Companion to
 `CLASS_BALANCE_GUIDE.md` (per-pull card/mob balance) — this document is the trip-and-above
 layer instead.
 
+## Clean vs. aggregate metrics — a locked methodology rule, not just a note
+
+**Never trust a macro-loop aggregate metric (`decay_report`'s deaths/run, decay-tier %, or
+`run_to_bag_upgrade`'s avg trips) as a verdict on a card change without also checking
+`condensed_trip.py`'s `defense_floor_sweep` for the same change.** They answer different
+questions, and only one of them is safe to read in isolation.
+
+**The incident this rule comes from.** While root-causing Ranger's macro-loop risk outlier
+(see `CLASS_BALANCE_GUIDE.md`'s "Rogue and Ranger's macro-loop risk outlier"), a candidate fix
+for Crippling Shot (2 DMG/3 Block, already a validated clean improvement) was tested with one
+more point of damage (3 DMG/3 Block — nothing reduced, a strict upgrade on paper). Deaths/run
+nearly *tripled* (0.11 -> 0.34). The instinct was to treat this as the card becoming
+genuinely riskier. It wasn't: `defense_floor_sweep` proved the fight itself never got worse at
+any fixed starting HP, for any mob, at any point in the comparison — mathematically guaranteed
+for a change where nothing decreased (the previously-optimal line is always still available to
+the exact solver, so the best outcome for any fixed hand/mob/HP can only stay the same or
+improve). The real mechanism, confirmed by instrumenting the risk policy directly
+(`risk_exposure_report`): the stronger card finishes quests faster, so the class reaches the
+policy's *one* risk-bearing decision (a quest-completing pull with no consumable left) more
+often over a fixed-length run — gambles taken rose ~15%, and reshaped HP trajectory across the
+whole trip left it arriving at some *other*, unrelated matchups (Bruiser, Raider) with less
+cushion than before, even though those specific fights were also provably no harder at a fixed
+HP. More frequent exposure to an unchanged-or-better risk still produces more total losses,
+purely as counting — nothing about combat got worse.
+
+**Why this matters generally, not just for this one card.** `macro_sim.py`'s risk policy
+(`RISK_TOLERANCE`/`RISK_TOLERANCE_BASE`) is a fixed, memoryless rule — it has no sense of how
+many times it's already gambled this run, no adaptation, nothing beyond "would this pull
+finish a quest, and is there no consumable left." Any change that makes a class more
+*efficient* (almost always a damage change) will make it reach that trigger more often,
+independent of whether the class actually became more dangerous. Block-only and HP-only
+changes don't have this problem — they don't speed up kills, so they don't change how often
+the risk-gate fires, which is why every clean Block/HP-only test in the Rogue/Ranger
+investigation showed aggregate numbers that could be trusted directly. **Any damage-touching
+change is a candidate for this artifact and needs the clean check before its aggregate numbers
+mean anything.**
+
+**The tooling that exists specifically to make this hard to get wrong again:**
+- `condensed_trip.py`'s `defense_floor_sweep(mod, has_stance, class_label, max_hp)` — the
+  clean, policy-independent signal. Sweeps lethal-hand-fraction across HP checkpoints and every
+  mob; a genuine combat regression shows up here, a throughput artifact never does. Required
+  for any new class's lock-in checklist now (`CLASS_BALANCE_GUIDE.md`), not just for
+  investigating an existing outlier.
+- `macro_sim.py`'s `risk_exposure_report(class_name, strategy, ...)` — the throughput-side
+  complement. Reports how often the risk-gate actually fires (gambles taken) and how dangerous
+  those specific gambles are, separate from the raw death count.
+- `macro_sim.py`'s `compare_card_change(class_name, card_name, field_changes, ...)` — runs
+  both of the above, before and after a proposed card edit, and prints an explicit verdict:
+  real regression, clean improvement, or throughput artifact. Use this instead of running
+  `decay_report` alone whenever evaluating a damage-touching change to a locked class.
+
+**Scope note:** making the risk policy itself adaptive (aware of cumulative risk already taken
+this chain, not a fixed threshold every time) would arguably fix this at the source rather than
+the measurement, and would likely be a more realistic model of an actual careful player.
+Deliberately out of scope here — that's a real game-design change, not a harness change, and it
+would require re-validating every already-locked macro-loop number, not just the ones touched
+by this incident.
+
 ## Locked rule: risk policy defaults to "consumable before risk, always"
 
 `run_one_trip` decides whether a pull is worth attempting at the higher risk tolerance
@@ -19,13 +77,26 @@ zero lethal-hand risk allowed), via `risk_only_as_last_resort`. Two policies exi
   unlocked consumable available, use it (or retreat) instead of gambling.
 
 **On is now the default everywhere** (all call sites in `macro_sim.py`). Validated via
-`decay_report()` across all four classes, `food_only`/`potion_only` strategies, 500 trials
-x 20-trip chains: average deaths/run roughly halved for every class (Warrior 0.23->0.09,
-Cleric 0.30->0.16, Wizard 0.31->0.16, Paladin 0.20->0.10), and worst-decay ("nothing" tier)
-rates dropped alongside deaths rather than trading off against them (e.g. Wizard food_only
-28.2%->14.4%). The `none` strategy is unaffected by construction (it never carries a
-consumable, so the condition is always vacuously true) -- confirmed bit-for-bit identical
-before/after, a useful sanity check that the change only touches what it's supposed to.
+`decay_report()` across all four classes then in the roster, `food_only`/`potion_only`
+strategies, 500 trials x 20-trip chains: average deaths/run roughly halved for every class
+(Warrior 0.23->0.09, Cleric 0.30->0.16, Wizard 0.31->0.16, Paladin 0.20->0.10), and worst-decay
+("nothing" tier) rates dropped alongside deaths rather than trading off against them (e.g.
+Wizard food_only 28.2%->14.4%). The `none` strategy is unaffected by construction (it never
+carries a consumable, so the condition is always vacuously true) -- confirmed bit-for-bit
+identical before/after, a useful sanity check that the change only touches what it's supposed
+to.
+
+**Rogue, Ranger, and Runecaster were missing from `macro_sim.py` entirely until caught during
+the `DESIGN_DOC.md` audit** (`CARD_SOURCE`/`HP_ATTR`/`HAS_STANCE` only had the original four) --
+fixed, then measured fresh against the current 6-mob roster (300 trials, `food_only`,
+`chain_trips=20`): Warrior 0.09, Paladin 0.14, Wizard 0.18, Ranger 0.18, Cleric 0.19,
+Runecaster 0.24, **Rogue 0.31** deaths/run. Rogue sits well outside the range the policy was
+originally validated against (roughly 3.4x Warrior's rate, worst "nothing"-tier rate in the
+roster at 30.7% vs. Warrior's 11.7%). **Root-caused** -- see `CLASS_BALANCE_GUIDE.md`'s "Rogue
+and Ranger's macro-loop risk outlier": Rogue and Ranger are the only two classes whose
+lethal-hand-fraction goes nonzero already at 50% HP, a full tier earlier than the rest of the
+roster's clean 0% floor down to 33%, which the zero-tolerance risk policy reacts to directly.
+Fix not yet decided.
 
 ## Quest reward formula: XP = required, Gold derived from measured trip cost
 
@@ -93,13 +164,15 @@ zone's content -- at ~7 pulls/trip (measured, the real 3-active-quest system), 4
 means each mob comes up ~5-7 times, enough to master the matchups without the puzzle going
 stale.
 
-**Stale as of the Standard tier's 6th mob (Scout, ranged) and the Rogue/Ranger builds:**
-this derivation was measured against 5 mobs and 4 classes (`condensed_trip.py`'s roster and
-class count at the time). Both have since grown -- the underlying logic likely still holds
-(more mobs means the "master the matchups" repetition count per mob goes down slightly, not
-up, which if anything makes the current 16-gold price a little more generous than intended,
-not less), but this hasn't been re-swept against the current 6-mob/6-class state. Re-run
-`run_to_bag_upgrade` before treating 16 as still-exactly-right rather than roughly-right.
+**Re-swept against the current 6-mob/7-class roster** (this derivation was originally measured
+against 5 mobs and 4 classes; the earlier note here speculated the price would still roughly
+hold -- it doesn't, evenly, across the newer classes). 300 trials, `food_only`, average trips
+to afford 16 gold: Paladin 3.83, Cleric 4.22, Warrior 4.33, Runecaster 4.34, Wizard 4.45,
+**Rogue 5.07, Ranger 5.41**. The original four classes barely moved. Rogue and Ranger sit
+noticeably above the rest of the pack -- **confirmed the same root cause as the death-rate
+outlier above, not an independent pricing problem** (see `CLASS_BALANCE_GUIDE.md`'s "Rogue and
+Ranger's macro-loop risk outlier"). Not yet re-priced; likely resolves on its own once that
+root cause is fixed rather than needing its own separate change.
 
 Solved for the actual price by sweeping `run_to_bag_upgrade` across candidate gold goals
 against the real (non-isolated) 4-quest system, all four classes locked at the time

@@ -20,12 +20,13 @@ instead of writing a new diagnostic script from scratch.**
 | File | Purpose |
 |---|---|
 | `SOTG.md` | **Start here.** AI onboarding handoff — rules and decisions AI models keep getting wrong, simulator gotchas, anti-patterns. Not a comprehensive reference. |
-| `DESIGN_DOC.md` | Core design draft — golden rules, core systems, decided properties. |
+| `DESIGN_DOC.md` | **The current rulebook.** Mirrors AGGRO's own Core design doc structure — numbered current rules, a trailing Designer's Notes section pointing to the process docs below for derivation history, and a live Open Design Questions section. Authoritative over any other doc for "what are the current rules" if anything disagrees. |
 | `DECK_CONDENSING_GUIDE.md` | Process doc for translating an AGGRO class's kit into a legal 6-card condensed kit — read this before `CLASS_BALANCE_GUIDE.md` when building a brand-new class. |
 | `CLASS_BALANCE_GUIDE.md` | Process doc for per-pull card/mob balance — how to balance a class once its 6-card kit already exists, the diagnostic toolkit, methodology. |
 | `MACRO_LOOP_GUIDE.md` | Process doc for the Town/Bag/Quest/Gold layer — how the reward formulas, risk policy, and pricing were derived and validated. |
 | `OPEN_QUESTIONS.md` | Design tensions and unresolved mechanics, with a Resolved section for settled ones and their reasoning. |
 | `CONDENSED_COMBAT.md` | The condensed per-pull combat model itself. |
+| `CARD_REFERENCE.md` | Human-readable, tabletop-facing card text for every locked class — generated from each class's real `CARDS` dict, never hand-edited. Regenerate via `sim/generate_card_reference.py` after any card change. |
 | `sim/` | All simulator code — exact solvers per class (`condensed_<name>.py`), mob roster (`condensed_trip.py`), macro loop (`macro_sim.py`), and permanent derivation tools (`stat_gauntlet.py`, `pool_search*.py`, `quest_cost_gauntlet.py`). |
 
 **⚠️ SOTG requires explicit user permission before editing.** Do not add, remove, or modify

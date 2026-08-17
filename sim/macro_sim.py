@@ -74,13 +74,22 @@ import random
 
 import condensed_cleric as C
 import condensed_paladin as P
+import condensed_ranger as G
+import condensed_rogue as R
+import condensed_runecaster as N
 import condensed_trip as T
 import condensed_warrior as W
 import condensed_wizard as Z
+import condensed_druid as D
+import condensed_necromancer as Nc
 
-CARD_SOURCE = {"warrior": W, "wizard": Z, "cleric": C, "paladin": P}
-HP_ATTR = {"warrior": "WARRIOR_HP", "wizard": "WIZARD_HP", "cleric": "CLERIC_HP", "paladin": "PALADIN_HP"}
-HAS_STANCE = {"warrior": True, "wizard": False, "cleric": False, "paladin": False}
+CARD_SOURCE = {"warrior": W, "wizard": Z, "cleric": C, "paladin": P, "rogue": R, "ranger": G, "runecaster": N,
+               "druid": D, "necromancer": Nc}
+HP_ATTR = {"warrior": "WARRIOR_HP", "wizard": "WIZARD_HP", "cleric": "CLERIC_HP", "paladin": "PALADIN_HP",
+           "rogue": "ROGUE_HP", "ranger": "RANGER_HP", "runecaster": "RUNECASTER_HP", "druid": "DRUID_HP",
+           "necromancer": "NECROMANCER_HP"}
+HAS_STANCE = {"warrior": True, "wizard": False, "cleric": False, "paladin": False,
+              "rogue": False, "ranger": False, "runecaster": False, "druid": False, "necromancer": False}
 
 # node name -> (difficulty tier in condensed_trip.MOB_TIERS, loot card name)
 # A node is a difficulty, not one fixed mob -- each pull draws a random mob
@@ -568,6 +577,202 @@ def compare_strategies(class_name, trials=500, seed=42, risk_tolerance=RISK_TOLE
 DECAY_LABELS = ["Gold", "Silver", "Bronze", "nothing"]
 
 
+def risk_exposure_report(class_name, strategy="food_only", trials=300, seed=42, chain_trips=20,
+                          risk_tolerance=RISK_TOLERANCE, risk_tolerance_base=RISK_TOLERANCE_BASE,
+                          risk_only_as_last_resort=True):
+    """The throughput-side complement to condensed_trip.py's defense_floor_sweep. Instruments
+    _pull_exceeds_risk to report how often this class actually reaches the macro loop's one
+    risk-bearing decision (a quest-completing pull with no consumable left) and how dangerous
+    those specific gambles are -- not just the raw deaths/run number decay_report() prints.
+
+    Why this exists: deaths/run alone can't tell you whether a card change made the class more
+    dangerous or just more efficient. A strictly-better card (more damage, nothing reduced)
+    finishes quests faster, which means the class reaches the risk-gate more *often* over a
+    fixed-length run -- more gambles at the same or better odds still produces more total
+    deaths, purely as counting, with nothing about combat getting worse. Confirmed directly:
+    Ranger's Crippling Shot 2dmg/3block -> 3dmg/3block nearly tripled deaths/run (0.11 -> 0.34)
+    while gambles_taken rose ~15% and avg_lethal_frac barely moved -- the death-rate jump was
+    almost entirely a throughput effect, not a combat one. See MACRO_LOOP_GUIDE.md's "Clean vs.
+    aggregate metrics" for the full incident.
+
+    **Always run this alongside condensed_trip.py's defense_floor_sweep for any damage-touching
+    card change**, never decay_report() alone -- if the defense floor didn't move but deaths/run
+    did, that's this function's story to tell (gambles_taken went up), not a balance regression.
+
+    **Deaths/run alone is never sufficient, here either** — this function also reports
+    avg_quests_per_trip and the decay-tier distribution alongside it, matching the project's
+    own locked rule (never report a survival number without productivity/decay next to it).
+    An earlier version of this report skipped that and nearly led to treating a legitimate
+    aggressive-but-productive tradeoff (Ranger's 3dmg/3block test) as a plain regression.
+
+    Returns dict: gambles_taken, avg_hp, avg_lethal_frac (both only over gambles actually taken,
+    not every moment the risk-gate was checked -- an earlier version of this diagnostic included
+    declined gambles too and produced a misleadingly inflated sample), deaths, trials,
+    deaths_per_run, avg_quests_per_trip, decay_pct (dict of {label: percent}), per_mob (dict of
+    {mob_name: {n, avg_hp, avg_lethal_frac}})."""
+    mod = CARD_SOURCE[class_name]
+    has_stance = HAS_STANCE[class_name]
+    orig = globals()["_pull_exceeds_risk"]
+    log = []
+
+    def wrapped(mod_, has_stance_, mob_name, class_name_, hp, rt):
+        result = orig(mod_, has_stance_, mob_name, class_name_, hp, rt)
+        if rt == risk_tolerance and not result:
+            pattern, mob_hp = T.MOBS[mob_name][class_name_]
+            hands = mod_.ALL_HANDS
+            lethal = sum(1 for hand in hands if T._best_line(mod_, has_stance_, hand, pattern, mob_hp, hp)[2] <= 0)
+            log.append((mob_name, hp, lethal / len(hands)))
+        return result
+
+    globals()["_pull_exceeds_risk"] = wrapped
+    try:
+        rng = random.Random(seed)
+        deaths = 0
+        quests_totals = []
+        decay_counts = [0] * len(DECAY_LABELS)
+        for _ in range(trials):
+            r = decay_stress_test(class_name, strategy, rng, chain_trips=chain_trips,
+                                   risk_tolerance=risk_tolerance, risk_tolerance_base=risk_tolerance_base,
+                                   risk_only_as_last_resort=risk_only_as_last_resort)
+            deaths += r["died_count"]
+            quests_totals.append(r["avg_quests_per_trip"])
+            decay_counts[r["worst_decay_stage"]] += 1
+    finally:
+        globals()["_pull_exceeds_risk"] = orig
+
+    n = len(log)
+    per_mob = {}
+    for mob, hp, frac in log:
+        per_mob.setdefault(mob, []).append((hp, frac))
+    per_mob_summary = {m: dict(n=len(v), avg_hp=sum(x[0] for x in v) / len(v),
+                                avg_lethal_frac=sum(x[1] for x in v) / len(v))
+                        for m, v in per_mob.items()}
+    return dict(gambles_taken=n,
+                avg_hp=(sum(x[1] for x in log) / n) if n else None,
+                avg_lethal_frac=(sum(x[2] for x in log) / n) if n else None,
+                deaths=deaths, trials=trials, deaths_per_run=deaths / trials,
+                avg_quests_per_trip=sum(quests_totals) / len(quests_totals),
+                decay_pct={DECAY_LABELS[i]: 100 * c / trials for i, c in enumerate(decay_counts)},
+                per_mob=per_mob_summary)
+
+
+# RISK_TOLERANCE=0.15 was never derived -- no sweep, no target, just an assumed placeholder
+# (see MACRO_LOOP_GUIDE.md's "Clean vs. aggregate metrics"). Rather than picking a single
+# "correct" replacement number (which would just be a different assumption dressed up as a
+# fix), RISK_PERSONAS tests a spread instead -- a class whose macro-loop outlier status holds
+# across every persona is a robust finding; one that only shows up at the current default is
+# threshold-sensitive, not confirmed. Only the quest-completing tolerance varies between
+# personas; RISK_TOLERANCE_BASE (0.0, never gamble off-quest) and risk_only_as_last_resort
+# (True, consumable before risk) stay fixed for all three -- those are separately validated,
+# not part of what's in question here.
+RISK_PERSONAS = {
+    "conservative": 0.05,
+    "balanced": 0.15,  # today's default RISK_TOLERANCE
+    "aggressive": 0.30,
+}
+
+
+def persona_comparison_report(class_name, strategy="food_only", trials=300, seed=42, chain_trips=20,
+                               personas=None):
+    """Runs risk_exposure_report once per named persona in RISK_PERSONAS (or a custom dict of
+    {name: risk_tolerance}), instead of trusting the single, unvalidated RISK_TOLERANCE=0.15 as
+    ground truth for a class's macro-loop numbers. Returns {persona_name: risk_exposure_report
+    dict}. See persona_roster_report for the multi-class comparison table."""
+    if personas is None:
+        personas = RISK_PERSONAS
+    return {name: risk_exposure_report(class_name, strategy, trials=trials, seed=seed,
+                                        chain_trips=chain_trips, risk_tolerance=tolerance)
+            for name, tolerance in personas.items()}
+
+
+def persona_roster_report(class_names=None, strategy="food_only", trials=300, seed=42, chain_trips=20,
+                           personas=None):
+    """persona_comparison_report across multiple classes at once, printed as a side-by-side
+    table per persona -- the actual tool to run when checking whether an apparent outlier class
+    (e.g. Rogue/Ranger's elevated deaths/run) is a robust finding or an artifact of the default
+    15% threshold specifically. class_names defaults to the full roster (CARD_SOURCE.keys())."""
+    if class_names is None:
+        class_names = list(CARD_SOURCE.keys())
+    if personas is None:
+        personas = RISK_PERSONAS
+    all_results = {c: persona_comparison_report(c, strategy, trials, seed, chain_trips, personas)
+                    for c in class_names}
+    for persona_name, tolerance in personas.items():
+        print(f"=== Persona: {persona_name} (risk_tolerance={tolerance}) ===")
+        for c in class_names:
+            r = all_results[c][persona_name]
+            print(f"  {c:12s} deaths/run={r['deaths_per_run']:.2f}  quests/trip={r['avg_quests_per_trip']:.2f}"
+                  f"  nothing-tier={r['decay_pct']['nothing']:.1f}%  gambles_taken={r['gambles_taken']:5d}"
+                  f"  avg_lethal_frac={100*r['avg_lethal_frac']:.2f}%")
+        print()
+    return all_results
+
+
+def compare_card_change(class_name, card_name, field_changes, strategy="food_only",
+                         trials=300, seed=42, chain_trips=20):
+    """The actual fix for the Ranger/Rogue incident: runs the clean defense-floor sweep
+    (condensed_trip.py) and the throughput-side risk exposure report (this module) both
+    before and after applying field_changes to CARDS[card_name], then prints an explicit
+    verdict distinguishing a real combat regression from a throughput artifact -- instead of
+    requiring a human to remember to run both and reason about the difference by hand, which
+    is exactly what didn't happen the first three times this session, before the pattern was
+    caught. field_changes: dict of {field: new_value}, e.g. {"dmg": 3, "block": 3}. Restores
+    the original card values before returning, regardless of outcome.
+
+    See MACRO_LOOP_GUIDE.md's "Clean vs. aggregate metrics" for the incident this exists to
+    prevent from recurring."""
+    mod = CARD_SOURCE[class_name]
+    has_stance = HAS_STANCE[class_name]
+    max_hp = float(getattr(mod, HP_ATTR[class_name]))
+    original = {k: mod.CARDS[card_name][k] for k in field_changes}
+
+    try:
+        before_floor = T.defense_floor_sweep(mod, has_stance, class_name, max_hp)
+        before_risk = risk_exposure_report(class_name, strategy, trials=trials, seed=seed, chain_trips=chain_trips)
+
+        for k, v in field_changes.items():
+            mod.CARDS[card_name][k] = v
+
+        after_floor = T.defense_floor_sweep(mod, has_stance, class_name, max_hp)
+        after_risk = risk_exposure_report(class_name, strategy, trials=trials, seed=seed, chain_trips=chain_trips)
+    finally:
+        for k, v in original.items():
+            mod.CARDS[card_name][k] = v
+
+    regressions = []
+    for b, a in zip(before_floor, after_floor):
+        for mob in b["per_mob"]:
+            if a["per_mob"][mob] > b["per_mob"][mob] + 1e-9:
+                regressions.append((b["hp"], mob, b["per_mob"][mob], a["per_mob"][mob]))
+
+    gamble_delta = ((after_risk["gambles_taken"] - before_risk["gambles_taken"])
+                     / max(1, before_risk["gambles_taken"]))
+    death_delta = after_risk["deaths_per_run"] - before_risk["deaths_per_run"]
+
+    print(f"=== compare_card_change: {class_name} / {card_name} {field_changes} ===")
+    print(f"Defense floor (clean, policy-independent): {'REGRESSED' if regressions else 'clean or improved'}")
+    for hp, mob, b, a in regressions:
+        print(f"  at HP={hp} vs {mob}: {100*b:.1f}% -> {100*a:.1f}% lethal-frac (WORSE)")
+    print(f"Deaths/run: {before_risk['deaths_per_run']:.2f} -> {after_risk['deaths_per_run']:.2f}"
+          f"  ({death_delta:+.2f})")
+    print(f"Quests/trip: {before_risk['avg_quests_per_trip']:.2f} -> {after_risk['avg_quests_per_trip']:.2f}")
+    print(f"Nothing-tier: {before_risk['decay_pct']['nothing']:.1f}% -> {after_risk['decay_pct']['nothing']:.1f}%")
+    print(f"Gambles taken: {before_risk['gambles_taken']} -> {after_risk['gambles_taken']}"
+          f"  ({gamble_delta*100:+.1f}%)")
+    print(f"Avg lethal-frac per gamble: {100*before_risk['avg_lethal_frac']:.2f}%"
+          f" -> {100*after_risk['avg_lethal_frac']:.2f}%")
+    print()
+    if not regressions and death_delta > 0:
+        print("VERDICT: deaths/run increase is a THROUGHPUT ARTIFACT (more gambles taken, not "
+              "riskier ones) -- not a real combat regression. The card is not more dangerous.")
+    elif regressions:
+        print("VERDICT: REAL combat regression -- the defense floor itself got worse at a fixed HP.")
+    elif death_delta <= 0:
+        print("VERDICT: clean improvement -- better or equal on both the floor and the aggregate.")
+    return dict(before_floor=before_floor, after_floor=after_floor,
+                before_risk=before_risk, after_risk=after_risk, regressions=regressions)
+
+
 def decay_report(class_name, trials=500, seed=42, chain_trips=20, risk_tolerance=RISK_TOLERANCE,
                   risk_tolerance_base=RISK_TOLERANCE_BASE, risk_only_as_last_resort=True):
     """Distribution of the worst decay_stage any quest reached over a
@@ -612,7 +817,7 @@ def productivity_report(class_name, trials=500, seed=42, chain_trips=20, risk_to
 
 
 if __name__ == "__main__":
-    for class_name in ["warrior", "wizard", "cleric", "paladin"]:
+    for class_name in CARD_SOURCE:
         compare_strategies(class_name)
         print()
         productivity_report(class_name)

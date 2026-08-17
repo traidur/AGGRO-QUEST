@@ -4,17 +4,39 @@ Design tensions and undefined interactions flagged before prototyping starts. Mo
 
 ## Unresolved
 
-### 2. Rest vs. the Claim structure
-Clearing Winded requires Resting (forfeiting a pull) + consuming Food/Water. Undefined: does Resting happen *instead of* claiming a target in Phase 2, or is it a separate action outside the 4-phase loop? If it competes with claiming, a low-priority player could get starved out of both combat and recovery in the same round.
+### "Deterministic Spice" — node-variety ideas for task #28, not evaluated or decided
 
-### 3. Winded-trigger rule definition
-Does Winded/OOM trigger per heavy-spell-cast (Cast-type card played) or per total Energy spent regardless of card type? This isn't just flavor — it determines whether healer classes (Cleric, and partially Paladin/Druid) structurally pollute their own deck faster than block-sustain classes (Warrior, Rogue), since their sustain tool is itself a Cast-type card. See `DESIGN_DOC.md`'s Class Archetypes section. Testable directly once the balance sim can run multi-pull trips.
+Raw brainstormed ideas, not discussed or checkpointed yet — recorded here so they aren't lost,
+not because any of them are settled. All three lean on the same trick: since occupied nodes
+are populated from a physical, shuffled deck (see "Zone-node mob dealing" below), variety
+doesn't need new dice or hidden-info mechanics — it just needs non-mob cards shuffled into that
+same deck.
 
-### 4. Wizard outcome variance
-The Opening Range rule (mob starts at range, Engagement applies the Cast Penalty from round two of a Slog on) means Wizard's outcomes split hard: clean OTK at zero risk, or a spiraling Slog that gets worse every round on top of already having ~0 Block. Thematically appropriate ("mage plays are all-or-nothing"), but the actual variance needs to be measured, not assumed survivable.
+- **Rare Spawns ("Loot Goblin").** A special mob card mixed into the zone deck: low HP, but
+  Flees on round 2 instead of round 3. Drops Wildcard Loot or flat Gold if killed. Being dealt
+  face-up is meant to create real priority contention and greed-driven routing changes.
+- **Gathering Nodes.** A non-combat resource card in the same deck — no ATK/HP at all. Claiming
+  it costs something instead of requiring a fight (e.g. "take 3 unmitigated damage, or discard
+  a hand card with 3+ Block") and yields Potions, Gold, or specific loot with no combat-solver
+  phase involved.
+- **The Roaming Threat ("Fel Reaver").** A physical token, not a card — moves one node along a
+  printed path every round, fully predictable (no hidden info), and overrides whatever's dealt
+  at the node it lands on. Players have to route around it or get forced into a large pull.
+  Interaction not thought through yet: what happens if it lands on a Border Node specifically.
 
-### 5. Ranged-mob-never-engages implication
-If a mob is a ranged type and never Engages, does the Cast Penalty ever apply against it, even across a multi-round Slog? If not, that's a real matchup axis (hero archetype vs. mob range-type, not just hero archetype vs. mob HP/ATK) — worth deciding whether that's a feature to lean into or a wrinkle to dampen.
+None of this has been checked against anything the way the rest of this project's mechanics
+are (no diagnostic run, no "does this actually fix task #28's repetition problem" check, no
+discussion of whether it fits the game's existing texture). Treat as a starting point for that
+conversation, not a queued build.
+
+*(Items 2-5 previously here — Rest vs. Claim structure, Winded-trigger rule, Wizard outcome
+variance under the Cast Penalty, ranged-mob-never-engages — all referenced a Winded/OOM +
+Cast Penalty + Engagement system that was cut entirely, not deferred, once condensed combat and
+the macro loop replaced the original AGGRO-scale translation (see `CONDENSED_COMBAT.md`'s
+"Exhaust dropped entirely"). Removed as stale rather than left to imply they're still live —
+caught and flagged during the `DESIGN_DOC.md` rewrite/audit. If Wizard's actual current
+all-or-nothing outcome variance under condensed combat's real rules ever needs its own
+investigation, that's a fresh, unrelated question — see task #29.)*
 
 ## Resolved
 
@@ -178,35 +200,108 @@ This is an amendment to "Zone-node mob dealing"'s already-resolved "a node alway
 exactly one current mob" rule (above) -- co-op is now a deliberate, narrow, called-out
 exception to that rule, same treatment as the blind-refill exception gets.
 
-**Validated empirically that the underlying mechanic works, not yet that any specific content
-is right.** Summing two mobs' stats directly (HP added, each round's atk/block added -- a
-tabletop-executable rule, no new authoring) was tested through `condensed_party.py` against
-every 2-Standard-mob combination and every Elite+Standard combination, for a representative
-hero pair. Two Standard mobs alone couldn't reach a genuine coinflip even at the hardest
-combo (best case 70.2% win rate) -- the Standard tier's max combined HP (20, from the
-tankiest mob paired with itself) is below where a 2-hero coinflip plausibly needs to sit.
-Elite+Standard combos did much better (best found: Bulwark+Grunt, HP=19, 52.4% win/23.0%
-cost against one hero pair) -- but checked against all 15 possible hero pairs, that same combo
-ranged 49.3%-75.6% win rate, not class-agnostic. This is the same structural finding already
-locked from the original solo Elite derivation: no single mob (or, now, no single *multi-mob
-combo*) is class-agnostically tight on its own -- pool-averaging across several combinations
-is what actually closes the spread (got the solo trio down to ~11pp), and the same
-pool-search methodology should transfer here once real derivation work starts.
+**Multi-mob resolution mechanic superseded -- mobs stay separate, no stat-summing.**
+The original approach (sum every simultaneous mob's HP and round-by-round atk/block into one
+flattened pattern, resolved through the single-shared-mob `condensed_party.py` engine
+described above) is retired for nodes holding more than one mob. It worked mechanically but
+had two real problems, both raised externally (Gemini review) and confirmed here: real
+arithmetic homework at the table before a round can even start, and no way to represent mixed
+`mob_type` once two mobs' stats are merged into one pattern. This replacement applies to any
+node that *starts* with 2+ simultaneous mobs, which only ever happens in co-op.
+
+**The original pooled engine is reclassified as a Boss-tier-only mechanic, not a general
+"single mob" rule -- correction from an earlier pass of this entry.** Pooling both damage
+*and* Block across the whole party, with a single Aggro-decided hero taking the one leftover
+attack, is a special treatment meant for a fight the whole party is ganging up on as one unit
+-- that's a Boss-fight feel (no Boss tier exists yet, zero content designed), not the Elite
+tier that's actually built and tested today. **Elite fights (single tougher mob, available in
+every mode) use the new round-robin/atomic engine described below, same as multi-mob nodes --
+they just degenerate to the trivial M=1 case:** only the loudest hero is ever assigned the
+mob's attack each round, and every other present hero's own block goes unused that round
+(nothing pools to bail them out, since pooling no longer exists outside a real Boss fight).
+This is a real, accepted difference from a Boss fight, not an oversight -- being ganged-up-on
+as a unit is specifically what should make a future Boss feel different from an Elite.
+
+**Which mechanic governs a fight is fixed by how the node *starts*, and never changes
+mid-fight.** A multi-mob node that whittles down to exactly one surviving mob by round 2 or 3
+stays on the round-robin/atomic engine for its remaining rounds -- it does not switch over to
+the pooled engine just because the live mob count happens to hit one. Only a node that is
+itself designated a Boss encounter from the start (not yet designed) uses the pooled engine at
+all.
+
+**Locked, not yet built.** This is now the primary co-op engine -- it governs both multi-mob
+nodes and Elite fights, per the reclassification above. The existing pooled engine in
+`sim/condensed_party.py` isn't being deleted (it's still correctly validated code), but it has
+no current use case until a Boss tier is actually designed -- it should be treated as
+dormant/reserved, not as the thing Elite fights run through. Next step if picked up is a new
+resolver function, likely `simulate_party_multimob` or similar, sitting alongside the existing
+pooled path in the same file rather than replacing it outright:
+
+- **Mobs are tracked as fully separate entities** -- own HP, own round-by-round atk/block/
+  `mob_type` pattern, no merging at any point.
+- **No pooling and no splitting, on either side.** Each hero's own card's damage is
+  independently pointed by the party at exactly one surviving mob (heroes who happen to
+  target the same mob still add up naturally, but no shared "pool" number is ever written
+  down, and no single hero's own number is ever divided across two targets). Checked directly
+  that this loses no reachable outcome a pooled-then-split model could reach, and that
+  personal block (below) is strictly *more* expressive than a pooled Block would be, since two
+  heroes can protect two different attacks in the same round, which one shared block value
+  split to a single target structurally cannot do.
+- **Enemy Phase, in order, once Hero Phase damage has resolved and any killed mobs have been
+  removed:** rank surviving heroes by this round's Aggro (loudest first; tiebreak: highest raw
+  damage among tied cards; still-tied: table agreement, unchanged from the single-mob rule).
+  Rank surviving mobs by this round's printed ATK (highest first; **tiebreak not yet decided**,
+  see open items). Round-robin assign highest-ATK mob to loudest hero, next to next-loudest,
+  ..., **wrapping back to the loudest hero again if mobs outnumber heroes** (deliberately not
+  capped at party size -- capping was considered and rejected specifically because it would
+  remove "more mobs than heroes increases threat," which is the entire point of a multi-mob
+  node existing).
+- **`grants_range`:** an evading hero stays in the round-robin assignment (never drops out,
+  never shifts anyone else's pairing) -- any of *their* assigned attacks that come from a
+  melee-type mob are zeroed, whether it's their first or a wrapped-second assignment. Ranged
+  mobs unaffected, matching solo behavior.
+- **Block is personal only, never routed to an ally, never split.** If a hero is assigned two
+  attacks (the wraparound case), their own block auto-applies to the first (larger, since mobs
+  are ATK-sorted before distribution) of their two assigned attacks -- **proven, not just
+  assumed, to never be the wrong choice**: for ordered attacks a >= b and a single block value
+  k, applying k to a is provably never worse than applying it to b (identical when k<=b,
+  strictly better when k>b). Safe to print as a flat, zero-decision rule.
+- **Overflow and death:** unblocked damage from each of a hero's assigned attacks comes only
+  out of that hero's own HP, no spillover to teammates. A dead hero stops contributing and
+  drops out of Aggro ranking and round-robin assignment for remaining rounds; survivors keep
+  fighting (same win/loss/flee framing as the single-mob rule above).
+- **Killing-blow riders (Warrior's Execute, Rogue's Cutthroat) are scoped per-mob, not
+  party-wide -- a real change from the single-mob wording above, made necessary by mobs no
+  longer being one shared entity.** A killing-blow card only prevents an attack from the
+  specific mob its own damage was pointed at, if that mob dies this round. It has no effect on
+  any other surviving mob's attack that round.
+
+**Earlier "sum two mobs' stats" testing (Elite+Standard, 2-Standard combos, the 49.3%-75.6%
+spread finding) is now historical** -- it validated that a multi-mob node *can* be made
+winnable at all, which is still true and useful context, but the specific stat-summing
+approach it tested no longer reflects the locked mechanic and shouldn't be reused directly;
+any future balance pass needs to test against the separate-mobs engine once it's built.
 
 **Still genuinely open, not decided:**
+- **Tiebreak when two surviving mobs have identical this-round ATK.** The hero-side tiebreak
+  (highest raw damage among tied Aggro cards) doesn't have an obvious mob-side equivalent --
+  not yet picked.
 - **Trigger/frequency for multi-mob nodes** -- every co-op node, a subset of designated
   "hot" nodes always dealing multiple mobs, some probability, or something else. Not decided.
 - **Elite mob content/stats for real party math** -- the existing solo-baseline Elite trio
   (Bulwark/Berserker/Warlord, HP=12) is confirmed too weak for 2-hero party math (100% win
-  rate, near-zero cost, everywhere) and needs its own re-derivation; today's combining tests
-  were exploratory system-validation, not a proposed final answer.
-- **Mixed `mob_type` when multiple mobs share a node.** Every test so far flattened a
-  multi-mob encounter into one combined pattern with a single hardcoded `mob_type` -- a real
-  simplification, not a decision. If a node genuinely holds two separate mob cards (say a
-  melee one and Scout, the one ranged Standard mob), the more faithful model is probably that
-  each mob keeps its own type independently -- a `grants_range` hero could plausibly evade the
-  melee one's damage while still eating the ranged one's. Not built or decided either way.
+  rate, near-zero cost, everywhere) and needs its own re-derivation. Per the reclassification
+  above, this re-derivation now needs to run against the round-robin/atomic engine's M=1
+  degenerate case (only the loudest hero ever takes the Elite's attack, others' block unused),
+  not the pooled engine -- a materially different, likely harder matchup for the party than
+  what the earlier pooled-engine combining tests explored.
 - **Loot/reward scaling for a multi-mob kill** -- not addressed at all yet.
+- **Boss tier itself is entirely undesigned.** The pooled `condensed_party.py` engine now has
+  no live use case until this exists -- worth remembering it's reserved, not wasted, next time
+  Boss content gets picked up.
+- **The multi-mob engine itself is unbuilt.** Design is locked per above; `sim/condensed_party.py`
+  only implements the single-shared-mob path today. See `gemini_prompt_multimob_coop.md` for
+  the full write-up sent out for external review before implementation starts.
 
 ### Solved-hand risk in OTK combat
 Original concern: static mob stat blocks + deterministic math means once a player finds the optimal 3-Energy line for a given HP/ATK threshold, the fight stops being a decision.

@@ -548,9 +548,19 @@ mechanic. Costs one message to ask; costs a full tuning pass to discover after t
    the validated numbers at lock-in (see `condensed_rogue.py` for the template).
 3. Add a "`<Class>`, locked" section to this file — mechanic summary, the real findings that
    came out of tuning it (not just the final numbers), validated numbers at lock-in.
-4. Propose (don't silently edit — SOTG requires explicit permission) adding the class to
+4. **Run `condensed_trip.py`'s `defense_floor_sweep`** and confirm the class holds a clean 0%
+   lethal-hand-fraction down to at least 33% HP against every mob, matching every other locked
+   class — this is what Rogue and Ranger both skipped, and both turned out to have a real gap
+   (see "Rogue and Ranger's macro-loop risk outlier," below). If the class doesn't clear this,
+   that's a real finding to fix or consciously accept before lock-in, not something to notice
+   later via a confusing macro-loop number.
+5. **Wire the class into `macro_sim.py`'s `CARD_SOURCE`/`HP_ATTR`/`HAS_STANCE`** — Rogue,
+   Ranger, and Runecaster were all missing from this for an entire class's worth of built
+   history before it was caught. Confirm with a quick `run_one_trip` sanity call, not just that
+   the import succeeds.
+6. Propose (don't silently edit — SOTG requires explicit permission) adding the class to
    `SOTG.md`'s class roster table.
-5. Update the task list: mark the class-build task's description to reflect what's done and
+7. Update the task list: mark the class-build task's description to reflect what's done and
    what classes remain.
 
 ## Rogue, locked -- fifth class, and a different kind of build than the first four
@@ -894,6 +904,190 @@ combined party Block vs. Elite attack, Loudness-based leftover assignment); re-v
 these specific numbers once that engine exists, since everything here was derived against
 the *solo* single-hero baseline only, per the phased plan in `OPEN_QUESTIONS.md`.
 
+## Runecaster, locked -- seventh class, numbers given directly by the user
+
+Same process as Rogue and Ranger: the user designed the kit and every card's numbers
+directly, the AI verified the real AGGRO source (`cards.csv` + `StS_x_WoW_Classes_v7_4.md`,
+not a summary), proposed cuts/reframes per `DECK_CONDENSING_GUIDE.md`, then ran the
+diagnostic suite and reported results after each change.
+
+**The mechanic, entirely user-designed:**
+- **Chain bonus (Lightning Bolt):** 3 dmg normally, 4 if the previous round's card was
+  Chain Lightning. Reuses Warrior's Vanguard Blade/Shield previous-card pattern, reframing
+  AGGRO's "Lightning Bolt costs 0E this turn" (no Energy system in QUEST) into a damage
+  payoff instead of a cost discount.
+- **Echo (Earth Strike Rune) -- a new mechanic shape for this codebase:** deals 2 dmg + 1
+  heal the round it's played, then automatically 1 more dmg + 1 more heal at the very start
+  of the *next* round, before that round's own card resolves -- no card slot spent on the
+  second round's payoff. Folds AGGRO's two separate Rune cards (a STRIKE-damage buff, a
+  recurring Zone heal) into one, and reuses Call of the Volcano's DOT-tick shape (damage
+  resolving automatically on a later round) bounded to exactly one echo round, paired with
+  a heal component. Played in the pull's last round, the echo simply never fires -- no
+  special-case needed, same structural boundary Rogue's Cutthroat curve already relies on.
+- **Call of the Glacier:** AGGRO's SLOW rider was cut, not force-fit or reworked -- confirmed
+  directly against the rules text that SLOW is a pure Zone/movement-lock keyword ("Cannot
+  change Zones... Cannot be dragged") with zero functional meaning in a single-mob,
+  no-movement combat model. Repurposed as a positioning card instead (`grants_range=True`,
+  reuses Wizard/Ranger's existing evasion mechanic) rather than inventing something new.
+- **STRIKE tag dropped entirely** from Windstrike -- confirmed with the user that nothing in
+  this kit reads it, so it isn't encoded as a flag at all, not even a vestigial no-op one.
+- **Windstep cut outright** -- its only distinguishing clause was Zone movement/disengage,
+  with no QUEST equivalent; a bare 2-Block-only card once stripped wasn't worth a slot.
+
+**Tuning path.** First numbers pass (Tidal Ward heal 3/block 3, Earth Strike Rune 2 dmg + 2
+heal this round) broke equilibrium on Grunt and Bruiser -- the exact "cannot die" failure
+mode Cleric hit originally -- and blew every chained-trip metric far outside the roster's
+range (9.14 pulls vs. the pack's 5.12-5.64). Root cause: two separate heal sources plus the
+echo's free second round of value added up to more sustain than any other class carries.
+Fix: Tidal Ward cut to heal 2/block 2, Earth Strike Rune's first-round heal cut from 2 to 1
+(echo's 1/1 untouched) -- closed both problems in one pass.
+
+**What the process found, worth generalizing:**
+- **A `clean-thin` hidden-domination flag can mean "rarely compete," not "thin evidence of a
+  real problem."** Chain Lightning vs. Call of the Glacier flagged with only 2 real
+  observations. Direct manual dig (all 36 hand/mob combos, not just the ones the strict
+  filter counted): 34 of 36 play both cards *together* -- they're complementary, not
+  fighting for the same slot, so the pairwise-swap check structurally has little to say
+  about them. The 2 forced comparisons that did occur were both against Scout, the one
+  ranged Standard mob, where `grants_range` is worthless by construction -- expected, not
+  domination.
+- **A brand-new mechanic shape is worth a manual hand-trace, not just trusting the aggregate
+  diagnostic.** The Echo (Earth Strike Rune -> Lightning Bolt -> Windstrike vs. Grunt) was
+  traced by hand before running it, confirming the automatic next-round tick resolves
+  correctly -- including a subtle detail (the echo's damage was fully absorbed by Grunt's
+  round-2 Block, while its heal landed anyway, since heals aren't blocked).
+- **Waste Index has no pack-range check printed by `tuning_report()` the way pulls/wins/
+  wins-per-pull does** -- worth pulling manually before treating a class as fully validated.
+  Runecaster's 1.98 dmg overkill / 0.27 HP overheal both sit inside the existing roster's
+  range (1.10-2.85 dmg, 0.00-0.24 HP), with the overheal landing right next to Cleric's, the
+  only other real healer.
+
+**Locked, validated:** `RUNECASTER_HP = 16` (Mail-tier, user-set -- not swept against
+neighboring values the way Ranger's HP got negotiated across three passes; it landed in
+range on the first try and was kept rather than re-litigated). Damage floor/ceiling 9/15
+(matches Rogue's exact numbers). Equilibrium ALL CLEAR across all 6 Standard mobs. Chained
+trip: 5.43 pulls / 4.14 wins/trip / 76.2% wins/pull, all three inside the pack's range
+(5.12-5.64 / 3.83-4.34 / 73.9-78.4%). Elite trio (solo baseline): 50.6% cost / 64.4% win
+aggregate, inside the locked 6-class spread (44.3-55.7% cost, 55.6-75.6% win), no single
+Elite an outlier (Bulwark 42.9%/60.0%, Berserker 56.2%/66.7%, Warlord 52.5%/66.7%).
+
+## Druid, locked -- eighth class, numbers given directly by the user
+
+Same process as Rogue, Ranger, and Runecaster: the user designed the kit and every card's
+numbers directly, iterating through the diagnostic suite after each change. Two lines, six
+cards: Shapeshift: Grizzly/Maul/Swipe (Shapeshift), Solar Flare/Moonbeam/Nature's Wildguard
+(Eclipse) -- see `condensed_druid.py`'s module docstring for the full mechanic writeup, kept
+there rather than duplicated here per this file's own routing convention.
+
+**Tuning path, unusually long for this class -- the central problem was making the two lines
+a genuine choice, not a numbers pass.** The first diagnostic surfaced two separate issues: (1)
+a real Bruiser gap (3 losing hands, all capped at exactly 9 damage against Bruiser's 10 HP,
+all sharing Grizzly+Maul+Wildguard), and (2) Shapeshift: Grizzly played in 100% of hands that
+drew it -- not a preference, a strict auto-include, meaning the kit's second line never
+actually got chosen over the first. Fixing (1) first (giving Grizzly damage) made (2) worse,
+not better, since it raised Grizzly's floor further above Eclipse's. Multiple single-card
+levers were tried and rejected before landing on the fix -- see `condensed_druid.py`'s
+docstring for the two generalizable findings (a Grizzly-blind Eclipse buff can't create a
+decision it isn't structurally positioned to win; a card that appears on both sides of a
+comparison can't tip it, it just moves the whole kit's power level). Final fix: Shapeshift:
+Grizzly's own DMG (3->2) and Block (4->3) both cut by 1 -- closing the win-rate gap and the
+low-HP defense-floor gap on two separate, independently-verified levers -- plus a structural
+rule making the two lines mechanically exclusive (Grizzly cancels the Eclipse-stacking bonus
+for any Eclipse card played after it), which moved Grizzly's play rate from 100% to 98.3%
+(59/60) -- confirmed via direct sensitivity sweep to be the ceiling of what a card-level fix
+can do here without unwinding the rest of the balance (two further attempts to push the
+remaining ties fully to Eclipse, cutting Maul or buffing Moonbeam, both left the split
+completely unchanged while damaging chained-trip pacing in opposite directions).
+
+**Defense-floor break points versus the checklist's literal "0% down to 33% HP" bar (see
+"Locking a class in," above): none of the 8 locked classes actually clear this literally** --
+direct comparison run at lock-in showed every class breaking above 33% HP against at least one
+mob (Ranger's Scout break is HP=8, 53% of its own 15 HP; Rogue's Ambusher break is HP=8, 50%
+of its 16). Druid's worst breaks (Enforcer/Ambusher at HP=7, 47% of its 15) are in line with,
+not worse than, the rest of the roster. The check's actual purpose (per the Rogue/Ranger
+incident that created it) is catching a class that's a real *outlier* from the pack, which
+this roster-wide comparison rules out -- worth restating precisely here since the checklist's
+literal wording doesn't describe any class that's ever passed it.
+
+**Locked, validated:** `DRUID_HP = 15` (explicit flavor call ruling out the source's 14,
+re-tested after the fact and holding -- confirmed HP-independent metrics like win rate and
+flee-preference are unaffected by which HP is chosen, only defense-floor and chained-trip
+pacing needed re-validation). Win rate 93.3% (Bruiser, Enforcer) / 100% (rest) -- matches the
+shape most of the rest of the roster shows, no longer a 100%-everywhere outlier. Damage
+floor/ceiling 9/14, matching the pack's most common floor value exactly. Chained trip
+(30,000-trial comparison): wins/trip 4.20 and wins/pull 74.7% both inside the pack's range
+(3.84-4.31 / 74.1-78.1%); pulls-survived 5.62 vs. a pack ceiling of 5.60 -- confirmed real at
+10x the standard sample size, not sampling noise, but the smallest miss of any metric tested
+across this whole tuning arc, left as-is. Equilibrium clean. Solar Flare/Moonbeam no longer
+hidden-domination-flagged (were tied 19/19 in the first diagnostic pass; now genuinely
+differentiated -- Moonbeam carries a flat Heal, Solar Flare doesn't).
+
+## Necromancer, locked -- ninth class, numbers given directly by the user
+
+Same process as Rogue, Ranger, Runecaster, and Druid: the user designed the kit and every
+card's numbers directly, iterating through the diagnostic suite after each change. Six
+cards: Boneguard's Offering (Death Pact rider), Soul Harvest, Sowing Dread, Reap, Blight,
+Death Blow -- see `condensed_necromancer.py`'s module docstring for the full source-to-kit
+translation history and mechanic writeup, kept there rather than duplicated here.
+
+**The central problem this class posed, different in kind from anything built before it:
+Death Pact needed real in-pull randomness, which nothing else in this codebase has ever
+had.** Every existing tool (win_rate, damage_floor_ceiling, defense_floor_sweep, the whole
+chained-trip machinery) depends on full-information, deterministic solving -- the only
+randomness anywhere else in the project is which 4-of-6 hand gets drawn at the start of a
+pull. A card that changes *what's available to sequence* mid-pull doesn't fit that model at
+all. The resolution, worth generalizing to any future class that needs something similar:
+**split the tooling, don't force one function to serve both purposes.** The exact solver
+(`best_line_for_hand`) stays fully deterministic and simply never considers the draw --
+correct, not a workaround, since a coin-flip outcome can't be part of a "certain" line. The
+draw only becomes real inside the chained-trip Monte Carlo simulation, which already rolls
+real dice for hand/mob draws, so it's the one place genuine randomness can live without
+touching anything else. A new function, `effective_win_rate`, exists specifically so the
+draw's real impact doesn't vanish from the standard reports just because the deterministic
+tools are (correctly) blind to it -- see below.
+
+**Both the mechanic's shape and its gamble policy were wrong on the first pass, and both
+were caught by direct measurement, not intuition -- two separate, real corrections:**
+- **Shape:** the first version required Boneguard's Offering to be played *before* the drawn
+  card, which could then only fill a *later* round. Checked directly: this made the draw
+  provably unable to ever rescue a losing hand (0/60 hand/mob cases where any possible draw
+  outcome could flip a loss to a win). Root cause, found by comparing the drawn hand against
+  the same 5 cards freely available from the start: the winning line for the rescuable cases
+  plays the drawn card (Blight) *first*, landing its Echo tick in the same round as a second
+  attacker's payoff -- a line the "must play Boneguard's Offering first" rule could never
+  reach. Fix: decouple the draw from Boneguard's Offering's own round entirely. Committing to
+  Death Pact is now a pre-round choice (2 HP paid immediately), and the only ongoing
+  constraint is that Boneguard's Offering must be *somewhere* among the three cards played --
+  any round, any order. This alone converted the previously-unrescuable cases into clean wins.
+- **Policy:** the first gamble policy ("draw whenever the deterministic line isn't already
+  winning") was measured directly across 3000 chained trips: 65% of all gambles were taken
+  at hero HP<=3, where the flat 2 HP cost alone is often close to fatal regardless of what
+  gets drawn, and the flip-to-win rate across ~2600 real gambles taken was under 1%. Fix:
+  gamble only if the deterministic line doesn't win AND the worse of the two possible drawn
+  cards' full simulated outcome still keeps the hero alive. This alone moved the flip rate
+  from 0.8% to 2.0% and every chained-trip number closer to the pack, before the shape fix
+  above closed the rest of the gap.
+
+**`effective_win_rate`, and why raw `win_rate` alone would have been actively misleading
+here.** Once the mechanic and policy were both fixed, raw `win_rate` still read 86.7% on
+Bruiser/Enforcer -- a real-looking outlier below the pack's typical 93.3%, since `win_rate`
+is correctly blind to the draw by construction. Direct check: both of Bruiser's and both of
+Enforcer's losing hands turn out to be rescued by exactly a 50% chance of drawing Blight,
+landing at a true 93.3% once accounted for -- matching the rest of the roster exactly, not
+an outlier at all. `condensed_trip.py`'s shared `tuning_report` now checks whether a class
+module exposes `effective_win_rate` and, if so, prints both numbers side by side
+automatically (zero change to any other class's output, since none of them expose it) --
+built specifically so this finding is part of the standard report going forward, not
+something that has to be manually rediscovered the next time the cards change.
+
+**Locked, validated:** `NECROMANCER_HP = 14`. Damage floor/ceiling 9/14, matching the pack's
+normal band on both ends. Win rate 100% (Grunt, Raider, Ambusher, Scout), 86.7% raw / 93.3%
+draw-adjusted (Bruiser, Enforcer) -- the draw-adjusted number is the one that actually
+matches the roster. Defense floor strong across the board, best-in-roster (0/90) at HP=6 and
+HP=7. Equilibrium clean. No hidden-domination flags. Chained trip: pulls=5.56, wins/trip=
+4.21, wins/pull=75.7%, all three inside the pack's range (5.12-5.68 / 3.83-4.34 /
+73.9-78.4%). macro_sim.py compatibility confirmed via `run_one_trip`.
+
 ## Retired roster, and mobs are derived by brute force now, not hand-designed
 
 The original 8-mob draft roster (Whelp/Grunt/Skirmisher/Ambusher/Sentinel/Brute/Elite/
@@ -934,6 +1128,92 @@ Old roster's shapes are preserved here for reference, not resurrected:
 - Footman `[(3,0),(3,0),(3,0)]` hp7 — hand-added for Warrior's single-pull gap.
 - Marauder `[(4,0),(4,0),(4,0)]` hp8, Brawler `[(4,0),(4,0),(3,0)]` hp8 — hand-added for
   Cleric's chained-pulls gap, dragged everyone's absolute productivity down as a side effect.
+
+## Rogue and Ranger's macro-loop risk outlier — root-caused (2026-08-13)
+
+Found while re-sweeping `macro_sim.py`'s locked numbers after discovering Rogue/Ranger/
+Runecaster had never been wired into it (see `MACRO_LOOP_GUIDE.md`). Against the current 6-mob
+roster, Rogue dies ~3.4x as often as Warrior per 20-trip chain (0.31 vs. 0.09 avg deaths/run,
+`food_only`) and both Rogue and Ranger take noticeably longer to afford the 16G Bag Upgrade
+(5.07/5.41 avg trips vs. the rest of the roster's 3.83-4.45) — despite both classes' *average*
+chained-trip numbers already being validated in-range against the full roster at lock-in (see
+their own "locked" sections above). This is a new instance of the same lesson as "single-pull
+parity doesn't guarantee chained-pull parity" (above), extended to a further axis: **average
+parity doesn't guarantee worst-case-floor parity, and the macro-loop risk policy runs on the
+floor, not the average.**
+
+**Methodology: sweep lethal-hand-fraction (the same value `macro_sim._pull_exceeds_risk`
+computes) across starting-HP bands, not just chained-trip averages.** For every class, at
+100%/50%/33%/20%/10% of max HP, against every Standard mob, count what fraction of the 15
+possible hands have no line (even optimal) that avoids death this pull. Warrior, Wizard,
+Cleric, Paladin, and Runecaster all hold a clean **0.0% lethal-hand-fraction against every mob
+down to 50% HP** — completely safe on that metric until below a third HP. **Rogue and Ranger
+are the only two classes that break this floor already at 50% HP** (Rogue: 1.1% avg, worst mob
+Ambusher at 6.7% / 1 of 15 hands; Ranger: 1.1% avg, worst mob Scout at 6.7% / 1 of 15 hands).
+
+**Why this alone explains both symptoms.** `macro_sim.py`'s risk policy runs at
+`RISK_TOLERANCE_BASE = 0.0` outside a quest-completing pull — genuinely zero risk tolerated,
+not just "low." The moment a class's lethal-hand-fraction against the mob it's facing ticks
+above 0%, the policy stops attempting the pull raw and forces a consumable or a retreat. Rogue
+and Ranger cross that trigger a full HP-tier earlier than the rest of the roster (50% vs. 33%),
+so over a real trip they (a) burn their one starting Food sooner relative to trip length, or
+hit "no consumable left, trip ends" more often — slower Gold/XP, the Bag Upgrade gap — and
+(b) get funneled into more actual quest-completing gambles (the only place any risk is ever
+taken), each a real chance the drawn hand is one of the lethal ones — the elevated death rate.
+
+**Two distinct root causes, not one shared mechanism -- checked precisely, not just
+inferred from similar symptoms.**
+
+**1. Rogue: a clean, generalizable "pure-offense card count" threshold.** Counted each class's
+cards carrying zero *static* defensive value (no Block, no Heal, no `grants_range`): Warrior,
+Wizard, Cleric, Paladin, and Runecaster each have exactly **3** such cards; Rogue and Ranger
+each nominally count as **4** -- but this static per-card count is only actually the right
+explanation for Rogue (see #2 below for why Ranger's count is misleading). Hand size is 4.
+Below the threshold (3 of 6), it's mathematically impossible to draw a 4-card hand containing
+zero defensive cards -- at least one is always included, however unlucky the draw. At the
+threshold (4 of 6), there's exactly one hand -- draw all four pure-offense cards, skip both
+defensive ones -- with no defense whatsoever. **Rogue vs. Ambusher at 8 HP (50%):** the one
+lethal hand is `(Quick Slash, Ambush, Cutthroat, Envenom)` -- exactly Rogue's four pure-offense
+cards, missing both Block-capable cards (Dodge/Backstab: 4 Block, Evasion: 10 Block). Ambusher
+front-loads 4 ATK/4 ATK in its first two rounds; a hand with zero Block anywhere loses outright
+by round 2 no matter how it's sequenced. **Any future class should be checked against this
+exact threshold as part of its lock-in ratio check (Step 5 of `DECK_CONDENSING_GUIDE.md`),
+alongside the existing damage-capable-card ratio -- this is the same kind of check on the
+defensive side.**
+
+**2. Ranger: a different mechanism -- a defensive tool voided by mob type, not a card-count
+gap.** Checked directly rather than assumed: Ranger's actual lethal hand,
+`(Withdrawing Hip Shot, Beast's Challenge, Sure Shot, Crippling Shot)`, does *not* match its
+naive "4 pure-offense cards" list (Beast Bond: Wolf, Sniper/Point Blank Shot, Beast's
+Challenge, Sure Shot) -- it actually includes two nominally-defensive cards and excludes two
+offense-only ones. The static count was misleading here because Beast Bond: Wolf shows
+`block=0` in its own card entry but actually grants *persistent* Block every round once
+played -- a dynamic effect a single-card lookup can't see, so it's wrongly counted as
+"pure offense." Ranger's real problem: against Scout (the one ranged mob), two of the drawn
+cards' only defensive property is `grants_range`, which is completely worthless since Scout
+can't be evaded -- leaving just Crippling Shot's flat 1 Block against Scout's 2/3/4 ATK ramp.
+**The generalizable lesson here is different from Rogue's: counting "does this card have any
+defensive tag" isn't sufficient on its own -- a card's defense has to be checked against every
+mob *type* in the roster, not just tallied as present/absent, since evasion-based defense can
+be fully neutralized by a single mob property.**
+
+Both cases share the same shape: a narrow slice of the kit carries essentially all of the
+class's real defensive capability, and the single hand (of 15) that misses that slice meets
+the one mob shaped to punish exactly that gap. Neither is a bug in the per-pull solver — both
+lines are genuinely optimal play, the hand is just unwinnable. This is precisely the kind of
+worst-case-floor problem the hand-level kill-feasibility check (tool inventory, above) was
+built to catch on the *offense* side (can a hand kill the mob at all); this is its mirror on
+the *defense* side (can a hand survive the mob at all) — no diagnostic in the current toolkit
+checks this directly yet, which is why it went unnoticed through both classes' original lock-in.
+
+**Not yet decided: how to fix it.** Candidates, none chosen: give each class's remaining
+"pure offense" cards a small incidental Block rider (mirrors Cleric's damage-floor fix, done
+in reverse); raise Rogue/Ranger's HP slightly so the 50%-HP threshold moves to match the rest
+of the roster; treat it as acceptable class identity (a real risk/reward class) and adjust the
+macro-loop risk policy or Bag Upgrade price instead of the kits; or add a defense-floor check
+to the standard toolkit and re-audit every class, not just these two, in case others are close
+to the same cliff without yet showing it in chained-trip averages. See `DESIGN_DOC.md`'s Open
+Design Questions.
 
 ## Known open items that affect every class, not just one
 

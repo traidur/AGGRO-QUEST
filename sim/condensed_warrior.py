@@ -43,7 +43,7 @@ CARDS = {
     # execute_finisher handling in _sim_from.
     "Execute":         dict(G=None, C=None,     sunder=False, execute_finisher=True,
                              chain_stance=None, chain_bonus=0, chain_target=None, chain_requires=None,
-                             aggro=3),
+                             killing_blow=True, aggro=3),
     # Same baseline in either stance now (2 DMG + 2 Block, trimmed from 3) --
     # stance only changes whether the bonus is reachable. Block trimmed
     # specifically because it was the real driver of multi-pull sustain
@@ -122,12 +122,13 @@ def _sim_from(rnd, seq_cards, stance_seq, mob_pattern, mob_hp_total,
     dmg_dealt = max(0.0, eff_dmg - mob_block)  # mob's own Block still reduces damage dealt, unchanged
     new_remaining = remaining_mob_hp - dmg_dealt
 
-    # Execute's clean-kill rider: if Execute lands the killing blow this
+    # Killing-blow rider: if a killing_blow-tagged card lands the kill this
     # round, the mob's attack is prevented entirely -- narrower than the
     # global "kill interrupts the mob" rule we rejected elsewhere, scoped
-    # only to Execute specifically (a clean, decisive finish, not a trade).
-    # Every other card still follows the normal "mob still acts" rule.
-    if card_name == "Execute" and new_remaining <= 0:
+    # only to killing_blow cards specifically (a clean, decisive finish, not
+    # a trade). Every other card still follows the normal "mob still acts"
+    # rule. Execute is the only Warrior card carrying this flag.
+    if card.get("killing_blow") and new_remaining <= 0:
         dmg_taken = 0.0
     else:
         dmg_taken = max(0.0, mob_atk - block)

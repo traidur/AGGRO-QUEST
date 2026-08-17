@@ -67,6 +67,22 @@ Gold, trip chaining) — the macro loop is the real game; combat is the toll gat
   not destroy it) while freeing Food's own slot — easy to get backwards.
 - `NODES`'s old third tuple field (`loot_gold`) was dead code and has been removed. Gold
   comes entirely from `QUESTS[...]["gold_ladder"]`.
+- **A macro-loop aggregate metric (`decay_report`'s deaths/run, `run_to_bag_upgrade`'s avg
+  trips) is not a valid verdict on a damage-touching card change by itself.** A strictly-better
+  card (more damage, nothing reduced) can make deaths/run go *up*, purely because the class
+  finishes quests faster and reaches the risk policy's one gamble trigger more often — not
+  because any fight got more dangerous. Always run `condensed_trip.py`'s `defense_floor_sweep`
+  alongside it, or just call `macro_sim.py`'s `compare_card_change`, which runs both and prints
+  the correct verdict. See `MACRO_LOOP_GUIDE.md`'s "Clean vs. aggregate metrics" for the
+  incident this came from.
+- **Necromancer's `win_rate()` is deliberately blind to its Death Pact draw mechanic — use
+  `effective_win_rate()` for the real picture.** It's the only class with genuine in-pull
+  randomness (which card gets drawn); every other tool in this codebase assumes full-
+  information deterministic play, so `best_line_for_hand` correctly never considers the
+  draw. Raw `win_rate` alone makes Necromancer look like a real outlier (86.7% vs. the
+  pack's 93.3% on its weak matchups) when the actual draw-adjusted number matches the roster
+  exactly. `tuning_report` prints both automatically for any class exposing
+  `effective_win_rate`.
 
 ## Anti-patterns
 
@@ -78,7 +94,7 @@ Gold, trip chaining) — the macro loop is the real game; combat is the toll gat
 - Do not price a bigger quest's gold reward as a flat multiple of its loot-count without
   measuring real trip/decay cost first (`sim/quest_cost_gauntlet.py`).
 
-## Class roster (built so far — 6 of 9)
+## Class roster (9 of 9, built)
 
 | Class | HP | Identity |
 |---|---|---|
@@ -88,8 +104,12 @@ Gold, trip chaining) — the macro loop is the real game; combat is the toll gat
 | Paladin | 17 | Invocation of Sanctuary/Grace — pick exactly one per pull, simultaneously a payoff for earlier STRIKE cards and a setup bonus for later ones |
 | Rogue | 16 | Cutthroat/Envenom — finishers scaling off STRIKE cards played since the last finisher, resetting on use; killing-blow rider on Cutthroat only |
 | Ranger | 15 | Beast Bond: Wolf — persistent multi-round Block (unique in this codebase); Positioning payoff reads whether the previous round granted Range |
+| Runecaster | 16 | Chain bonus (Lightning Bolt deals more if played right after Chain Lightning) + Echo (Earth Strike Rune's damage/heal partially repeats automatically next round, no card spent) |
+| Druid | 15 | Two mutually exclusive lines — Shapeshift: Grizzly boosts Maul/Swipe if played first, but cancels the Eclipse-stacking bonus (Solar Flare/Moonbeam/Nature's Wildguard) on any Eclipse card played after it |
+| Necromancer | 14 | Boneguard's Offering carries Death Pact — lose 2 HP before playing any card to draw one of your two undrawn deck cards, on the condition it's played somewhere this pull. Sowing Dread/Blight tag DOTs for Reap to pay off |
 
-Necromancer, Druid, Runecaster remain unbuilt. Rogue and Ranger were both built through a
-fully user-driven iterative process, not an AI-first draft — see `CLASS_BALANCE_GUIDE.md`'s
-"Rogue, locked" and "Ranger, locked" sections and `DECK_CONDENSING_GUIDE.md`'s
-checkpoint-discipline section.
+All 9 classes are now built. Druid, Rogue, Ranger, Runecaster, and Necromancer were all built
+through a fully user-driven iterative process, not an AI-first draft — see
+`CLASS_BALANCE_GUIDE.md`'s "Druid, locked", "Rogue, locked", "Ranger, locked", "Runecaster,
+locked", and "Necromancer, locked" sections and `DECK_CONDENSING_GUIDE.md`'s checkpoint-
+discipline section.

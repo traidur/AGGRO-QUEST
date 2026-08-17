@@ -16,6 +16,9 @@ import condensed_cleric as C
 import condensed_paladin as P
 import condensed_rogue as R
 import condensed_ranger as G
+import condensed_runecaster as N
+import condensed_druid as D
+import condensed_necromancer as Nc
 
 # Standard tier, locked. Entire prior roster (the original 8-mob draft plus
 # Footman/Marauder/Brawler, added incrementally by hand across this
@@ -75,6 +78,9 @@ MOBS = {
         paladin=(pattern, hp),
         rogue=([(a, b, _MOB_TYPES.get(name, "melee")) for a, b in pattern], hp),
         ranger=([(a, b, _MOB_TYPES.get(name, "melee")) for a, b in pattern], hp),
+        runecaster=([(a, b, _MOB_TYPES.get(name, "melee")) for a, b in pattern], hp),
+        druid=(pattern, hp),
+        necromancer=([(a, b, _MOB_TYPES.get(name, "melee")) for a, b in pattern], hp),
     )
     for name, (pattern, hp) in _RAW_MOBS.items()
 }
@@ -84,7 +90,7 @@ MOB_NAMES = list(MOBS.keys())
 # of the plain 2-tuple -- i.e. any class with a grants_range-style mechanic.
 # Grows via register_class_for_testing() for a class still being tuned;
 # listed here are the ones already permanently locked into MOBS above.
-_RANGE_TAGGED_MOB_KEYS = {"wizard", "rogue", "ranger"}
+_RANGE_TAGGED_MOB_KEYS = {"wizard", "rogue", "ranger", "runecaster", "necromancer"}
 
 
 def register_class_for_testing(mob_key, needs_range_tag=False):
@@ -248,23 +254,82 @@ def run_trip_ranger(rng, max_pulls=50, fixed_mob=None):
     return pulls, wins
 
 
+def run_trip_runecaster(rng, max_pulls=50, fixed_mob=None):
+    hp = N.RUNECASTER_HP
+    pulls, wins = 0, 0
+    while hp > 0 and pulls < max_pulls:
+        mob_name = fixed_mob or rng.choice(MOB_NAMES)
+        pattern, mob_hp = MOBS[mob_name]["runecaster"]
+        hand = rng.choice(N.ALL_HANDS)
+        seq, hp_left, rounds = N.best_line_for_hand(hand, pattern, mob_hp, starting_hp=hp)
+        win, _, _ = N.simulate(seq, pattern, mob_hp, starting_hp=hp)
+        hp = hp_left
+        pulls += 1
+        wins += 1 if win else 0
+        if hp <= 0:
+            break
+    return pulls, wins
+
+
+def run_trip_druid(rng, max_pulls=50, fixed_mob=None):
+    hp = D.DRUID_HP
+    pulls, wins = 0, 0
+    while hp > 0 and pulls < max_pulls:
+        mob_name = fixed_mob or rng.choice(MOB_NAMES)
+        pattern, mob_hp = MOBS[mob_name]["druid"]
+        hand = rng.choice(D.ALL_HANDS)
+        seq, hp_left, rounds = D.best_line_for_hand(hand, pattern, mob_hp, starting_hp=hp)
+        win, _, _ = D.simulate(seq, pattern, mob_hp, starting_hp=hp)
+        hp = hp_left
+        pulls += 1
+        wins += 1 if win else 0
+        if hp <= 0:
+            break
+    return pulls, wins
+
+
+def run_trip_necromancer(rng, max_pulls=50, fixed_mob=None):
+    hp = Nc.NECROMANCER_HP
+    pulls, wins = 0, 0
+    while hp > 0 and pulls < max_pulls:
+        mob_name = fixed_mob or rng.choice(MOB_NAMES)
+        pattern, mob_hp = MOBS[mob_name]["necromancer"]
+        hand = rng.choice(Nc.ALL_HANDS)
+        seq, hp_left, rounds = Nc.best_line_for_hand(hand, pattern, mob_hp, starting_hp=hp)
+        win, _, _ = Nc.simulate(seq, pattern, mob_hp, starting_hp=hp)
+        win, hp_left = Nc.draw_random_card(hand, seq, win, hp_left, pattern, mob_hp, hp, rng)
+        hp = hp_left
+        pulls += 1
+        wins += 1 if win else 0
+        if hp <= 0:
+            break
+    return pulls, wins
+
+
 CLASSES = [("Warrior", run_trip_warrior), ("Wizard", run_trip_wizard), ("Cleric", run_trip_cleric),
-           ("Paladin", run_trip_paladin), ("Rogue", run_trip_rogue), ("Ranger", run_trip_ranger)]
+           ("Paladin", run_trip_paladin), ("Rogue", run_trip_rogue), ("Ranger", run_trip_ranger),
+           ("Runecaster", run_trip_runecaster), ("Druid", run_trip_druid),
+           ("Necromancer", run_trip_necromancer)]
 
 # Shared per-class lookup tables -- used anywhere a diagnostic needs to
 # treat all classes uniformly (mobs are tuned class-agnostic, so any
 # roster-level stat, like mob difficulty, should be averaged across all
 # of them rather than read off a single class).
 HAS_STANCE_BY_LABEL = {"Warrior": True, "Wizard": False, "Cleric": False, "Paladin": False, "Rogue": False,
-                        "Ranger": False}
-CARD_SOURCE_BY_LABEL = {"Warrior": W, "Wizard": Z, "Cleric": C, "Paladin": P, "Rogue": R, "Ranger": G}
+                        "Ranger": False, "Runecaster": False, "Druid": False, "Necromancer": False}
+CARD_SOURCE_BY_LABEL = {"Warrior": W, "Wizard": Z, "Cleric": C, "Paladin": P, "Rogue": R, "Ranger": G,
+                         "Runecaster": N, "Druid": D, "Necromancer": Nc}
 HP_ATTR_BY_LABEL = {"Warrior": "WARRIOR_HP", "Wizard": "WIZARD_HP", "Cleric": "CLERIC_HP", "Paladin": "PALADIN_HP",
-                     "Rogue": "ROGUE_HP", "Ranger": "RANGER_HP"}
+                     "Rogue": "ROGUE_HP", "Ranger": "RANGER_HP", "Runecaster": "RUNECASTER_HP",
+                     "Druid": "DRUID_HP", "Necromancer": "NECROMANCER_HP"}
 MOB_KEY_BY_LABEL = {"Warrior": "warrior", "Wizard": "wizard", "Cleric": "cleric", "Paladin": "paladin",
-                     "Rogue": "rogue", "Ranger": "ranger"}
+                     "Rogue": "rogue", "Ranger": "ranger", "Runecaster": "runecaster", "Druid": "druid",
+                     "Necromancer": "necromancer"}
 WIN_RATE_FNS = {"Warrior": (W.win_rate, "warrior"), "Wizard": (Z.win_rate, "wizard"),
                  "Cleric": (C.win_rate, "cleric"), "Paladin": (P.win_rate, "paladin"),
-                 "Rogue": (R.win_rate, "rogue"), "Ranger": (G.win_rate, "ranger")}
+                 "Rogue": (R.win_rate, "rogue"), "Ranger": (G.win_rate, "ranger"),
+                 "Runecaster": (N.win_rate, "runecaster"), "Druid": (D.win_rate, "druid"),
+                 "Necromancer": (Nc.win_rate, "necromancer")}
 
 
 def kill_round_distribution(mod, has_stance, mob_key, max_hp):
@@ -439,6 +504,128 @@ def equilibrium_check(mod, has_stance, mob_key, max_hp):
                 ok = False
         results[mob_name] = ok
     return results
+
+
+def defense_floor_sweep(mod, has_stance, mob_key, max_hp):
+    """The clean, policy-independent counterpart to equilibrium_check -- instead of "does net
+    HP ever go non-negative," this asks "at this starting HP, is there any hand this class
+    cannot survive against this mob, even played optimally." Sweeps every *whole-number*
+    starting HP from max_hp down to 1 -- the only HP values that can actually occur at a table,
+    since damage/block/heal are always integers.
+
+    **Corrected from an earlier, wrong version.** The original swept max_hp*(1.0, 0.5, 0.33,
+    0.2, 0.1) -- floating-point checkpoints, most of which are not integers at all (50% of
+    Paladin's 17 HP is 8.5; even even-HP classes hit fractional checkpoints at the 33/20/10%
+    marks). Every one of those non-integer checkpoints was checking a starting HP that could
+    never actually occur in the physical game -- exactly the "weird data" this project's own
+    discipline exists to catch, caught only after it had already been used to justify multiple
+    conclusions. `equilibrium_check` (above) already gets this right, via integer floor
+    division (`max_hp * 2 // 3`) -- this should have matched that convention from the start.
+    Now an exhaustive integer sweep instead of a handful of picked points, which also removes
+    any question of whether the chosen checkpoints were representative.
+
+    This never touches macro_sim.py's risk policy or trip simulation, which is exactly the
+    point: it's the metric to trust when comparing two card variants, because a macro-loop
+    aggregate (deaths/run, decay tier, Bag Upgrade timing) can look worse purely because a
+    card makes the class more efficient -- reaching the risk policy's one gamble trigger (a
+    quest-completing pull with no consumable left) more *often*, not because any single fight
+    got more dangerous. See MACRO_LOOP_GUIDE.md's "Clean vs. aggregate metrics" and
+    macro_sim.py's risk_exposure_report for the complementary throughput-side diagnostic.
+
+    Returns a list of dicts, one per integer HP from max_hp down to 1 (in that order): {hp,
+    avg_lethal_frac, worst_mob, worst_frac, per_mob: {mob_name: lethal_frac}}."""
+    results = []
+    for hp in range(int(max_hp), 0, -1):
+        per_mob = {}
+        total_lethal, total_hands = 0, 0
+        for mob_name in MOB_NAMES:
+            pattern, mob_hp = MOBS[mob_name][mob_key]
+            hands = mod.ALL_HANDS
+            lethal = sum(1 for hand in hands
+                         if _best_line(mod, has_stance, hand, pattern, mob_hp, hp)[2] <= 0)
+            per_mob[mob_name] = lethal / len(hands)
+            total_lethal += lethal
+            total_hands += len(hands)
+        worst_mob = max(per_mob, key=per_mob.get)
+        results.append(dict(hp=hp, avg_lethal_frac=total_lethal / total_hands,
+                             worst_mob=worst_mob, worst_frac=per_mob[worst_mob], per_mob=per_mob))
+    return results
+
+
+def defense_floor_break_points(mod, has_stance, mob_key, max_hp):
+    """Summary view of defense_floor_sweep: for each mob, the highest integer starting HP at
+    which at least one hand first becomes unsurvivable (None if the class never breaks, all
+    the way to HP=1). Lethal-hand-fraction is monotonic in HP (a hand that can't survive at
+    HP=X can't survive at any HP<X either, since nothing about the fight gets easier with less
+    HP) -- so the first hit scanning from max_hp downward is the actual break point, not just
+    *a* point where it's nonzero. This is the actionable number: "this class's floor breaks at
+    HP=X against mob Y," instead of requiring a human to scan the full per-HP table."""
+    sweep = defense_floor_sweep(mod, has_stance, mob_key, max_hp)  # already ordered high to low
+    break_points = {mob_name: None for mob_name in MOB_NAMES}
+    for row in sweep:
+        for mob_name in MOB_NAMES:
+            if break_points[mob_name] is None and row["per_mob"][mob_name] > 0:
+                break_points[mob_name] = row["hp"]
+    return break_points
+
+
+def defense_floor_report(mod, has_stance, mob_key, max_hp, label=None):
+    """Print wrapper: the break-point summary (see defense_floor_break_points). Quick per-class
+    orientation only -- for the actual locked methodology, use defense_floor_roster_table."""
+    break_points = defense_floor_break_points(mod, has_stance, mob_key, max_hp)
+    print(f"=== {label or mob_key}: defense floor break points (integer HP only) ===")
+    for mob_name in MOB_NAMES:
+        bp = break_points[mob_name]
+        print(f"  {mob_name:10s} breaks at HP={bp}" if bp is not None
+              else f"  {mob_name:10s} never breaks (clean down to HP=1)")
+    return break_points
+
+
+def defense_floor_roster_table(class_specs, top_hp=8):
+    """**The locked tool for defense-floor comparison across the roster** -- supersedes reading
+    mob-count alone (defense_floor_break_points), which was tried first and shown to be
+    misleading. class_specs: dict of {label: (mod, has_stance, max_hp)}.
+
+    Reports two numbers per class per HP, not one:
+    - mob-count (X/6): how many mobs have at least one lethal hand at this HP.
+    - total lethal hand-mob pairs (Y/90, out of 6 mobs x 15 hands): the actual count that
+      matters.
+
+    Why both, and why the second one is the real signal: with hand-draw uniform over 15 and
+    mob-draw uniform over the roster (confirmed -- MOB_TIER_WEIGHTS["standard"] has no
+    overrides, every mob draws with equal weight), a player's probability of dying this pull is
+    exactly total_pairs/90, full stop, regardless of whether those pairs are spread across many
+    mobs or concentrated in few. Mob-count alone made Rogue/Ranger look like a clearly worse
+    "wide and shallow" shape than e.g. Warrior's "narrow and deep" one -- but at HP=6 Warrior
+    and Rogue are exactly tied (8/90 each), and at HP=5 Warrior's total (19/90) is *higher* than
+    Rogue's (17/90) despite affecting half as many mobs. The player never chooses which mob
+    they face or which hand they draw, so breadth vs. depth carries no difference to actual risk
+    -- only the total does. (Real, softer caveat: breadth vs. depth may still be worth keeping
+    for table *feel* -- "constant faint risk from everything" reads differently than
+    "occasional real danger from two specific mobs" even at equal odds -- but that's a flavor
+    choice, not a balance signal.)
+
+    Prints a table, HP (top_hp down to 1) x class, each cell "mobs/6 (pairs/90)"."""
+    data = {}
+    for label, (mod, has_stance, max_hp) in class_specs.items():
+        sweep = defense_floor_sweep(mod, has_stance, label, max_hp)
+        per_hp = {}
+        for row in sweep:
+            n_mobs = sum(1 for f in row["per_mob"].values() if f > 0)
+            total_pairs = round(sum(row["per_mob"].values()) * 15)
+            per_hp[row["hp"]] = (n_mobs, total_pairs)
+        data[label] = per_hp
+
+    header = "HP  | " + " | ".join(f"{c:12s}" for c in class_specs)
+    print(header)
+    print("-" * len(header))
+    for hp in range(top_hp, 0, -1):
+        row = []
+        for label in class_specs:
+            n_mobs, total_pairs = data[label].get(hp, (0, 0))
+            row.append(f"{n_mobs}/6 ({total_pairs}/90)".center(12))
+        print(f"{hp:3d} | " + " | ".join(row))
+    return data
 
 
 MIN_CONFIDENT_SAMPLE = 5  # below this many real (non-vacuous) observed
@@ -931,11 +1118,16 @@ def tuning_report(label, mod, has_stance, mob_key, max_hp, max_hp_attr, run_trip
 
     full_diagnostic(label, mod, has_stance, mob_key, max_hp, max_hp_attr)
 
-    print("win rate per mob:")
+    has_effective = hasattr(mod, "effective_win_rate")
+    print("win rate per mob:" + (" (raw / draw-adjusted)" if has_effective else ""))
     for mob_name in MOB_NAMES:
         pattern, mob_hp = MOBS[mob_name][mob_key]
         rate = mod.win_rate(pattern, mob_hp, starting_hp=max_hp)
-        print(f"  {mob_name:10s} HP={mob_hp:2.0f} -> {rate:.1%}")
+        if has_effective:
+            eff_rate = mod.effective_win_rate(pattern, mob_hp, starting_hp=max_hp)
+            print(f"  {mob_name:10s} HP={mob_hp:2.0f} -> {rate:.1%} / {eff_rate:.1%}")
+        else:
+            print(f"  {mob_name:10s} HP={mob_hp:2.0f} -> {rate:.1%}")
 
     flee_rate, flee_margin = flee_preference(mod, has_stance, mob_key, max_hp)
     print(f"flee-preference: {flee_rate:.1%} (margin {flee_margin:.2f} HP)")
