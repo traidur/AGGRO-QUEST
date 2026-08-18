@@ -297,7 +297,6 @@ def run_trip_necromancer(rng, max_pulls=50, fixed_mob=None):
         hand = rng.choice(Nc.ALL_HANDS)
         seq, hp_left, rounds = Nc.best_line_for_hand(hand, pattern, mob_hp, starting_hp=hp)
         win, _, _ = Nc.simulate(seq, pattern, mob_hp, starting_hp=hp)
-        win, hp_left = Nc.draw_random_card(hand, seq, win, hp_left, pattern, mob_hp, hp, rng)
         hp = hp_left
         pulls += 1
         wins += 1 if win else 0

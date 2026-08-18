@@ -270,14 +270,17 @@ already-contested node draws fresh and blind, giving priority real stakes) and E
 into a zone's deck at known, printed odds. See `OPEN_QUESTIONS.md`'s "Zone-node mob dealing"
 entry for the full resolved design — don't confuse it with what's actually running today.
 
-**Inter-Zone travel via Border Nodes: settled in principle, mechanical detail still open.**
-Movement is free everywhere *within* a Zone, but moving between distinct Zones requires
-crossing a Border Node, which acts as a required combat toll check (a pull against that
-border's own mob/deck) rather than being free like internal movement. **Flight Paths** let a
+**Inter-Zone travel via Border Nodes, resolved.** Movement is free everywhere *within* a
+Zone, but moving between distinct Zones requires crossing a Border Node, which acts as a
+required combat toll — a **Scouted Pull** (draw 2 cards from the destination Zone's level
+deck, both revealed, choose one to fight) rather than being free like internal movement.
+Deliberately not a blind draw — see `OPEN_QUESTIONS.md`'s "Border Nodes and Scouted Pull"
+entry for the full resolved mechanic (turn structure, why the destination deck and not the
+zone being left, and how this reconciles with the zone-refresh rule). **Flight Paths** let a
 player spend Gold in Town to bypass a Border Node's toll entirely, commuting straight to
-another Zone instead. Neither the toll's exact composition nor the Flight Path's Gold cost is
-decided yet — `sim/macro_sim.py`'s own scope note already flags Border Toll travel as "not
-modeled at all." Not to be confused with the free intra-Zone movement above.
+another Zone instead — the Gold cost itself is still undecided. `sim/macro_sim.py`'s scope
+note still correctly flags Border Toll travel as "not modeled at all" (not yet built, though
+now fully specified). Not to be confused with the free intra-Zone movement above.
 
 **Starting loadout:** 2-slot Bag, 1 Food occupying slot 1, 0 Gold, 0 XP.
 

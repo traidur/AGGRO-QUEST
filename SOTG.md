@@ -53,6 +53,34 @@ Gold, trip chaining) — the macro loop is the real game; combat is the toll gat
 8. **`grants_range` evasion is no longer always-on.** Scout (Standard tier's 6th mob) is
    ranged — Wizard's and Ranger's evasion cards do nothing against it. Don't assume every
    mob is melee anymore; that assumption is stale as of Scout's addition.
+9. **Full-information solvability (the simulator can brute-force the optimal line for a
+   hand/mob pair) is not, by itself, evidence of a real tabletop fun problem.** Raised and
+   walked back at least twice in this project's history: treating "a computer can exhaustively
+   solve this" as inherently dangerous to player enjoyment, and reaching for mechanical
+   countermeasures (forced randomness, hidden information) as a fix, doesn't hold up against
+   real precedent — blackjack's basic strategy chart, poker hand-equity calculators, and
+   decades of published chess opening theory are all fully or near-fully solved, and none of
+   those games are considered broken for it. A player who brings a calculator to compute
+   optimal play every round has opted out of the intended experience voluntarily; that isn't a
+   design failure to defend against. The real, testable question is whether resolving a pull
+   by feel, without a tool, feels satisfying to a normal player — a playtesting question, not
+   something to preemptively engineer around with combinatorial scale or forced randomness.
+   (Necromancer's Death Pact — since reworked from a random draw into a deterministic
+   HP-for-damage trade, same name kept throughout, at the user's request over the "knowledge
+   debt"/"simulation debt" it cost being the only card in the roster on a genuinely different
+   rule — was a fine mechanic on its own merits either way; the point stands regardless of
+   which specific card illustrates it.)
+   **One real correction to the "small, memorizable space" framing, worth stating precisely
+   instead of re-guessing it later: starting HP is a genuine third variable, not just hand and
+   mob — the naive "15 hands x N mobs" count silently assumes full HP.** Checked directly
+   (swept every integer starting HP for every hand/mob pair, Necromancer): the optimal line
+   does shift with HP, but nowhere near once per HP value — mean 2.47 distinct optimal
+   sequences per (hand, mob) pair across all 14 possible starting HPs, median 2.0, and some
+   pairs use the exact same sequence at every HP from 1 to max with zero variation at all.
+   Consistent with the already-locked flee-preference finding that HP shifts only flip which
+   line is optimal near a specific threshold, not continuously. Real effect, real number to
+   cite (roughly ~2.5x the naive count, not ~14x and not 1x) — but still nowhere near enough
+   to change the conclusion above.
 
 ## Simulator gotchas
 
@@ -75,14 +103,16 @@ Gold, trip chaining) — the macro loop is the real game; combat is the toll gat
   alongside it, or just call `macro_sim.py`'s `compare_card_change`, which runs both and prints
   the correct verdict. See `MACRO_LOOP_GUIDE.md`'s "Clean vs. aggregate metrics" for the
   incident this came from.
-- **Necromancer's `win_rate()` is deliberately blind to its Death Pact draw mechanic — use
-  `effective_win_rate()` for the real picture.** It's the only class with genuine in-pull
-  randomness (which card gets drawn); every other tool in this codebase assumes full-
-  information deterministic play, so `best_line_for_hand` correctly never considers the
-  draw. Raw `win_rate` alone makes Necromancer look like a real outlier (86.7% vs. the
-  pack's 93.3% on its weak matchups) when the actual draw-adjusted number matches the roster
-  exactly. `tuning_report` prints both automatically for any class exposing
-  `effective_win_rate`.
+- **Necromancer no longer has any in-pull randomness.** Boneguard's Offering's Death Pact
+  was reworked from its original random-draw rule into a flat, deterministic "may lose 4 HP
+  to deal 3 extra damage" — same card name throughout, only the rule changed (don't call the
+  new version "Life Tap"; that name was used briefly mid-rework and rejected as AGGRO/WoW
+  source terminology already spoken for elsewhere). `win_rate`/`best_line_for_hand` need no
+  special-casing for it now, same as every other class. `effective_win_rate` and
+  `draw_random_card` no longer exist; don't reference them. If a future class ever needs
+  genuine in-pull randomness again, the split-tooling approach that supported Death Pact's
+  original draft is documented in `CLASS_BALANCE_GUIDE.md`'s "Necromancer, locked" section as
+  a starting point, but weigh it against the exact complexity cost that got this one reworked.
 
 ## Anti-patterns
 
@@ -106,7 +136,7 @@ Gold, trip chaining) — the macro loop is the real game; combat is the toll gat
 | Ranger | 15 | Beast Bond: Wolf — persistent multi-round Block (unique in this codebase); Positioning payoff reads whether the previous round granted Range |
 | Runecaster | 16 | Chain bonus (Lightning Bolt deals more if played right after Chain Lightning) + Echo (Earth Strike Rune's damage/heal partially repeats automatically next round, no card spent) |
 | Druid | 15 | Two mutually exclusive lines — Shapeshift: Grizzly boosts Maul/Swipe if played first, but cancels the Eclipse-stacking bonus (Solar Flare/Moonbeam/Nature's Wildguard) on any Eclipse card played after it |
-| Necromancer | 14 | Boneguard's Offering carries Death Pact — lose 2 HP before playing any card to draw one of your two undrawn deck cards, on the condition it's played somewhere this pull. Sowing Dread/Blight tag DOTs for Reap to pay off |
+| Necromancer | 14 | Boneguard's Offering carries Death Pact — may lose 4 HP to deal 3 extra damage when played. Sowing Dread/Blight tag DOTs for Reap to pay off |
 
 All 9 classes are now built. Druid, Rogue, Ranger, Runecaster, and Necromancer were all built
 through a fully user-driven iterative process, not an AI-first draft — see

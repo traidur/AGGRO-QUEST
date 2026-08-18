@@ -1,0 +1,174 @@
+:root {
+  --bg-color: #121212;
+  --panel-bg: rgba(30, 30, 30, 0.9);
+  --text-color: #E0E0E0;
+  
+  --card-w: 3.5in;
+  --card-h: 2.5in;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Barlow Condensed', sans-serif;
+  background: var(--bg-color);
+  color: var(--text-color);
+  min-height: 100vh;
+}
+
+/* UI Bar */
+.ui-bar {
+  background: var(--panel-bg);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid #333;
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+}
+
+.ui-left, .ui-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.filter-controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn {
+  background: #333; color: #fff; border: 1px solid #555; padding: 6px 12px;
+  border-radius: 4px; cursor: pointer; font-family: inherit; font-size: 14px;
+  font-weight: 600; transition: all 0.2s; text-transform: uppercase; letter-spacing: 0.5px;
+}
+.btn:hover { background: #444; }
+.btn.active { background: #E53935; border-color: #E53935; color: white; }
+.btn-primary { background: #2E7D32; color: white; border-color: #2E7D32; }
+.btn-primary:hover { background: #388E3C; }
+
+/* Print Sheets */
+.sheet-container { padding: 40px; display: flex; flex-direction: column; align-items: center; gap: 40px; }
+.sheet {
+  box-sizing: border-box; width: 8.5in; height: 11in; background: white; position: relative;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.6); display: grid; grid-template-columns: repeat(2, var(--card-w));
+  grid-template-rows: repeat(4, var(--card-h)); padding: 0.5in 0.75in; gap: 0; overflow: hidden; flex-shrink: 0;
+}
+
+.card-empty { width: var(--card-w); height: var(--card-h); border: 0.5pt dashed #ddd; }
+
+/* MOB CARDS */
+.mob-card {
+  width: var(--card-w); height: var(--card-h); display: flex; flex-direction: column;
+  position: relative; background: #fff; border: 0.5pt dashed #aaa;
+  color: #1a1a1a; overflow: hidden; font-family: 'Barlow Condensed', sans-serif;
+}
+
+/* Header */
+.mob-hdr {
+  display: flex; align-items: center; justify-content: center; height: 28pt;
+  position: relative; flex-shrink: 0; border-bottom: 2pt solid #1a1a1a;
+}
+.mob-name {
+  font-family: 'Cinzel', serif; font-weight: 700; font-size: 13pt;
+  color: #fff; text-shadow: 0 1pt 3pt rgba(0,0,0,0.8);
+  letter-spacing: 1px;
+}
+.mob-tier {
+  position: absolute; top: 4pt; left: 4pt;
+  background: rgba(0,0,0,0.5); border: 0.5pt solid rgba(255,255,255,0.3);
+  border-radius: 3pt; padding: 1pt 4pt; font-size: 6.5pt; font-weight: 700;
+  color: rgba(255,255,255,0.9); text-transform: uppercase;
+}
+
+/* HP Badge */
+.hp-badge {
+  position: absolute; top: 12pt; right: 6pt;
+  width: 30pt; height: 30pt; background: #fff;
+  border: 1.5pt solid #d32f2f; border-radius: 50%;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  box-shadow: 0 2pt 4pt rgba(0,0,0,0.3); z-index: 10;
+}
+.hp-label { font-size: 6pt; font-weight: 700; color: #d32f2f; letter-spacing: 0.5px; margin-bottom: -3pt; margin-top: 1pt;}
+.hp-val { font-size: 15pt; font-weight: 700; font-family: 'Cinzel', serif; color: #1a1a1a; }
+
+/* Art Zone */
+.art-zone {
+  flex: 1; background: #f0f0f0; border-bottom: 0.5pt solid #ccc;
+  display: flex; align-items: center; justify-content: center;
+  position: relative; overflow: hidden;
+}
+.art-placeholder {
+  font-family: 'Cinzel', serif; color: #ccc; font-size: 12pt; letter-spacing: 2px;
+}
+
+/* Portrait Spine */
+.mob-spine {
+  position: absolute;
+  left: 0; top: 0; bottom: 0; width: 30pt;
+  background: #1a1a1a;
+  display: flex; align-items: center; justify-content: center;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  color: #fff;
+  border-left: 1pt solid #444; /* Becomes the right border visually due to 180deg rotate */
+  box-shadow: inset 2pt 0 4pt rgba(0,0,0,0.5);
+  z-index: 5;
+}
+.spine-tier {
+  font-size: 6.5pt; color: #aaa; margin-bottom: 4pt;
+  text-transform: uppercase; font-weight: 700; letter-spacing: 1px;
+}
+.spine-name {
+  font-family: 'Cinzel', serif; font-size: 12pt; font-weight: 700;
+  letter-spacing: 1px; text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+}
+
+/* Ranged / Special Tag */
+.mob-type-tag {
+  position: absolute; bottom: 4pt; left: 36pt; /* Push past the wider spine */
+  font-size: 8pt; color: #555; letter-spacing: 1px; font-weight: 700; text-transform: uppercase;
+  background: rgba(255,255,255,0.8); padding: 1pt 4pt; border-radius: 2pt; border: 0.5pt solid #ccc;
+  z-index: 5;
+}
+
+/* Rounds Body (Horizontal Timeline) */
+.mob-body {
+  height: 45pt; display: flex; flex-direction: row; justify-content: space-between;
+  padding: 4pt 6pt; background: #fff; gap: 6pt; flex-shrink: 0;
+}
+
+.mob-round {
+  flex: 1; background: #fafafa; border: 0.5pt solid #ddd; border-radius: 3pt;
+  display: flex; flex-direction: column; align-items: stretch; overflow: hidden; height: 100%;
+}
+
+.round-num {
+  height: 14pt; background: #eee; color: #555;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9pt; font-weight: 700; font-family: 'Cinzel', serif;
+  border-bottom: 0.5pt solid #ddd; border-right: none;
+}
+
+.round-stats {
+  flex: 1; display: flex; justify-content: space-evenly; align-items: center;
+}
+
+.stat-box {
+  display: flex; align-items: center; gap: 4pt; font-size: 12pt; font-weight: 700;
+}
+.stat-dmg { color: #d32f2f; }
+.stat-blk { color: #1976d2; }
+
+@media print {
+  @page { margin: 0; size: letter; }
+  body { background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; }
+  .ui-bar { display: none; }
+  .sheet-container { padding: 0; gap: 0; }
+  .sheet { box-sizing: border-box; box-shadow: none; margin: 0; page-break-after: always; width: 8.5in; height: 11in; }
+}

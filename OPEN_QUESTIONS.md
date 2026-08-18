@@ -38,6 +38,44 @@ caught and flagged during the `DESIGN_DOC.md` rewrite/audit. If Wizard's actual 
 all-or-nothing outcome variance under condensed combat's real rules ever needs its own
 investigation, that's a fresh, unrelated question — see task #29.)*
 
+### Per-class matchup info for the hero tracker boards, and how it interacts with blind-refill risk
+
+**This information is meant to live on each hero's own tracker board** (the physical
+dial/board each player uses to track their own HP and whatever else is personal to their
+hero) — not a shared table reference, not printed once for the whole group.
+
+Per-class "Comfortable against: X, Y / Struggles against: Z, W" matchup text (top 2 / bottom
+2 mobs by cost%, uniform format for every class, leaves the middle 2 mobs deliberately
+unlabeled — see `CLASS_BALANCE_GUIDE.md`'s matchup-chart section and
+`sim/class_mob_matchup_chart.py` for the real numbers and reasoning behind why cost%, not
+win rate, and why 2/2 rather than 3/3 or a per-class-varying count). Real per-class content,
+e.g. Warrior favors Bruiser/Scout and struggles with Enforcer/Ambusher; Wizard's struggle
+list is Raider/Scout instead, tracing directly to its evasion tools doing nothing against
+Scout specifically.
+
+**A real strategic wrinkle surfaced discussing it, not yet evaluated or decided:** this
+interacts directly with the already-resolved blind-refill rule (see "Zone-node mob dealing"
+below) — whoever's second or later to a contested node that same round draws a fresh mob
+*blind*, losing the advance-information advantage that's this whole combat system's central
+premise. Since a class's "Comfortable against" mobs are exactly the ones that class's
+players most want to go fight, those are also the nodes most likely to attract contention —
+meaning always chasing your favored matchup is a bet on winning a race, not a safe default.
+The unlabeled *middle two* mobs may actually be the practically safer choice much of the
+time: nobody's board is pointing there specifically, so there's a real chance of arriving
+uncontested and keeping full information, traded against a merely-average matchup instead of
+a great one.
+
+Separately: since "struggles against" is far less differentiated across classes than
+"comfortable against" (Ambusher and Enforcer are the hardest matchup for 7 of 9 classes
+each, confirmed directly from the real cost% numbers), those specific nodes are probably
+close to permanently uncontested — worth considering whether they deserve an explicit reward
+bump, to make eating the worse matchup in exchange for guaranteed access and full
+information a genuinely attractive trade rather than just a fallback.
+
+Not evaluated: whether any of this changes the recommended board content itself, whether it
+needs an explicit printed callout anywhere, or whether it's fine left as emergent strategy
+for players to discover at the table without the game commenting on it directly.
+
 ## Resolved
 
 ### The Claim phase's failure mode (priority at a hot node)
@@ -68,10 +106,69 @@ memoryless draw does).
 **Deck composition, decided:** a literal finite deck, not the existing weighted-random
 system reused — 3 copies each of the 6 locked Standard-tier mobs (Grunt/Bruiser/Enforcer/
 Raider/Ambusher/Scout), 18 cards total (updated from an earlier 15-card/5-mob count, before
-Scout existed). Reshuffles the discard back in whenever it runs dry (possible mid-turn,
-since multiple heroes can pull multiple times before a turn ends) — never actually stays
-empty. See "Elite Spikes" below for how a zone's deck can extend past a pure single-tier
-pull.
+Scout existed). Reshuffles the discard back in whenever it runs dry — never actually stays
+empty. See "Elite Spikes" below for how the deck extends past a pure Standard pull.
+
+**Tier/level/zone structure, and the deck's actual scope, decided (this section originally
+described the deck as scoped to a single zone — corrected here, not left contradictory):**
+heroes progress through 3 tiers of 2 levels each (6 hero levels total). Tier 1 = Levels 1-2,
+using the 6 Standard mobs and 3 Elite mobs already locked. Each tier has 4 zones — 2 built
+for its lower level, 2 for its higher level. **No hard gate keeps a hero out of any zone at
+any level** — the only things steering them toward the right ones are the content actually
+being survivable and quests not sensibly pointing a low-level hero at high-level zones.
+**The deck is curated per level, not per zone — one shared deck for both zones at that
+level**, not four separate zone-specific decks per tier. This was a deliberate choice over
+letting the two zones at a level differ in mob-composition leaning (which would have created
+a genuine "which zone suits my class" pull, tying into the hero tracker board's Comfortable/
+Struggles matchup info two sections below) — rejected specifically for the admin overhead of
+authoring and maintaining 12 distinct deck recipes across the whole game (4 zones x 3 tiers)
+instead of 6 (2 levels x 3 tiers). The zone-vs-zone pull this would have created is
+considered adequately covered by loot already being sourced per-node instead (see below) —
+zones can still differ in what they reward, just not in what they contain.
+
+**Tier 1's actual two decks, worked example (ratios are the load-bearing number here, not
+the raw counts — see `sim/class_mob_matchup_chart.py`'s docstring reasoning for why cost%,
+not win rate, is what actually differentiates a class's real matchups):**
+- **Level 1 deck:** 18 Standard (3 each of the 6) + 0 Elite + 1 Spice card = 19 cards.
+  P(Spice on any single node-deal) = 1/19 (~5.3%). Zero Elites deliberately — Elites are
+  meant to read as a real, close-to-coinflip risk (the locked target from the Elite
+  derivation work), which doesn't belong in front of a hero still learning the base puzzle.
+- **Level 2 deck:** 18 Standard + 3 Elite (1 each of Bulwark/Berserker/Warlord) + 2 Spice
+  cards = 23 cards. P(Spice) = 2/23 (~8.7%), P(Elite) = 3/23 (~13.0%) per node-deal. Under
+  the full-refresh-every-turn rule below, an occupied Level 2 zone deals its full 4 nodes
+  fresh every turn, so expected Elite appearances per turn per occupied zone ≈ 4 x 3/23 ≈
+  0.52 — roughly one Elite showing up somewhere on that zone's board every other turn. If
+  both Level 2 zones happen to be occupied simultaneously, that's roughly one Elite per turn
+  across the level as a whole.
+- **"Deterministic Spice" is two different mechanisms, not one** (see that entry in
+  Unresolved, above): Loot Goblin and Gathering Nodes are real cards that belong in this
+  deck's card counts. The Roaming Threat ("Fel Reaver") is a separate physical token that
+  overrides whatever's dealt at the node it lands on — it is not part of deck composition
+  and doesn't factor into the ratios above.
+- **Not yet decided:** whether this exact 3-category structure (Standard/Elite/Spice, same
+  18-card Standard core, level-scoped deck) is meant to carry forward unchanged into Tier
+  2/3, with only the specific mob pools and ratios re-derived once those tiers exist, or
+  whether the structure itself should be revisited later. Treating the former as the working
+  assumption unless something concrete argues otherwise.
+
+**Turn phase order, decided:**
+1. **Deal.** Only zones with a hero currently present get dealt to — an unoccupied zone's
+   nodes aren't tracked or refreshed at all. Every node in an occupied zone gets a fresh
+   card from that level's shared deck, unconditionally (see step 5 — this is a full refresh
+   every turn, not a partial one).
+2. **Move and declare.** Every hero moves and declares their target node simultaneously (this
+   is also the resolution to the Claim-phase question above).
+3. **Resolve contested nodes.** Priority (First Player / rotating token) only matters where
+   two or more heroes land on the same node the same turn. Whoever's first sees the mob
+   already dealt there; whoever's second or later at that same node draws a fresh
+   replacement blind (see the blind-refill rule above).
+4. **Resolve pulls.** Each hero plays out their combat pull(s) against whatever's now sitting
+   at their declared node.
+5. **End-of-turn cleanup.** Every mob card currently on the board in an occupied zone goes to
+   discard — played or not, engaged or ignored. Nothing persists into next turn; a mob you
+   didn't get to this turn is simply gone, replaced by a fresh deal at step 1 next turn, not
+   held over. Discarded cards stay in discard until the deck runs dry and reshuffles, same as
+   any other card removed from the active deck.
 
 **Node refill, decided:** replace, not stack. A node always holds exactly one current mob;
 dealing a new one over an unclaimed mob simply replaces it. No node-congestion sub-system.
@@ -110,29 +207,31 @@ conditional rules. When two active quests share an eligible node and a kill happ
 the player chooses which quest's loot they receive — a real decision, and it interacts
 usefully with the existing 2-slot Bag capacity squeeze (pick whichever you need more of).
 
-**Elite Spikes, and zone decks as an explicit recipe rather than a raw tier pull, decided:**
+**Elite Spikes, and level decks as an explicit recipe rather than a raw tier pull, decided:**
 mob tiers are scoped by level (e.g. a "Tier 1 Standard" pool, eventually a "Tier 1 Elite"
-pool once Spike-tier mobs exist, then Tier 2 versions of both later). A zone's actual deck
-is its own authored recipe built from those pools, not just "draw from one tier" -- e.g. a
-Tier 1 zone's deck could be "18-card Tier 1 Standard + 2-3 Tier 1 Elite" shuffled together,
-rather than pure Standard. This replaces treating `MOB_TIERS`'s two pools as the only unit a
-node can draw from; the deck-building step itself becomes the authored content, of which a
-pure-Standard deck is just the simplest case. **Zone deck composition (how many of each
-mob, including how many Elites) is public knowledge** -- printed on the zone, not hidden --
-so contesting a node with Elites mixed in is a calculable risk, not a blind unknown, matching
-how risk is handled everywhere else in this project.
+pool once Spike-tier mobs exist, then Tier 2 versions of both later). A level's actual deck
+is its own authored recipe built from those pools, not just "draw from one tier" -- see the
+worked Tier 1 example above (18 Standard + 0/3 Elite + 1/2 Spice, level-scoped, shared by
+that level's 2 zones) for the concrete numbers. This replaces treating `MOB_TIERS`'s two
+pools as the only unit a node can draw from; the deck-building step itself becomes the
+authored content, of which a pure-Standard deck is just the simplest case. **Deck
+composition (how many of each mob, including how many Elites) is public knowledge** --
+printed at the level, not hidden -- so contesting a node with Elites mixed in is a
+calculable risk, not a blind unknown, matching how risk is handled everywhere else in this
+project.
 
-**Blind refills draw from the full zone deck, Elites included -- no special-case exception.**
-An earlier draft (from an external design pass) proposed Elites could never be drawn on a
-blind refill, redirected to a held state instead -- rejected as unnecessary complexity once
-traced through: it would have needed a new card-lifecycle state (where does a skipped Elite
-go, is it visible before its deferred deal, does it override the node's normal next-turn
-deal) with no clean answer to any of those questions. The simpler rule needs none of that
-machinery: a blind refill is just a real draw from the whole deck, and `macro_sim.py`'s
-existing `_pull_exceeds_risk` risk-tolerance check already covers the consequence -- a
-player (or the simulated agent) who doesn't like the zone's known Elite odds simply declines
-to contest that node this turn, exactly like any other lethal-pull decision already modeled.
-Nothing new to build here beyond not carving Elites out of the pool.
+**Blind refills draw from the full level deck, Elites included -- no special-case
+exception.** An earlier draft (from an external design pass) proposed Elites could never be
+drawn on a blind refill, redirected to a held state instead -- rejected as unnecessary
+complexity once traced through: it would have needed a new card-lifecycle state (where does
+a skipped Elite go, is it visible before its deferred deal, does it override the node's
+normal next-turn deal) with no clean answer to any of those questions. The simpler rule
+needs none of that machinery: a blind refill is just a real draw from the whole deck, and
+`macro_sim.py`'s existing `_pull_exceeds_risk` risk-tolerance check already covers the
+consequence -- a player (or the simulated agent) who doesn't like the level's known Elite
+odds simply declines to contest that node this turn, exactly like any other lethal-pull
+decision already modeled. Nothing new to build here beyond not carving Elites out of the
+pool.
 
 **Blocked on task #20 (deriving Spike-tier mob stats) for real validation.** The whole
 premise -- that facing an Elite on a blind pull is a real, playable-around gamble rather
@@ -149,8 +248,88 @@ rejected held-Elite exception was originally trying to prevent, and needs revisi
 
 Not yet built — this is a real addition to the macro-loop engine (zone/node state, turn-based
 dealing logic, deck-recipe authoring), sized more like a new subsystem than a parameter
-change. No task tracked for the build yet; Elite Spikes specifically are additionally
-blocked on task #20.
+change. The rules themselves are now specified in enough detail to build from (tier/level/
+zone structure, deck composition and ratios for Tier 1, the full turn-phase sequence) — what
+remains is implementation, not further design decisions, for everything except Tier 2/3's
+actual numbers (blocked on those tiers' mob pools not existing yet) and Elite Spikes'
+survival-rate validation (blocked on task #20). No task tracked for the build yet.
+
+### Border Nodes and Scouted Pull
+
+Resolves `DESIGN_DOC.md`'s previously-open "Inter-Zone travel via Border Nodes" note and
+`sim/macro_sim.py`'s "Border Toll travel isn't modeled at all" scope gap. A Border Node sits
+between two adjacent Zones and is the only way to move between them — movement is free
+everywhere *within* a Zone, crossing *between* Zones is not.
+
+**Turn structure, decided:** moving onto a Border Node is a hero's entire turn, and the toll
+(Scouted Pull, below) resolves immediately as part of that same turn. The following turn, the
+hero standing on the border decides to either continue into the new Zone or retreat back to
+the one they came from — a pure decision, no second toll. The toll is paid once, on arrival,
+never repeated just for lingering at the border.
+
+**Scouted Pull, the toll mechanic, decided — deliberately named and defined as the opposite
+of the existing Blind Refill rule at contested nodes, not a variant of it.** Blind Refill
+(whoever's second to a contested node this turn) stays exactly as it was: a true forced
+single draw, zero preview, zero choice — that's what gives losing the priority race real
+stakes, and diluting it into a multi-card choice would remove the entire reason the rule
+exists. Scouted Pull is the opposite on purpose: draw 2 cards from the **destination** Zone's
+level deck (not the Zone being left), reveal both face-up, the hero chooses which one to
+fight. Fully visible, a real choice — not blind at all, hence the different name. The
+unchosen card goes to discard, same as any other card leaving the active deck unplayed; it
+does not go back into the deck to be reshuffled in immediately.
+
+**Scouted Pull only happens if the destination Zone is currently unoccupied — precisely
+stated, not just implied.** If the Zone a hero is crossing into already has another hero in
+it, its 4 nodes are already dealt and visible for real, unrelated reasons (the normal
+occupied-zone refresh) — the crossing hero just chooses from what's already sitting there,
+no separate draw at all. Drawing a fresh Scouted Pull on top of an already-populated Zone
+would be pure waste, generating new information when real information already exists.
+Scouted Pull exists specifically to cover the case where there's nothing on the board yet to
+choose from — it's the minimal mechanism for that one case, not a general rule that applies
+to every border crossing regardless of Zone state.
+
+**Multiplayer contention, decided — a hero arriving via a Border Node always resolves after
+a Zone's existing residents, not alongside them as an equal:**
+- **Destination Zone already occupied, real contention over its nodes that turn:** heroes
+  already resident in that Zone declare and resolve their node choice first. A hero arriving
+  fresh via the border that same turn picks only after all of them, from whatever's left
+  over — in a 4-player game, if 3 of a Zone's 4 nodes are already claimed by residents'
+  declarations, the border-arriving hero simply takes the 1 remaining node, no real choice
+  left. Declaring itself still happens simultaneously for everyone (unchanged from the
+  existing turn-order rule above) — this only changes the order contention actually
+  *resolves* in, not when people announce their intent.
+- **Multiple heroes arriving via the border at the same already-occupied Zone
+  simultaneously:** among themselves (after residents have already resolved), they're
+  ordered by the same First Player / rotating-token priority system used for any other node
+  contention — not a separate border-specific mechanism.
+- **Multiple heroes arriving via the border at the same currently-*unoccupied* Zone
+  simultaneously:** no priority ordering needed at all. Each does their own independent
+  Scouted Pull — there's nothing pre-existing to contend over, and Scouted Pull is a
+  personal draw against the shared level deck, not a shared, contested pool. Two heroes
+  drawing Scouted Pulls back to back off the same deck is just two ordinary sequential
+  draws, nothing special needed beyond that.
+
+**Why the destination Zone's deck, not the Zone being left:** a direct expression of this
+project's "no hard gate, difficulty itself is the gate" philosophy (see the Tier/level/zone
+structure above) — the toll uses a real sample of what's actually ahead, not a familiar fight
+from where the hero already stands.
+
+**Reconciling this with "a hero on a Border Node forces mob card refreshing on both zones"
+(stated when the zone-dealing rules above were being written) — Scouted Pull is that
+refresh for the destination Zone's side, not an addition on top of it.** Traced directly
+against a solo-play sequence before landing here: if a hero alone crosses toward an
+untouched Zone, and Scouted Pull's 2 cards were treated as separate from also fully
+populating that Zone's real 4-node set, the destination Zone would get dealt a full 4 cards
+on arrival (discarded at end of turn under the full-refresh rule), then dealt 4 more the
+following turn just for lingering at the border before a decision is even made — up to 8
+cards dealt and mostly discarded to support one crossing. Scouted Pull is the entire
+mechanism for representing an unoccupied destination Zone while a hero is merely at the
+border, not yet inside it — its real 4-node set doesn't get separately populated until the
+hero actually commits to entering. Confirmed directly: this reconciliation is correct, not
+just a plausible-sounding synthesis.
+
+Not yet built. Flight Path's Gold cost (the way to skip a Border Node's toll entirely,
+purchased in Town) remains undecided.
 
 ### Co-op multi-hero vs. Elite/multi-mob nodes (a "Hogger battle")
 

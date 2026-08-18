@@ -32,7 +32,7 @@ IDENTITY = {
     "Ranger": "Beast Bond: Wolf grants persistent Block every round for the rest of the pull once played. Sniper/Point Blank Shot rewards having granted At Range the previous round.",
     "Runecaster": "Lightning Bolt rewards playing it right after Chain Lightning. Earth Strike Rune's damage and heal partially echo automatically at the start of the next round, no card spent.",
     "Druid": "Two mutually exclusive lines. Shapeshift: Grizzly boosts Maul/Swipe if played first, but cancels the Eclipse-stacking bonus (Solar Flare/Moonbeam/Nature's Wildguard) on any Eclipse card played after it.",
-    "Necromancer": "Sowing Dread and Blight tag DOTs for Reap to pay off. Boneguard's Offering carries Death Pact: lose 2 HP before playing any card to draw one of your two undrawn deck cards, on the condition Boneguard's Offering itself is played somewhere this pull.",
+    "Necromancer": "Sowing Dread and Blight tag DOTs for Reap to pay off. Boneguard's Offering carries Death Pact: may lose 4 HP to deal 3 extra damage when played.",
 }
 
 HP = {
@@ -212,6 +212,8 @@ def _druid_lines():
 def _necromancer_lines():
     lines = []
     for name, c in Nm.CARDS.items():
+        if name == Nm.BONEGUARD_OFFERING_BOOSTED:
+            continue  # internal solver variant, not a real drawable card -- folded into Boneguard's Offering's own line below
         parts = []
         if c["dmg"]:
             parts.append(f"{c['dmg']} DMG.")
@@ -228,10 +230,8 @@ def _necromancer_lines():
         if c["killing_blow"]:
             parts.append("If this attack kills the mob, its attack this round is prevented.")
         if name == Nm.BONEGUARD_OFFERING:
-            parts.append("Death Pact: before playing any card this pull, you may lose 2 HP to draw one "
-                         "of the two cards not currently in your hand into your hand. If you do, "
-                         "Boneguard's Offering must be one of the three cards you play this pull "
-                         "(any round, any order).")
+            parts.append(f"Death Pact: when you play this card, you may lose {Nm.HP_FOR_DMG_COST} HP "
+                         f"to deal {Nm.HP_FOR_DMG_BONUS} extra DMG.")
         lines.append((name, " ".join(parts), f"Aggro {c['aggro']}"))
     return lines
 
@@ -278,6 +278,12 @@ def _tags(card):
         tags.append("COMBO")
     if card.get("echo_dmg") or card.get("echo_heal"):
         tags.append("ECHO")
+    if card.get("tag") == "shapeshift":
+        tags.append("SHAPESHIFT")
+    if card.get("tag") == "eclipse":
+        tags.append("ECLIPSE")
+    if card.get("dot"):
+        tags.append("DOT")
     return tags
 
 

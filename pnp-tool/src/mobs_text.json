@@ -1,0 +1,182 @@
+[
+  {
+    "name": "Grunt",
+    "tier": "Standard",
+    "hp": 7,
+    "type": "melee",
+    "pattern": [
+      [
+        2,
+        0
+      ],
+      [
+        3,
+        2
+      ],
+      [
+        3,
+        0
+      ]
+    ]
+  },
+  {
+    "name": "Bruiser",
+    "tier": "Standard",
+    "hp": 10,
+    "type": "melee",
+    "pattern": [
+      [
+        2,
+        0
+      ],
+      [
+        2,
+        0
+      ],
+      [
+        5,
+        0
+      ]
+    ]
+  },
+  {
+    "name": "Enforcer",
+    "tier": "Standard",
+    "hp": 6,
+    "type": "melee",
+    "pattern": [
+      [
+        5,
+        2
+      ],
+      [
+        3,
+        0
+      ],
+      [
+        4,
+        2
+      ]
+    ]
+  },
+  {
+    "name": "Raider",
+    "tier": "Standard",
+    "hp": 5,
+    "type": "melee",
+    "pattern": [
+      [
+        3,
+        2
+      ],
+      [
+        4,
+        0
+      ],
+      [
+        5,
+        1
+      ]
+    ]
+  },
+  {
+    "name": "Ambusher",
+    "tier": "Standard",
+    "hp": 8,
+    "type": "melee",
+    "pattern": [
+      [
+        4,
+        1
+      ],
+      [
+        4,
+        0
+      ],
+      [
+        2,
+        0
+      ]
+    ]
+  },
+  {
+    "name": "Scout",
+    "tier": "Standard",
+    "hp": 8,
+    "type": "ranged",
+    "pattern": [
+      [
+        2,
+        0
+      ],
+      [
+        3,
+        0
+      ],
+      [
+        4,
+        0
+      ]
+    ]
+  },
+  {
+    "name": "Bulwark",
+    "tier": "Elite",
+    "hp": 12,
+    "type": "melee",
+    "pattern": [
+      [
+        3,
+        1
+      ],
+      [
+        4,
+        0
+      ],
+      [
+        6,
+        0
+      ]
+    ]
+  },
+  {
+    "name": "Berserker",
+    "tier": "Elite",
+    "hp": 12,
+    "type": "melee",
+    "pattern": [
+      [
+        6,
+        0
+      ],
+      [
+        6,
+        0
+      ],
+      [
+        3,
+        0
+      ]
+    ]
+  },
+  {
+    "name": "Warlord",
+    "tier": "Elite",
+    "hp": 12,
+    "type": "melee",
+    "pattern": [
+      [
+        5,
+        0
+      ],
+      [
+        4,
+        0
+      ],
+      [
+        5,
+        0
+      ]
+    ]
+  }
+]

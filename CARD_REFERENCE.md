@@ -125,32 +125,32 @@ Generated directly from each class's real `CARDS` dict in `sim/condensed_<class>
 
 *Two mutually exclusive lines. Shapeshift: Grizzly boosts Maul/Swipe if played first, but cancels the Eclipse-stacking bonus (Solar Flare/Moonbeam/Nature's Wildguard) on any Eclipse card played after it.*
 
-**Shapeshift: Grizzly** -- 2 DMG. 3 Block. Maul/Swipe played in a later round gain +1 DMG/+1 Block. Cancels the Eclipse-stacking bonus on any Eclipse-tagged card played in a later round. (Aggro 4)
+**Shapeshift: Grizzly** [SHAPESHIFT] -- 2 DMG. 3 Block. Maul/Swipe played in a later round gain +1 DMG/+1 Block. Cancels the Eclipse-stacking bonus on any Eclipse-tagged card played in a later round. (Aggro 4)
 
-**Maul** -- 2 DMG. 2 Block. +1 DMG and +1 Block if Shapeshift: Grizzly was played in an earlier round this pull. (Aggro 0)
+**Maul** [SHAPESHIFT] -- 2 DMG. 2 Block. +1 DMG and +1 Block if Shapeshift: Grizzly was played in an earlier round this pull. (Aggro 0)
 
-**Swipe** -- 3 DMG. +1 DMG and +1 Block if Shapeshift: Grizzly was played in an earlier round this pull. (Aggro 0)
+**Swipe** [SHAPESHIFT] -- 3 DMG. +1 DMG and +1 Block if Shapeshift: Grizzly was played in an earlier round this pull. (Aggro 0)
 
-**Solar Flare** -- 5 DMG. +1 DMG per other Eclipse-tagged card played in an earlier round this pull (voided if Shapeshift: Grizzly has already been played). (Aggro 0)
+**Solar Flare** [ECLIPSE] -- 5 DMG. +1 DMG per other Eclipse-tagged card played in an earlier round this pull (voided if Shapeshift: Grizzly has already been played). (Aggro 0)
 
-**Moonbeam** -- 5 DMG. Heal 1 HP. +1 DMG per other Eclipse-tagged card played in an earlier round this pull (voided if Shapeshift: Grizzly has already been played). (Aggro 0)
+**Moonbeam** [ECLIPSE] -- 5 DMG. Heal 1 HP. +1 DMG per other Eclipse-tagged card played in an earlier round this pull (voided if Shapeshift: Grizzly has already been played). (Aggro 0)
 
-**Nature's Wildguard** -- Heal 2 HP. 2 Block. +1 Heal per other Eclipse-tagged card played in an earlier round this pull (voided if Shapeshift: Grizzly has already been played). (Aggro 0)
+**Nature's Wildguard** [ECLIPSE] -- Heal 2 HP. 2 Block. +1 Heal per other Eclipse-tagged card played in an earlier round this pull (voided if Shapeshift: Grizzly has already been played). (Aggro 0)
 
 
 ## Necromancer (HP 14)
 
-*Sowing Dread and Blight tag DOTs for Reap to pay off. Boneguard's Offering carries Death Pact: lose 2 HP before playing any card to draw one of your two undrawn deck cards, on the condition Boneguard's Offering itself is played somewhere this pull.*
+*Sowing Dread and Blight tag DOTs for Reap to pay off. Boneguard's Offering carries Death Pact: may lose 4 HP to deal 3 extra damage when played.*
 
-**Boneguard's Offering** [AT RANGE] -- 2 Block. Grants At Range this round (evades a melee mob's attack). Death Pact: before playing any card this pull, you may lose 2 HP to draw one of the two cards not currently in your hand into your hand. If you do, Boneguard's Offering must be one of the three cards you play this pull (any round, any order). (Aggro 0)
+**Boneguard's Offering** [AT RANGE] -- 2 Block. Grants At Range this round (evades a melee mob's attack). Death Pact: when you play this card, you may lose 4 HP to deal 3 extra DMG. (Aggro 0)
 
 **Soul Harvest** -- 3 DMG. Heal 2 HP. (Aggro 0)
 
-**Sowing Dread** [AT RANGE] -- 2 DMG. Grants At Range this round (evades a melee mob's attack). (Aggro 0)
+**Sowing Dread** [AT RANGE | DOT] -- 2 DMG. Grants At Range this round (evades a melee mob's attack). (Aggro 0)
 
 **Reap** -- 3 DMG. +1 DMG per DOT-tagged card played in an earlier round this pull. (Aggro 0)
 
-**Blight** [ECHO] -- 3 DMG. At the start of the next round, automatically deal 3 more DMG (no card spent). (Aggro 0)
+**Blight** [ECHO | DOT] -- 3 DMG. At the start of the next round, automatically deal 3 more DMG (no card spent). (Aggro 0)
 
 **Death Blow** [KILLING BLOW] -- 4 DMG. If this attack kills the mob, its attack this round is prevented. (Aggro 0)
 

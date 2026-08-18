@@ -1030,63 +1030,81 @@ cards: Boneguard's Offering (Death Pact rider), Soul Harvest, Sowing Dread, Reap
 Death Blow -- see `condensed_necromancer.py`'s module docstring for the full source-to-kit
 translation history and mechanic writeup, kept there rather than duplicated here.
 
-**The central problem this class posed, different in kind from anything built before it:
-Death Pact needed real in-pull randomness, which nothing else in this codebase has ever
-had.** Every existing tool (win_rate, damage_floor_ceiling, defense_floor_sweep, the whole
-chained-trip machinery) depends on full-information, deterministic solving -- the only
-randomness anywhere else in the project is which 4-of-6 hand gets drawn at the start of a
-pull. A card that changes *what's available to sequence* mid-pull doesn't fit that model at
-all. The resolution, worth generalizing to any future class that needs something similar:
-**split the tooling, don't force one function to serve both purposes.** The exact solver
-(`best_line_for_hand`) stays fully deterministic and simply never considers the draw --
-correct, not a workaround, since a coin-flip outcome can't be part of a "certain" line. The
-draw only becomes real inside the chained-trip Monte Carlo simulation, which already rolls
-real dice for hand/mob draws, so it's the one place genuine randomness can live without
-touching anything else. A new function, `effective_win_rate`, exists specifically so the
-draw's real impact doesn't vanish from the standard reports just because the deterministic
-tools are (correctly) blind to it -- see below.
+**Boneguard's Offering's Death Pact rider originally drew one of your two undrawn deck
+cards, genuinely random which -- the one mechanic in this codebase that ever needed real
+in-pull randomness -- since reworked into a flat, deterministic "may lose 4 HP to deal 3
+extra damage," at the user's explicit request. The name stays Death Pact throughout; only the
+rule changed** ("Life Tap" was used as a working name mid-rework and rejected -- it's AGGRO/
+WoW source terminology already spoken for elsewhere, not free for reuse here). The original
+draft worked and was fully validated (see below for its numbers, kept as a record of what the
+rework replaced), but the user flagged it directly as unwanted complexity on two fronts:
+**knowledge debt** (the one card in the entire 9-class roster that behaved on a fundamentally
+different rule than every other card -- a player has to learn a special exception just for
+this one class) and **simulation debt** (the one class needing its own separate solver path:
+`best_line_for_hand` had to exclude it, `draw_random_card` had to carry real randomness
+inside the chained-trip Monte Carlo layer, `effective_win_rate` had to exist solely to show
+what raw `win_rate` couldn't see). Both concerns were correct and the mechanic was reworked,
+not just re-tuned. The theme (a Necromancer trading HP for power) carries over unchanged --
+and stays genuinely unique in this roster even in its new form, since no other class has an
+optional, in-the-moment, resource-for-effect trade with no setup or counter required -- only
+the specific mechanism, and the architecture it required, did not survive.
 
-**Both the mechanic's shape and its gamble policy were wrong on the first pass, and both
-were caught by direct measurement, not intuition -- two separate, real corrections:**
-- **Shape:** the first version required Boneguard's Offering to be played *before* the drawn
-  card, which could then only fill a *later* round. Checked directly: this made the draw
-  provably unable to ever rescue a losing hand (0/60 hand/mob cases where any possible draw
-  outcome could flip a loss to a win). Root cause, found by comparing the drawn hand against
-  the same 5 cards freely available from the start: the winning line for the rescuable cases
-  plays the drawn card (Blight) *first*, landing its Echo tick in the same round as a second
-  attacker's payoff -- a line the "must play Boneguard's Offering first" rule could never
-  reach. Fix: decouple the draw from Boneguard's Offering's own round entirely. Committing to
-  Death Pact is now a pre-round choice (2 HP paid immediately), and the only ongoing
-  constraint is that Boneguard's Offering must be *somewhere* among the three cards played --
-  any round, any order. This alone converted the previously-unrescuable cases into clean wins.
-- **Policy:** the first gamble policy ("draw whenever the deterministic line isn't already
-  winning") was measured directly across 3000 chained trips: 65% of all gambles were taken
-  at hero HP<=3, where the flat 2 HP cost alone is often close to fatal regardless of what
-  gets drawn, and the flip-to-win rate across ~2600 real gambles taken was under 1%. Fix:
-  gamble only if the deterministic line doesn't win AND the worse of the two possible drawn
-  cards' full simulated outcome still keeps the hero alive. This alone moved the flip rate
-  from 0.8% to 2.0% and every chained-trip number closer to the pack, before the shape fix
-  above closed the rest of the gap.
+**Death Pact's original draft (kept for the record, since the general lesson -- split the
+tooling, don't force one function to serve both purposes -- may matter again for a future
+class):** the exact solver (`best_line_for_hand`) stayed fully deterministic and simply never
+considered the draw -- correct, not a workaround, since a coin-flip outcome can't be part of a
+"certain" line. The draw only became real inside the chained-trip Monte Carlo simulation. Two
+real corrections were made before it was ever locked: the first version required Boneguard's
+Offering to be played *before* the drawn card, measured directly to make the draw provably
+unable to rescue any losing hand (0/60 cases) until decoupled into a free pre-round choice;
+and the first gamble policy ("draw whenever not already winning") was measured to gamble 65%
+of the time at hero HP<=3 with under a 1% flip-to-win rate, fixed by only gambling when the
+worse possible draw still keeps the hero alive. Its final validated numbers: win rate 100%
+(Grunt/Raider/Ambusher/Scout), 86.7% raw / 93.3% draw-adjusted (Bruiser/Enforcer), chained
+trip pulls=5.56/wins-per-trip=4.21/wins-per-pull=75.7%.
 
-**`effective_win_rate`, and why raw `win_rate` alone would have been actively misleading
-here.** Once the mechanic and policy were both fixed, raw `win_rate` still read 86.7% on
-Bruiser/Enforcer -- a real-looking outlier below the pack's typical 93.3%, since `win_rate`
-is correctly blind to the draw by construction. Direct check: both of Bruiser's and both of
-Enforcer's losing hands turn out to be rescued by exactly a 50% chance of drawing Blight,
-landing at a true 93.3% once accounted for -- matching the rest of the roster exactly, not
-an outlier at all. `condensed_trip.py`'s shared `tuning_report` now checks whether a class
-module exposes `effective_win_rate` and, if so, prints both numbers side by side
-automatically (zero change to any other class's output, since none of them expose it) --
-built specifically so this finding is part of the standard report going forward, not
-something that has to be manually rediscovered the next time the cards change.
+**The reworked Death Pact's numbers were derived, not guessed, the same way every other
+class's tuning lever is checked in this project.** Implemented as a second, deterministic
+virtual card variant (`BONEGUARD_OFFERING_BOOSTED`) added to `orderings()` alongside the base
+card whenever Boneguard's Offering is in the hand -- the same shape Warrior's Guardian/
+Champion stance duality already uses, no special-casing needed anywhere. A sweep of every
+(cost, bonus) pair found the damage bonus is the only lever that affects single-pull win rate
+-- cost 1-5 all produced identical results for a given bonus, since neither of the class's
+known weak matchups (Bruiser, Enforcer) are HP-starved, only damage-starved at full HP.
+Bonus=3 exactly reproduces 93.3%, the same number the original draft's draw-adjusted rate
+already validated -- not a step up in power, a deterministic way to hit the identical target
+(bonus=4 overshoots to 100%, stronger than the class was ever tuned to be). Cost was then
+found from the chained-trip picture, where HP compounds across pulls: cost 1-3 push every
+chained-trip metric out of the pack's range, cost=5 sits with comfortable margin under the
+pack's ceiling, cost=4 lands exactly at the pack's current maximum (tied with Druid on pulls
+survived) with zero margin. **Cost=4 was chosen over cost=5 deliberately, for table feel** --
+the user's call, made explicitly aware of the tighter margin: "4 HP for 3 damage doesn't read
+as bad a trade" the way 5-for-3 does, and the numbers didn't force one answer since both are
+legitimately in-range.
 
-**Locked, validated:** `NECROMANCER_HP = 14`. Damage floor/ceiling 9/14, matching the pack's
-normal band on both ends. Win rate 100% (Grunt, Raider, Ambusher, Scout), 86.7% raw / 93.3%
-draw-adjusted (Bruiser, Enforcer) -- the draw-adjusted number is the one that actually
-matches the roster. Defense floor strong across the board, best-in-roster (0/90) at HP=6 and
-HP=7. Equilibrium clean. No hidden-domination flags. Chained trip: pulls=5.56, wins/trip=
-4.21, wins/pull=75.7%, all three inside the pack's range (5.12-5.68 / 3.83-4.34 /
-73.9-78.4%). macro_sim.py compatibility confirmed via `run_one_trip`.
+**Two things checked directly before locking this in, since a flat damage-for-HP trade could
+plausibly interact with round-ending or killing-blow mechanics in a way the win/loss numbers
+alone wouldn't show:**
+- **Does the boost let a fight end a round early (skip round 3, a bigger effect than a simple
+  win/loss flip, since `simulate()` exits the instant mob HP hits 0)?** Checked exhaustively
+  across every hand/mob pair that normally takes the full 3 rounds: filtering to cases where
+  the boosted card is genuinely played (not just sitting unused in a round-3 slot that never
+  resolves because the fight already ended -- an artifact that produced a misleading "9 tied"
+  result on the first pass, caught and corrected before writing this down), the boost never
+  lets a fight end early *and* come out ahead. Every genuine case is strictly worse than
+  playing the full 3 rounds, at both cost=4 and cost=5, zero exceptions (0 better, 0 tied, 14
+  worse each).
+- **Is the boost actually meaningful, not decorative or dominant?** The solver picks it in 3
+  of 60 hand/mob pairs containing Boneguard's Offering at cost=4 -- the exact case that flips
+  the previously-losing Death Blow hand into a win on Bruiser/Enforcer, not something never
+  worth taking or worth taking everywhere.
+
+**Locked, validated:** `NECROMANCER_HP = 14`. Win rate 100% (Grunt, Raider, Ambusher,
+Scout), 93.3% (Bruiser, Enforcer) -- one real number now, matching the draw-adjusted rate
+Death Pact already validated, no raw/adjusted split needed. Chained trip: pulls~5.68,
+wins/trip~4.31, wins/pull~75.9%, all three inside the pack's range (5.13-5.68 / 3.84-4.33 /
+74.1-78.3%), pulls sitting at the pack's current maximum by deliberate choice (see above).
+macro_sim.py compatibility confirmed via `run_one_trip`.
 
 ## Retired roster, and mobs are derived by brute force now, not hand-designed
 

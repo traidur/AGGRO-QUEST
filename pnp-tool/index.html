@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>QUEST PnP Hub</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Crimson+Pro:wght@400;600;700&family=Barlow+Condensed:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+      :root {
+        --bg-color: #121212;
+        --text-color: #E0E0E0;
+      }
+      
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      
+      body {
+        font-family: 'Barlow Condensed', sans-serif;
+        background: var(--bg-color);
+        color: var(--text-color);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: radial-gradient(circle at center, #2a2a2a 0%, #0a0a0a 100%);
+      }
+      
+      h1 {
+        font-family: 'Cinzel', serif;
+        font-size: 48px;
+        font-weight: 700;
+        letter-spacing: 4px;
+        color: #fff;
+        text-shadow: 0 4px 12px rgba(0,0,0,0.8);
+        margin-bottom: 10px;
+        text-transform: uppercase;
+      }
+      
+      p.subtitle {
+        font-family: 'Crimson Pro', serif;
+        font-size: 20px;
+        color: #aaa;
+        margin-bottom: 60px;
+        letter-spacing: 1px;
+      }
+      
+      .cards-container {
+        display: flex;
+        gap: 40px;
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+      
+      .nav-card {
+        width: 300px;
+        height: 400px;
+        background: #1a1a1a;
+        border: 1px solid #333;
+        border-radius: 12px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-decoration: none;
+        color: #fff;
+        transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+        position: relative;
+        overflow: hidden;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      }
+      
+      .nav-card::before {
+        content: '';
+        position: absolute;
+        top: 0; left: 0; right: 0; height: 6px;
+      }
+      
+      .nav-card.heroes::before { background: linear-gradient(90deg, #c79c6e, #f58cba, #69ccf0); }
+      .nav-card.mobs::before { background: linear-gradient(90deg, #800000, #ff4444); }
+      
+      .nav-card:hover {
+        transform: translateY(-10px);
+        box-shadow: 0 20px 40px rgba(0,0,0,0.8);
+        border-color: #555;
+      }
+      
+      .icon {
+        font-size: 72px;
+        margin-bottom: 24px;
+        filter: drop-shadow(0 4px 8px rgba(0,0,0,0.5));
+      }
+      
+      .nav-title {
+        font-family: 'Cinzel', serif;
+        font-size: 28px;
+        font-weight: 700;
+        letter-spacing: 2px;
+        margin-bottom: 12px;
+      }
+      
+      .nav-desc {
+        font-family: 'Crimson Pro', serif;
+        font-size: 16px;
+        color: #999;
+        text-align: center;
+        padding: 0 30px;
+        line-height: 1.4;
+      }
+      
+      .nav-card.heroes:hover .nav-title { color: #fdf5ec; }
+      .nav-card.mobs:hover .nav-title { color: #ffcccc; }
+    </style>
+  </head>
+  <body>
+    <h1>QUEST</h1>
+    <p class="subtitle">Print-and-Play Production Tool</p>
+    
+    <div class="cards-container">
+      <a href="/heroes.html" class="nav-card heroes">
+        <div class="icon">🛡️</div>
+        <div class="nav-title">Hero Deck</div>
+        <div class="nav-desc">Print the 8 hero classes, complete with dynamic layouts, badges, and split cards.</div>
+      </a>
+      
+      <a href="/mobs.html" class="nav-card mobs">
+        <div class="icon">🐉</div>
+        <div class="nav-title">Mob Deck</div>
+        <div class="nav-desc">Print the Standard and Elite mob encounters with round-by-round trackers.</div>
+      </a>
+    </div>
+  </body>
+</html>

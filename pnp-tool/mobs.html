@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>QUEST Mobs Print Tool</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Crimson+Pro:wght@400;600;700&family=Barlow+Condensed:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/src/mobs.css">
+  </head>
+  <body>
+    <div class="ui-bar" id="uiBar">
+      <div class="ui-left">
+        <h1 style="color: white; font-family: 'Cinzel', serif; margin-right: 20px; font-size: 16pt;">QUEST Mobs</h1>
+        <div id="filterControls" class="filter-controls">
+          <button class="btn btn-filter active" data-tier="all">All</button>
+          <button class="btn btn-filter" data-tier="Standard">Standard</button>
+          <button class="btn btn-filter" data-tier="Elite">Elite</button>
+        </div>
+        <div id="multiplierControls" style="display: flex; gap: 12px; margin-left: 20px; align-items: center;">
+          <label style="color: #fff; font-size: 14px; font-weight: bold; font-family: 'Barlow Condensed', sans-serif;">COPIES:</label>
+          <label style="color: #ccc; font-size: 12px; display: flex; align-items: center; gap: 4px; font-family: 'Barlow Condensed', sans-serif;">
+            Standard <input type="number" id="qtyStandard" value="1" min="0" max="10" style="width: 40px; background: #333; color: white; border: 1px solid #555; border-radius: 4px; padding: 2px 4px;">
+          </label>
+          <label style="color: #ccc; font-size: 12px; display: flex; align-items: center; gap: 4px; font-family: 'Barlow Condensed', sans-serif;">
+            Elite <input type="number" id="qtyElite" value="1" min="0" max="10" style="width: 40px; background: #333; color: white; border: 1px solid #555; border-radius: 4px; padding: 2px 4px;">
+          </label>
+        </div>
+      </div>
+      <div class="ui-right">
+        <a href="/" class="btn" style="text-decoration: none; margin-right: 12px; background: #37474F;">Home</a>
+        <a href="/heroes.html" class="btn" style="text-decoration: none; margin-right: 12px; background: #37474F;">Hero Deck</a>
+        <button class="btn btn-primary" onclick="window.print()">Print Mobs</button>
+      </div>
+    </div>
+    <div class="sheet-container" id="sheetsContainer"></div>
+    <script type="module" src="/src/mobs.js"></script>
+  </body>
+</html>
