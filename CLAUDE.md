@@ -23,6 +23,7 @@ instead of writing a new diagnostic script from scratch.**
 | `DESIGN_DOC.md` | **The current rulebook.** Mirrors AGGRO's own Core design doc structure — numbered current rules, a trailing Designer's Notes section pointing to the process docs below for derivation history, and a live Open Design Questions section. Authoritative over any other doc for "what are the current rules" if anything disagrees. |
 | `DECK_CONDENSING_GUIDE.md` | Process doc for translating an AGGRO class's kit into a legal 6-card condensed kit — read this before `CLASS_BALANCE_GUIDE.md` when building a brand-new class. |
 | `CLASS_BALANCE_GUIDE.md` | Process doc for per-pull card/mob balance — how to balance a class once its 6-card kit already exists, the diagnostic toolkit, methodology. |
+| `LEVELING_GUIDE.md` | Process doc for the hero power curve across levels — how a class should get stronger leveling up, the required validation checks (cost%, pulls-before-death), how to generate valid upgrade cards. Not yet applied to real card numbers for any class. |
 | `MACRO_LOOP_GUIDE.md` | Process doc for the Town/Bag/Quest/Gold layer — how the reward formulas, risk policy, and pricing were derived and validated. |
 | `OPEN_QUESTIONS.md` | Design tensions and unresolved mechanics, with a Resolved section for settled ones and their reasoning. |
 | `CONDENSED_COMBAT.md` | The condensed per-pull combat model itself. |

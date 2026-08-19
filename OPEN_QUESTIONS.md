@@ -29,6 +29,86 @@ are (no diagnostic run, no "does this actually fix task #28's repetition problem
 discussion of whether it fits the game's existing texture). Treat as a starting point for that
 conversation, not a queued build.
 
+**Second brainstorm pass: 8 more Spice concepts, deliberately meant as rare rule-breakers, not
+held to the usual validation bar.** Unlike a core mechanic that fires every node every turn,
+these are meant to be occasional exceptions — user's stated intent is something like 1-3 of
+them showing up total across Levels 1-2, which already lines up with the locked deck math (1
+Spice slot at Level 1 + 2 at Level 2 = 3 total Spice appearances per tier) rather than fighting
+it. That framing is why several of the concerns raised below were explicitly walked back from
+"needs full derivation/validation before this can be trusted" to "fine as an intentional,
+rarely-seen exception" — the stakes of an occasional table-level event being slightly
+class-asymmetric are much lower than a repeated mob or card value being off. Still audited
+directly rather than accepted at face value; real gaps found and either ruled on directly or
+left open below.
+
+- **The Insurance Broker (Death Protection).** Non-combat, pay 3 Gold, keep the card. If you
+  hit 0 HP that trip: discard this card, respawn in Town, Bag does *not* lock, active quests
+  take the normal 1-stage trip decay instead of the 2-stage death decay. **Ruled: the
+  corpse-recovery forced pull is also skipped entirely** — since nothing locks, there's nothing
+  to physically retrieve. The 3 Gold cost itself hasn't been checked against real death/decay
+  rates the way every other economy lever in this project has (see `MACRO_LOOP_GUIDE.md`'s
+  16-Gold quest-reward derivation for the standard this should eventually meet).
+- **The Secret Tunnel (Toll Bypass).** Non-combat. Claiming this node lets you immediately
+  resolve a pull at any node in an adjacent Zone, fully bypassing the Border Node's Scouted
+  Pull toll; counts as your single pull for the turn. **Ruled: scoped to any zone, any node —
+  not restricted to unoccupied destinations the way Scouted Pull itself is.** This means it can
+  sometimes outperform a paid Flight Path outright (no toll, no travel turn, and if the
+  neighboring zone is occupied, a free pick from its already-visible nodes). Accepted
+  deliberately given rarity — Flight Path's value proposition is read as speed/convenience, not
+  exclusive access, so occasional overlap is fine.
+- **The Treasure Map (Specific Routing Reward).** Non-combat, keep the card on claim. Printed
+  with a specific Zone/Node. Next successful combat pull there: discard for 1x Wildcard Loot.
+  Flee or death there: keep the Map. **Ruled: does not occupy a Bag slot** — held state
+  separate from loot, no competition with the existing 2-slot squeeze.
+- **The Board Sweep (The Reset).** Non-combat. Claiming this node discards all face-up cards on
+  the other 3 nodes in the Zone, deals 3 fresh cards from the Zone Deck, and lets you
+  immediately claim and pull one of those fresh nodes. **Ruled: resolves before any pulls
+  happen that turn, and any hero on a node affected by the sweep may change their already-
+  declared target if they wish** — protects against Board Sweep silently invalidating another
+  hero's locked-in choice with no recourse, given "move and declare" is normally simultaneous
+  for everyone in a zone.
+- **The "DPS Dummy" (The Armor Check).** Combat. 14 HP, 0 ATK all 3 rounds — a pure damage-race
+  mob where Block/heal cards are dead draws. Fail to kill in 3 rounds: it flees *and* steals 1
+  Gold or 1 Loot from the Bag. Kill it: premium loot. **Not yet checked: class symmetry** — do
+  all 9 classes' 3 highest-damage cards actually clear 14 in 3 rounds. Deferred as a
+  verification task, not a design decision, until this mob's real tier placement and final
+  numbers exist (currently no numbers exist to check against, unlike Healing Spring below).
+- **The "Modifier" Suite (Grafted Mechanics).** Not mobs — modifiers. **Ruled: when a Modifier
+  card is drawn/dealt, the drawer learns immediately that whatever mob is drawn next belongs to
+  that Modifier** (the Modifier is revealed before the mob underneath it, not paired secretly).
+  **Ruled: no stacking** — if a second Modifier would land on an already-Modified node, discard
+  it instead. Four variants: *Enrage* (+1 ATK every round, drops double loot on kill),
+  *Fortified* (+3 HP, drops 1 Gold on kill), *Trap* (2 unmitigated DMG before Round 1 begins,
+  drops 1 Gold on kill), *Bounty* (+2 XP on kill, no combat change at all — doesn't actually
+  need the "deal an extra card" machinery the other three do, and probably reads better as its
+  own simple card, closer in shape to Loot Goblin, than as a fourth Modifier variant).
+- **The Shrine of Knowledge (Hand Sculpting).** Non-combat. Look at the top 3 cards of your
+  6-card class deck, set 1 aside, shuffle the rest back in. Your next combat pull draws that
+  set-aside card plus 3 random draws. This genuinely breaks the "deck fully resets every pull,
+  15 equally-likely hands" invariant every exact-solver tool in this codebase depends on — but
+  **deliberately not held to that bar, given how rarely this fires: a manual, table-level event,
+  not a repeated system, so no dedicated solver mode is planned or needed for it.** Worth a
+  quick hand-check per class if it ever gets built, but not permanent tooling investment.
+- **The Healing Spring (The Gamble).** Non-combat, push-your-luck heal. Safe Play: flat Heal 2
+  HP. Gamble: draw 4 of your 6-card deck; discard a card with the Heal or Block keyword to Heal
+  4 HP (heal 0 if you can't), then shuffle. **Checked directly against every class's real
+  `CARDS` dict, not assumed** (an earlier pass of this same check had a real bug — Warrior's
+  block values live in per-stance `(G, C)` tuples, not a flat `block` key the way every other
+  class stores them, which silently produced a false "Warrior 0%" result before being caught
+  and corrected against the actual printed card text): success odds range from 66.7% (Ranger;
+  also Warrior specifically while locked into Champion stance) to 100% (Cleric, Paladin, Druid,
+  and Warrior while locked into Guardian stance) — a real spread, but nobody's mathematically
+  locked out of the Gamble ever succeeding. **Two rulings still open, not yet decided:** (a)
+  Warrior's own odds swing 33 points depending on which stance is locked that pull, since two
+  of its three Block-bearing cards read 0 Block specifically in Champion stance — does "has the
+  keyword" ignore current stance, or only count if the stance you're actually in shows a
+  nonzero value; (b) three cards carry only a conditional or triggered Heal/Block rather than a
+  flat guaranteed base value (Cleric's Smite, via its automatic Sacred Balance heal; Paladin's
+  Invocation of Grace, whose heal scales off STRIKE cards already played; Ranger's Beast Bond:
+  Wolf, which activates a *future* persistent Block rather than an immediate one) — does the
+  keyword count if it's conditional, or only if it's guaranteed on that card regardless of
+  circumstance.
+
 *(Items 2-5 previously here — Rest vs. Claim structure, Winded-trigger rule, Wizard outcome
 variance under the Cast Penalty, ranged-mob-never-engages — all referenced a Winded/OOM +
 Cast Penalty + Engagement system that was cut entirely, not deferred, once condensed combat and

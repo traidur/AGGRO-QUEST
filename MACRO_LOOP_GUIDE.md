@@ -198,6 +198,88 @@ all four classes. This is the tool that produced every number in the Gold-formul
 above. Re-run it whenever `required` options, the mob roster, or the risk policy change --
 don't hand-guess a new curve.
 
+## Bag Tetris revision -- colored quest tokens, Food/Potion repricing, and the bugs found tuning it
+
+Locked this session, replacing the previous "one open Bag slot, any mix of loot, Food closes
+it" model entirely. Started from a user design pass questioning whether that model's decision
+depth was real, checked piece by piece against the actual mechanics rather than accepted on
+narrative logic alone.
+
+**Loot representation was the first real problem, not the last.** The initial proposal was a
+single generic Quest Loot token, disambiguated by sitting next to its quest card rather than
+by a printed zone name -- clean on paper, but traced through and found to break Bag Tetris's
+whole premise: if a token's identity is tracked by *position next to the quest card*, it isn't
+simultaneously occupying a Bag slot, which means loot stops competing with consumables for
+space -- the entire tension Bag Tetris (`CONDENSED_COMBAT.md`, `INSPIRATIONS.md`) exists to
+create. **Fix: colored tokens instead of positioned ones.** Each quest gets a color; loot for
+that quest is a token of matching color, placed in an empty Bag slot. Color and slot position
+now encode two independent things (which quest, and how much Bag capacity it costs) instead of
+forcing one position to carry both -- the token still fully competes with consumables for
+space, same as before.
+
+**Slots hold any mix of colors, deliberately not restricted to one color per slot -- a real
+design correction, not an oversight left uncaught.** An earlier pass of this same idea
+(including once already written into the docs before being caught) assumed same-color-only
+per slot, reasoning it would keep each slot's contents legible at a glance. That's wrong for a
+reason that has nothing to do with legibility: each Node maps to one specific quest's color
+(`waystation`->Pilfered Goods, `cove`->Syndicate Ledger, etc.), so a same-color-only rule would
+tie a player's *node choice* to their *current Bag state* -- already having Bag progress in one
+color would quietly discourage pulling at a different, better-matchup node, since the
+resulting token couldn't share space with what's already there. That directly undercuts the
+"Comfortable against / Struggles against" hero-board routing this project already built
+(`class_mob_matchup_chart.py`) -- the whole point of that system is letting a player route
+toward favorable matchups turn to turn, and Bag-color purity has no business constraining that
+choice. Mixed colors keep node choice (about the mob) and Bag capacity (about token count)
+fully independent, which is what they should always have been.
+
+**Stacking cap of 3, derived against the real quest table, not picked.** Checked every cap
+from 1 to 5+ against the locked `required` values (2/3/4/5) and Bag size 2: cap=1 or 2 make
+Stolen Signet (`required=5`) mathematically impossible to ever complete, regardless of trips
+taken -- the Bag can never hold enough tokens at once. Cap=3 is the smallest limit where every
+quest stays completable, and it produces real, escalating tension rather than flattening it:
+the two smaller quests coexist with a consumable in the other slot, the two bigger ones force
+giving that slot up entirely. Cap=4+ makes that sacrifice disappear for all but the single
+biggest quest -- a much weaker version of the same tension.
+
+**Food's slot-close was cut after being traced mechanically, not by feel.** Isolated its one
+real effect (separate from healing): capping how much of *one* quest's loot could stack in a
+slot, nudging toward diversification. It did not motivate a Town return -- HP and having no
+more Food already forced that, with or without the close. With Bag size 2 already forcing a
+near-trivial diversification choice on its own, the effect wasn't worth the extra rule a new
+player has to learn. Cut. This reopened a real gap, though: Food's whole distinction from
+Potion had been "pay more for less healing to avoid the close penalty" -- remove the penalty
+and Food becomes strictly better on both price and healing, making Potion dead content.
+
+**Fix: reprice both, and let Potion stack.** Food 2G->4G (still an uncapped full heal, never
+stacks). Potion 4G->3G (still a flat 8 HP heal, but now **up to 2 can share one Bag slot**).
+For the same one slot: one big guaranteed reset (Food) vs. two smaller heals at a lower total
+Gold-per-slot (Potion) -- a real trade-off restored, not a narrative one.
+
+**Validated with `decay_report` (the same 500-trial/20-trip-chain methodology already used for
+the risk-policy lock above), and two real bugs were caught in the process, not just a pricing
+check:**
+1. A genuine **deadlock**: the bag-stuck recovery path only knew how to free a slot by eating
+   Food. Once Potions could stack and fill both slots, a `potion_only` hero with no Food could
+   get permanently stuck, unable to collect any loot ever again for the rest of that trip.
+   Every class showed 100% "nothing"-tier decay for `potion_only` before this was caught --
+   fixed by letting the recovery path drink a Potion as a last resort too.
+2. An **unfair policy comparison**: the first restocking pass let `potion_only` greedily fill
+   *both* Bag slots with Potions, unlike `food_only`, which only ever holds one Food and always
+   keeps a slot free for loot. Capped `potion_only` to one Potion-stack slot, matching Food's
+   own restocking behavior -- this, not the pricing, was the actual fix for the 100%-nothing
+   result.
+3. Also caught in passing, unrelated to pricing: `_trip_chain` (the real chained-trip entry
+   point behind `decay_report`) never actually seeded the documented free starting Food --
+   trip 1 of every chain silently began with an empty Bag. Fixed.
+
+**Post-fix result, all 9 classes:** Food and Potion strategies both clearly and consistently
+beat doing nothing, and neither dominates the other -- 6 classes come out ahead on Potion, 3 on
+Food, none badly in either direction. A real, healthy choice, not a trap.
+
+**Bag size stays explicitly open.** The proposal that started this (2 -> 4) is not locked --
+flagged as the one lever here that needs its own back-solved derivation, the same way the
+16-Gold Bag Upgrade price got one, rather than a number chosen by feel.
+
 ## Not yet done
 
 - **Player-chosen quest pool.** `active_quests` is still randomly sampled by the sim
@@ -205,4 +287,6 @@ don't hand-guess a new curve.
   reward math above is ready for this, the selection mechanic itself isn't built.
 - **Node-difficulty as a second axis** (some nodes predetermined harder, independent of
   `required`) -- blocked on Spike-tier mobs, which are still empty/deferred.
-- **Potion pricing vs. Food** -- never tuned against the new quest economy above.
+- **Bag size derivation.** Currently 2 (unchanged); whether it should move, and to what,
+  needs the same back-solved treatment the Bag Upgrade price and the Bag Tetris revision
+  above got, not a guessed number.

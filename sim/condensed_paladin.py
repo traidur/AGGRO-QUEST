@@ -36,15 +36,22 @@ PALADIN_HP = 17  # locked: settled at Warrior-1 after the Sacred Light/HP dial-b
 # dmg/heal/block are flat, unconditional base values. strike=True marks the
 # two cards the Invocation bonus chain keys off. invocation={"sanctuary",
 # "grace",None} marks the two Invocation cards.
+# grants_aura_block: only ever True for the leveled-up "Invoking Aura of
+# Sanctuary" swap-in (see LEVELING_GUIDE.md) -- False on every real, locked
+# card here, pure schema addition, no-op against this file's own baseline.
+# When the active (first-played) Invocation has this set, the existing
+# per-STRIKE dmg bonus (retroactive on this card's own play, forward on
+# every later STRIKE this pull) is mirrored 1:1 in Block -- even on a STRIKE
+# card that doesn't normally have any Block of its own.
 # aggro: co-op Party Pull targeting value (0-4), locked via direct user
 # review -- see OPEN_QUESTIONS.md's "Co-op multi-hero vs. one Elite" entry.
 CARDS = {
-    "Might of the Aegis":     dict(dmg=4, heal=0, block=2, strike=True,  invocation=None, aggro=4),
-    "Bastion's Hammer":       dict(dmg=6, heal=0, block=0, strike=True,  invocation=None, aggro=2),
-    "Sacred Light":           dict(dmg=0, heal=3, block=0, strike=False, invocation=None, aggro=2),
-    "Holy Fortress":          dict(dmg=2, heal=0, block=4, strike=False, invocation=None, aggro=4),
-    "Invocation of Sanctuary": dict(dmg=3, heal=0, block=0, strike=False, invocation="sanctuary", aggro=3),
-    "Invocation of Grace":     dict(dmg=4, heal=0, block=0, strike=False, invocation="grace", aggro=3),
+    "Might of the Aegis":     dict(dmg=4, heal=0, block=2, strike=True,  invocation=None, aggro=4, grants_aura_block=False),
+    "Bastion's Hammer":       dict(dmg=6, heal=0, block=0, strike=True,  invocation=None, aggro=2, grants_aura_block=False),
+    "Sacred Light":           dict(dmg=0, heal=3, block=0, strike=False, invocation=None, aggro=2, grants_aura_block=False),
+    "Holy Fortress":          dict(dmg=2, heal=0, block=4, strike=False, invocation=None, aggro=4, grants_aura_block=False),
+    "Invocation of Sanctuary": dict(dmg=3, heal=0, block=0, strike=False, invocation="sanctuary", aggro=3, grants_aura_block=False),
+    "Invocation of Grace":     dict(dmg=4, heal=0, block=0, strike=False, invocation="grace", aggro=3, grants_aura_block=False),
 }
 DECK = list(CARDS.keys())
 
@@ -61,6 +68,7 @@ def simulate(seq_cards, mob_pattern, mob_hp, starting_hp=PALADIN_HP):
     strikes_played = 0  # count of STRIKE cards played so far this pull
     invocation_played = False  # True once EITHER Invocation card has been played
     active_invocation = None  # "sanctuary" / "grace" / None -- only ever set by the FIRST Invocation played; drives the forward-looking bonus on later STRIKE cards
+    active_grants_aura_block = False  # set from the active Invocation's own card entry; see grants_aura_block note above CARDS
 
     for rnd in range(3):
         card_name = seq_cards[rnd]
@@ -73,8 +81,11 @@ def simulate(seq_cards, mob_pattern, mob_hp, starting_hp=PALADIN_HP):
             else:
                 invocation_played = True
                 active_invocation = card["invocation"]
+                active_grants_aura_block = card["grants_aura_block"]
                 if active_invocation == "sanctuary":
                     dmg += strikes_played  # +1 dmg per STRIKE already played -- only for the first Invocation played
+                    if active_grants_aura_block:
+                        block += strikes_played  # +1 block per STRIKE already played, mirrors the dmg bonus
                 else:
                     heal += strikes_played  # +1 heal per STRIKE already played -- only for the first Invocation played
 
@@ -82,6 +93,8 @@ def simulate(seq_cards, mob_pattern, mob_hp, starting_hp=PALADIN_HP):
             strikes_played += 1
             if active_invocation == "sanctuary":
                 dmg += 1  # forward-looking bonus from an already-active Invocation of Sanctuary
+                if active_grants_aura_block:
+                    block += 1  # forward-looking block bonus, mirrors the dmg bonus -- applies even if this STRIKE card has no Block of its own
             elif active_invocation == "grace":
                 heal += 1  # forward-looking bonus from an already-active Invocation of Grace
 

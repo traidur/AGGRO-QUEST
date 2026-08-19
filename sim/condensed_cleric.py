@@ -36,12 +36,12 @@ SACRED_BALANCE_HEAL = 1  # automatic heal on playing Smite
 # aggro: co-op Party Pull targeting value (0-4), locked via direct user
 # review -- see OPEN_QUESTIONS.md's "Co-op multi-hero vs. one Elite" entry.
 CARDS = {
-    "Void Mark":         dict(dmg=3, heal=0, block=0, sacred_balance=False, max_hp_buff=0, aggro=1),
-    "Smite":             dict(dmg=5, heal=0, block=0, sacred_balance=True,  max_hp_buff=0, aggro=2),
-    "Call of the Void":  dict(dmg=6, heal=0, block=0, sacred_balance=False, max_hp_buff=0, aggro=3),
-    "Cleansing Barrier": dict(dmg=3, heal=0, block=5, sacred_balance=False, max_hp_buff=0, aggro=1),
-    "Fiery Fortitude":   dict(dmg=3, heal=2, block=0, sacred_balance=False, max_hp_buff=2, aggro=2),
-    "Heal":              dict(dmg=0, heal=3, block=0, sacred_balance=False, max_hp_buff=0, aggro=3),
+    "Void Mark":         dict(dmg=3, heal=0, block=0, sacred_balance=False, max_hp_buff=0, echo_dmg=0, aggro=1),
+    "Smite":             dict(dmg=5, heal=0, block=0, sacred_balance=True,  max_hp_buff=0, echo_dmg=0, aggro=2),
+    "Call of the Void":  dict(dmg=6, heal=0, block=0, sacred_balance=False, max_hp_buff=0, echo_dmg=0, aggro=3),
+    "Cleansing Barrier": dict(dmg=3, heal=0, block=5, sacred_balance=False, max_hp_buff=0, echo_dmg=0, aggro=1),
+    "Fiery Fortitude":   dict(dmg=3, heal=2, block=0, sacred_balance=False, max_hp_buff=2, echo_dmg=0, aggro=2),
+    "Heal":              dict(dmg=0, heal=3, block=0, sacred_balance=False, max_hp_buff=0, echo_dmg=0, aggro=3),
 }
 DECK = list(CARDS.keys())
 
@@ -56,9 +56,20 @@ def simulate(seq_cards, mob_pattern, mob_hp, starting_hp=CLERIC_HP):
     hp = starting_hp
     hp_cap = CLERIC_HP
     remaining_mob_hp = mob_hp
+    pending_echo_dmg = 0
 
     for rnd in range(3):
         card = CARDS[seq_cards[rnd]]
+        mob_atk, mob_block = mob_pattern[rnd]
+
+        # A DOT card's echo from last round -- resolves before this round's own card,
+        # reduced by this round's mob Block same as any other damage source. Ported
+        # directly from condensed_necromancer.py's Blight/condensed_runecaster.py's Earth
+        # Strike Rune -- same field, same resolution order, not a new mechanic shape.
+        if pending_echo_dmg:
+            remaining_mob_hp -= max(0.0, pending_echo_dmg - mob_block)
+        pending_echo_dmg = 0
+
         dmg, heal, block = card["dmg"], card["heal"], card["block"]
         if card["sacred_balance"]:
             heal += SACRED_BALANCE_HEAL
@@ -66,12 +77,13 @@ def simulate(seq_cards, mob_pattern, mob_hp, starting_hp=CLERIC_HP):
         hp_cap += card["max_hp_buff"]  # raises the ceiling only -- does not add its own separate HP on top of heal
         hp = min(hp_cap, hp + heal)  # heal resolves first, now capped at the (possibly raised) max HP
 
-        mob_atk, mob_block = mob_pattern[rnd]
         dmg_dealt = max(0.0, dmg - mob_block)
         remaining_mob_hp -= dmg_dealt
 
         dmg_taken = max(0.0, mob_atk - block)
         hp -= dmg_taken
+
+        pending_echo_dmg = card["echo_dmg"]
 
         if hp <= 0:
             return False, hp, rnd + 1

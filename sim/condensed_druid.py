@@ -84,6 +84,49 @@ no longer hidden-domination-flagged. Nature's Wildguard's unplayed rate 35.6%, d
 
 **Not yet done:** Aggro values (placeholder 0 below except Grizzly's given 4) -- assigned per
 this project's standard build order, after balance lock, not before.
+
+**Fixed a real macro-loop underperformance, found via the same investigation that fixed
+Rogue/Ranger (2026-08-19), but a genuinely different shape.** Druid sat dead last in the roster
+on Gold-at-a-fixed-XP-checkpoint (18.5, vs. Paladin's 23.8). A forced-curve test (substituting
+Paladin's own defense-floor lookup into Druid's risk-gate decisions while leaving its real
+combat untouched) came back flat -- Gold was identical either way (18.5 exactly), while
+deaths/run jumped 0.000 -> 0.700. That's a different signature from Rogue/Ranger's fix (which
+both showed a small Gold gain alongside their death spike): it proves Druid's defense-floor
+crack (HP=7 vs. Enforcer, both lethal hands missing Nature's Wildguard) is real and dangerous,
+but is *not* the cause of the low Gold ranking -- the risk gate was never the bottleneck here.
+
+Traced the real cause via segment-level tracing (pulls between Food-eats/town, matching the
+same instrumentation built for Rogue/Ranger): Druid gets fewer pulls per segment than Paladin
+(3.59 vs. 3.99) and wins slightly less often within them (96.5% vs. 97.3%) -- two modest gaps
+compounding, not one sharp break. Traced further to the actual damage array: floor 9 (tied with
+Paladin) but ceiling only 14 (vs. 15) and mean 11.60 (vs. 12.67) -- Druid's whole distribution
+sits about a point lower across most hands, not just at the extremes. The specific driver: the
+low-damage hand clusters (9/10/11) are dominated by three cards tied at 7-of-9 hands each
+(Shapeshift: Grizzly, Maul, Swipe -- the entire Shapeshift line) plus Nature's Wildguard
+(0 base damage, in 7-of-9) -- the Eclipse line (Solar Flare/Moonbeam, flat 5 base each) only
+appears in 4-of-9. A genuine, structural power gap between the two lines, not one weak card.
+
+**Locked: Shapeshift: Grizzly's bonus changed from a flat +1 DMG/+1 Block (triggered once
+Grizzly has been played) to a stacking +1 DMG/+1 Block per Shapeshift-tagged card already
+played this pull** (still gated on Grizzly having been played first, same as before -- only
+the flat-vs-stacking shape changed). Verified via hand-trace: Grizzly -> Maul -> Swipe now
+deals 2 + 3 + 5 = 10 total (was 2 + 3 + 4 = 9), since Swipe now benefits from *both* Grizzly and
+Maul having gone before it, not just a fixed +1. Damage floor rose 9 -> 10, mean 11.60 -> 11.67,
+stdev tightened 1.67 -> 1.58. Clean diagnostic throughout: equilibrium clear, no real
+hidden-domination pairs. Gold-at-24XP 18.5 -> 20.6, quests/trip 1.91 -> 1.97, deaths/run held
+at 0.000 -- climbed from dead last in the 9-class roster to 6th, ahead of Runecaster/Warrior/
+Wizard, though still trailing Paladin/Rogue/Ranger/Necromancer/Cleric.
+
+**Explicitly not fully closed, and correctly so** -- the defense-floor crack at HP=7 did not
+move (still 3/90 lethal vs. Enforcer), because the new Block bonus only ever applies to
+Shapeshift-tagged cards, and both lethal hands' actual death round lands on an Eclipse card
+(Moonbeam or the missing Solar Flare), which never receives any Block from this mechanic by
+design -- traced precisely: in `(Shapeshift: Grizzly, Swipe, Solar Flare, Moonbeam)` at HP=7
+vs. Enforcer, the losing line's round-3 Moonbeam takes Enforcer's full 4 ATK unmitigated and
+the hero dies the same instant the mob would have too (hero-death checked before mob-death in
+`simulate()`, so an exact tie goes against the player). The fix closed the *offense* gap that
+was actually driving Gold; the separate, still-open defense-floor gap was deliberately left
+for a future pass rather than papered over with an unrelated lever.
 """
 import itertools
 
@@ -115,6 +158,7 @@ def simulate(seq_cards, mob_pattern, mob_hp, starting_hp=DRUID_HP):
     hp = starting_hp
     remaining_mob_hp = mob_hp
     grizzly_played_before = False
+    shapeshift_played_before = 0
     eclipse_played_before = 0
 
     for rnd in range(3):
@@ -124,8 +168,8 @@ def simulate(seq_cards, mob_pattern, mob_hp, starting_hp=DRUID_HP):
         tag = card["tag"]
 
         if tag == "shapeshift" and card_name != "Shapeshift: Grizzly" and grizzly_played_before:
-            dmg += 1
-            block += 1
+            dmg += shapeshift_played_before
+            block += shapeshift_played_before
         elif tag == "eclipse" and not grizzly_played_before:
             if card.get("heal_scales_with_eclipse"):
                 heal += eclipse_played_before
@@ -141,6 +185,8 @@ def simulate(seq_cards, mob_pattern, mob_hp, starting_hp=DRUID_HP):
         dmg_taken = max(0.0, mob_atk - block)
         hp -= dmg_taken
 
+        if tag == "shapeshift":
+            shapeshift_played_before += 1
         if tag == "eclipse":
             eclipse_played_before += 1
         if card_name == "Shapeshift: Grizzly":

@@ -41,20 +41,69 @@ equilibrium clean, no hidden-domination.
 
 Still open, not part of this lock-in: no evasion tool (dropped with Vanish
 early in the design process, confirmed intentional, not revisited since).
+
+**Fixed the macro-loop risk-gate outlier (2026-08-19).** Root cause (see
+CLASS_BALANCE_GUIDE.md's "Rogue and Ranger's macro-loop risk outlier"): only
+Dodge/Backstab and Evasion carried any Block, and hand size is 4 -- meaning
+the one hand holding all four of the other cards (Quick Slash, Ambush,
+Cutthroat, Envenom) had zero Block anywhere, a real, confirmed-lethal gap
+against Ambusher at HP=8. Same forced-curve validation used on Ranger
+confirmed this was real danger, not policy over-caution: forcing Rogue's
+risk-gate decisions onto Paladin's own defense-floor curve, while leaving
+Rogue's real combat untouched, barely moved Gold (16.8 -> 18.0) but sent
+deaths/run from 0.000 to 1.810.
+
+Two fix attempts were tried and walked back before landing on the final
+one -- both real overcorrections, not just directional confirmations, kept
+here because the story matters:
+1. Renamed Ambush -> "Ambush and Vanish," giving it grants_range (full
+   evasion against melee mobs, reusing Wizard/Ranger's mechanic). Closed
+   the exact worst-case hand outright (0/90 lethal at HP=8), but overshot
+   badly in aggregate -- Gold hit 36.3 against Paladin's 23.8, because full
+   evasion is a categorically stronger effect than incremental Block and
+   the card was now played in 98.9% of hands where drawn. Reverted.
+2. Gave Envenom the killing-blow rider too (previously Cutthroat-only).
+   Also closed the worst-case hand (Envenom landing the kill on the
+   problem hand prevents Ambusher's retaliation), still overshot (Gold
+   31.2) but by less than the evasion attempt -- kept, since it's a real,
+   validated, thematically strong addition (see below), just needed
+   correcting elsewhere rather than reverting outright.
+
+**Locked: Envenom gains the killing-blow rider (matching Cutthroat's,
+Warrior's Execute pattern) -- Backstab and Dodge's Block 4 -> 2 -- ROGUE_HP
+16 -> 15.** The Block and HP cuts are a genuinely different kind of lever
+from the killing-blow fix: they operate on the chain/macro level (bringing
+an already-overshooting aggregate back in line), not the single-pull level
+the original defense-floor gap needed fixing on -- HP is not standing in
+for an undiagnosed card problem here, the card problem was already found
+and fixed; HP is correcting the resulting aggregate overshoot afterward,
+a different question CLASS_BALANCE_GUIDE.md's "HP as a balance lever"
+caveat doesn't actually forbid. Final numbers: Gold@24XP 23.1 (Paladin
+23.8), quests/trip 2.09 (Paladin 2.16), deaths/run 0.000 across 300
+trials -- landing just under Paladin rather than past it, the same
+shape Ranger's own fix settled into.
+
+Worth naming the real shape of this fix directly: Rogue ended up with
+*less* raw Block and *less* HP than it started with, and still performs
+better, because the entire net gain came from one mechanic change. That's
+a good identity signal, not just a numeric coincidence -- both finishers
+now carry "the target doesn't get to hit back if you finish it first"
+instead of generic durability, which reads more like an assassin than
+stacking Block ever did.
 """
 import itertools
 
-ROGUE_HP = 16
+ROGUE_HP = 15
 
 # aggro: co-op Party Pull targeting value (0-4), locked via direct user
 # review -- see OPEN_QUESTIONS.md's "Co-op multi-hero vs. one Elite" entry.
 CARDS = {
-    "Dodge/Backstab": dict(kind="plain", dmg=4, block=4, strike=True, aggro=3),
-    "Evasion":        dict(kind="plain", dmg=0, block=10, strike=False, aggro=1),
-    "Quick Slash":    dict(kind="plain", dmg=3, block=0, strike=True, aggro=2),
-    "Ambush":         dict(kind="opener", dmg=3, round1_dmg=5, block=0, strike=True, aggro=3),
-    "Cutthroat":      dict(kind="finisher", curve={0: 2, 1: 3, 2: 6}, block=0, strike=False, killing_blow=True, aggro=4),
-    "Envenom":        dict(kind="finisher", curve={0: 3, 1: 4, 2: 5}, block=0, strike=False, killing_blow=False, aggro=2),
+    "Backstab and Dodge": dict(kind="plain", dmg=4, block=2, strike=True, aggro=3),
+    "Evasion":            dict(kind="plain", dmg=0, block=10, strike=False, aggro=1),
+    "Quick Slash":        dict(kind="plain", dmg=3, block=0, strike=True, aggro=2),
+    "Ambush":             dict(kind="opener", dmg=3, round1_dmg=5, block=0, strike=True, aggro=3),
+    "Cutthroat":          dict(kind="finisher", curve={0: 2, 1: 3, 2: 6}, block=0, strike=False, killing_blow=True, aggro=4),
+    "Envenom":            dict(kind="finisher", curve={0: 3, 1: 4, 2: 5}, block=0, strike=False, killing_blow=True, aggro=2),
 }
 DECK = list(CARDS.keys())
 

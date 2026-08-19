@@ -1022,6 +1022,25 @@ across this whole tuning arc, left as-is. Equilibrium clean. Solar Flare/Moonbea
 hidden-domination-flagged (were tied 19/19 in the first diagnostic pass; now genuinely
 differentiated -- Moonbeam carries a flat Heal, Solar Flare doesn't).
 
+**Macro-loop underperformance found and partially fixed (2026-08-19).** See
+`condensed_druid.py`'s module docstring for the full derivation. Druid sat dead last in the
+9-class roster on Gold-at-a-fixed-XP-checkpoint despite never having the Rogue/Ranger-style
+risk-gate problem -- a forced-curve test (borrowing Paladin's defense-floor curve for the
+risk-gate decision while keeping Druid's own combat) showed *zero* Gold change alongside a real
+death-rate spike, proving the defense-floor crack it does have (HP=7 vs. Enforcer) is real but
+not the actual driver. Segment-level tracing found the real cause instead: fewer pulls per
+Food-to-Food segment than Paladin (3.59 vs. 3.99) and a slightly lower win rate within them
+(96.5% vs. 97.3%), both traced to a genuine, structural damage gap between Druid's two lines --
+the Shapeshift line (Grizzly/Maul/Swipe) sits well below the Eclipse line (Solar Flare/Moonbeam,
+flat 5 base each) in the low-damage hand clusters. **Locked: Shapeshift: Grizzly's bonus to
+later Shapeshift cards changed from flat +1 DMG/+1 Block to a stacking +1 per Shapeshift card
+already played this pull** (same trigger as before -- Grizzly must be played first -- only the
+flat-vs-stacking shape changed). Damage floor 9->10, Gold-at-checkpoint 18.5->20.6, climbing
+from last to 6th in the roster. Deliberately left the defense-floor crack itself unfixed --
+traced precisely to the new Block bonus only ever applying to Shapeshift-tagged cards, while
+both lethal hands' actual death round lands on an Eclipse card, which structurally can't
+receive it -- a real, separate, still-open gap, not something this fix happened to also patch.
+
 ## Necromancer, locked -- ninth class, numbers given directly by the user
 
 Same process as Rogue, Ranger, Runecaster, and Druid: the user designed the kit and every
@@ -1161,13 +1180,30 @@ parity doesn't guarantee worst-case-floor parity, and the macro-loop risk policy
 floor, not the average.**
 
 **Methodology: sweep lethal-hand-fraction (the same value `macro_sim._pull_exceeds_risk`
-computes) across starting-HP bands, not just chained-trip averages.** For every class, at
-100%/50%/33%/20%/10% of max HP, against every Standard mob, count what fraction of the 15
-possible hands have no line (even optimal) that avoids death this pull. Warrior, Wizard,
-Cleric, Paladin, and Runecaster all hold a clean **0.0% lethal-hand-fraction against every mob
-down to 50% HP** — completely safe on that metric until below a third HP. **Rogue and Ranger
-are the only two classes that break this floor already at 50% HP** (Rogue: 1.1% avg, worst mob
-Ambusher at 6.7% / 1 of 15 hands; Ranger: 1.1% avg, worst mob Scout at 6.7% / 1 of 15 hands).
+computes) across every whole-number starting HP, not just chained-trip averages.**
+`defense_floor_sweep(mod, has_stance, mob_key, max_hp)` is the tool — for every class, at
+every integer HP from max down to 1 (never a handful of round-number checkpoints; see its own
+docstring for why an earlier version of this exact check that swept only
+`max_hp*(1.0, 0.5, 0.33, 0.2, 0.1)` was wrong — most of those aren't even integers, e.g. 50%
+of Paladin's 17 HP is 8.5, checking a starting HP that could never occur at the table), against
+every Standard mob, count what fraction of the 15 possible hands have no line (even optimal)
+that avoids death this pull. Warrior, Wizard, Cleric, Paladin, and Runecaster all hold a clean
+**0.0% lethal-hand-fraction against every mob down through 50% HP** — completely safe on that
+metric until below a third HP. **Rogue and Ranger are the only two classes that break this
+floor already at 50% HP** (Rogue: 1.1% avg, worst mob Ambusher at 6.7% / 1 of 15 hands; Ranger:
+1.1% avg, worst mob Scout at 6.7% / 1 of 15 hands).
+
+**Extended (2026-08-19): the exact HP% where each class's floor first cracks is a strong,
+standalone predictor of its Gold-economy outcome, not just a defense-side curiosity.** Across
+the full 9-class roster, reading the *first* HP (as % of that class's own max HP, walking down
+from a clean 0.0%) where `defense_floor_sweep` turns nonzero: Paladin 35.3%, Necromancer 35.7%,
+Runecaster 37.5%, Warrior 38.9%, Wizard/Cleric 42.9%, Druid 46.7%, Rogue 50.0%, Ranger 53.3% —
+correlates at r=-0.924 against `avg_quests_per_trip` and r=-0.889 against Gold accumulated by a
+fixed XP checkpoint (see `MACRO_LOOP_GUIDE.md`'s persona/risk-gate section for the full
+derivation chain this came from). This is the strongest structural (i.e. computable before ever
+running a single macro-loop trial) predictor found so far of which classes will lag on
+Gold — stronger than deaths/run, decay-tier %, or raw per-round HP economy, none of which
+correlate above ~0.5 against the same Gold measurement.
 
 **Why this alone explains both symptoms.** `macro_sim.py`'s risk policy runs at
 `RISK_TOLERANCE_BASE = 0.0` outside a quest-completing pull — genuinely zero risk tolerated,
@@ -1224,12 +1260,33 @@ built to catch on the *offense* side (can a hand kill the mob at all); this is i
 the *defense* side (can a hand survive the mob at all) — no diagnostic in the current toolkit
 checks this directly yet, which is why it went unnoticed through both classes' original lock-in.
 
-**Not yet decided: how to fix it.** Candidates, none chosen: give each class's remaining
-"pure offense" cards a small incidental Block rider (mirrors Cleric's damage-floor fix, done
-in reverse); raise Rogue/Ranger's HP slightly so the 50%-HP threshold moves to match the rest
-of the roster; treat it as acceptable class identity (a real risk/reward class) and adjust the
-macro-loop risk policy or Bag Upgrade price instead of the kits; or add a defense-floor check
-to the standard toolkit and re-audit every class, not just these two, in case others are close
+**Ranger: fixed (2026-08-19).** Beast Bond: Wolf's base Block 0->1 (stacking with its existing
++1/round persistent bonus, 2 total Block the round it's played) -- see `condensed_ranger.py`'s
+docstring for the full derivation, including a real overcorrection caught and walked back
+(+2 base initially swung Ranger past Paladin on every metric) and direct proof, via forcing
+Ranger's risk-gate decisions onto Paladin's own defense-floor curve while leaving its real
+combat untouched, that the gap was real danger, not policy over-caution (Gold barely moved but
+deaths/run rose 8x). Landed just under Paladin on Gold/quests-per-trip rather than past it;
+confirmed via distribution overlap (35.3% of Ranger runs now beat Paladin's median, up from
+0.0%) that the residual gap is ordinary class variance, not a structural one. HP untouched,
+same reasoning as always -- this was a specific card-composition gap, not an undersized pool.
+
+**Rogue: fixed (2026-08-19).** See `condensed_rogue.py`'s docstring for the full derivation --
+Envenom gains the killing-blow rider (matching Cutthroat's), Backstab and Dodge's Block 4->2,
+ROGUE_HP 16->15. Two real overcorrections tried and walked back first (full evasion on a
+renamed Ambush, then Envenom's killing-blow alone), both closing the exact worst-case hand but
+sending Rogue's Gold/quests-per-trip well past Paladin's -- the final slate lands just under
+Paladin instead (Gold 23.1 vs. 23.8, quests/trip 2.09 vs. 2.16, deaths/run 0.000/300 trials).
+Notable: the Block and HP cuts are a *macro*-level lever correcting the aggregate overshoot
+left by the killing-blow fix, not a stand-in for an undiagnosed single-pull problem -- that
+problem was already found and fixed separately, so this doesn't violate the "HP is only right
+when it's the diagnosed problem" rule elsewhere in this doc. Also worth naming: Rogue ends up
+with strictly less raw Block and HP than it started with and still performs better, entirely
+from one mechanic change -- a real identity improvement (both finishers now read as "the
+target doesn't get to hit back if you finish it first"), not just a numbers fix.
+
+Add a defense-floor check to the standard toolkit and re-audit every class, not just these
+two, in case others are close
 to the same cliff without yet showing it in chained-trip averages. See `DESIGN_DOC.md`'s Open
 Design Questions.
 

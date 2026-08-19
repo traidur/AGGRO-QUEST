@@ -13,6 +13,17 @@ function init() {
     window.print();
   });
 
+  
+  const imgBtn = document.getElementById('btn-images');
+  if (imgBtn) {
+    imgBtn.addEventListener('click', (e) => {
+      document.body.classList.toggle('hide-images');
+      const isHidden = document.body.classList.contains('hide-images');
+      e.target.textContent = isHidden ? '🖼️ Images: OFF' : '🖼️ Images: ON';
+      e.target.style.background = isHidden ? '#444' : '#00695C';
+    });
+  }
+
   const modeBtn = document.getElementById('btn-mode');
   if (modeBtn) {
     modeBtn.addEventListener('click', (e) => {
@@ -40,6 +51,34 @@ function renderFilters() {
       renderSheets();
     });
   });
+}
+
+
+function getHeroArt(className, cardName) {
+  const map = {
+    "Heavy Swing": "warrior_offense",
+    "Sundering Blow": "warrior_offense",
+    "Execute": "warrior_offense",
+    "Vanguard Blade": "warrior_offense",
+    "Vanguard Shield": "warrior_defense",
+    "Shield Block": "warrior_defense",
+    "Void Mark": "cleric_offense",
+    "Smite": "cleric_offense",
+    "Call of the Void": "cleric_offense",
+    "Cleansing Barrier": "cleric_defense",
+    "Fiery Fortitude": "cleric_defense",
+    "Heal": "cleric_defense",
+
+    "Might of the Aegis": "paladin_offense",
+    "Bastion's Hammer": "paladin_offense",
+    "Holy Fortress": "paladin_offense",
+    "Sacred Light": "paladin_defense",
+    "Invocation of Sanctuary": "paladin_defense",
+    "Invocation of Grace": "paladin_defense",
+
+  };
+  if (map[cardName]) return `/heroes/${map[cardName]}.jpg`;
+  return null;
 }
 
 function renderSheets() {
@@ -241,21 +280,28 @@ function renderCard({ className, name, data }) {
     let tlBadges = '';
     if (data.badges.dmg) tlBadges += `<div class="art-badge">🗡️ ${data.badges.dmg}</div>`;
     if (data.badges.delayed_dmg) tlBadges += `<div class="art-badge">🗡️ ${data.badges.delayed_dmg}</div>`;
-    if (tlBadges) badgesHtml += `<div class="badge-wrapper badge-wrapper-tl">${tlBadges}</div>`;
+    if (tlBadges) badgesHtml += `<div class="badge-wrapper badge-wrapper-tl" style="z-index:2;">${tlBadges}</div>`;
     
     let trBadges = '';
     if (data.badges.heal) trBadges += `<div class="art-badge">➕ ${data.badges.heal}</div>`;
     if (data.badges.delayed_heal) trBadges += `<div class="art-badge">➕ ${data.badges.delayed_heal}</div>`;
-    if (trBadges) badgesHtml += `<div class="badge-wrapper badge-wrapper-tr">${trBadges}</div>`;
+    if (trBadges) badgesHtml += `<div class="badge-wrapper badge-wrapper-tr" style="z-index:2;">${trBadges}</div>`;
     
     let blBadges = '';
     if (data.badges.range) blBadges += `<div class="art-badge">🎯 RANGE</div>`;
-    if (blBadges) badgesHtml += `<div class="badge-wrapper badge-wrapper-bl">${blBadges}</div>`;
+    if (blBadges) badgesHtml += `<div class="badge-wrapper badge-wrapper-bl" style="z-index:2;">${blBadges}</div>`;
     
     let brBadges = '';
     if (data.badges.block) brBadges += `<div class="art-badge">🛡️ ${data.badges.block}</div>`;
     if (data.badges.delayed_block) brBadges += `<div class="art-badge">🛡️ ${data.badges.delayed_block}</div>`;
-    if (brBadges) badgesHtml += `<div class="badge-wrapper badge-wrapper-br">${brBadges}</div>`;
+    if (brBadges) badgesHtml += `<div class="badge-wrapper badge-wrapper-br" style="z-index:2;">${brBadges}</div>`;
+  }
+
+  
+  const artPath = getHeroArt(className, name);
+  let artImgHtml = '';
+  if (artPath) {
+    artImgHtml = `<img src="${artPath}" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1;" onerror="this.style.display='none'" />`;
   }
 
   if (data.split) {
@@ -290,6 +336,7 @@ function renderCard({ className, name, data }) {
         </div>
         <div class="divider"></div>
         <div class="art-zone">
+          ${artImgHtml}
           ${badgesHtml}
         </div>
         <div class="divider"></div>
@@ -319,6 +366,7 @@ function renderCard({ className, name, data }) {
         </div>
         ${typeBarHtml}
         <div class="art-zone">
+          ${artImgHtml}
           ${badgesHtml}
         </div>
         <div class="divider"></div>

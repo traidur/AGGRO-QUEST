@@ -211,3 +211,7 @@ body {
   .sheet-container { padding: 0; gap: 0; }
   .sheet { box-sizing: border-box; box-shadow: none; margin: 0; page-break-after: always; width: 8.5in; height: 11in; }
 }
+
+
+/* Image Toggle */
+body.hide-images img { display: none !important; }

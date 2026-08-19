@@ -22,9 +22,20 @@ is now persistent state across a whole chain of trips, not reset each
 call, because Town only does specific, limited things to it (see below) --
 everything else about the bag carries forward exactly as the hero left it.
 
+**Known divergence from the locked design, not yet built here:** DESIGN_DOC.md now describes
+loot as colored quest tokens (one Bag slot per quest color, up to 3 same-colored tokens per
+slot, Food no longer closes anything) -- see MACRO_LOOP_GUIDE.md's "Bag Tetris revision" entry.
+This file's actual loot tracking (_add_loot/_open_loot_slot_index/_close_active_loot_slot,
+below) still implements the *previous* any-mix-one-open-slot model, since only the Food/Potion
+pricing and stacking half of that revision was actually validated here -- the loot-token half
+is locked as a design decision but not yet ported into this simulator. Re-running decay_report
+after that port lands is the thing to do before trusting today's numbers past the Food/Potion
+question specifically.
+
 What actually happens at Town (confirmed directly, not assumed):
 - HP restores to full. Always, automatically.
-- Every non-locked slot's "closed" flag clears (Food's mid-trip lock lifts).
+- Every non-locked slot's "closed" flag clears (Food's mid-trip lock lifts) -- current-code
+  behavior; per the divergence note above, the locked design no longer has Food do this at all.
   LOCKED slots (see Death, below) do NOT unlock just by visiting Town.
 - Whatever's still incomplete in the quest log decays one stage. This is
   triggered by *leaving* Town (heading back out), not by the visit itself.
@@ -125,9 +136,10 @@ QUESTS = {
     "Stolen Signet":     dict(required=5, base_xp=5, gold_ladder=[9, 5, 3, 0]),
 }
 
-FOOD_COST = 2
-POTION_COST = 4
+FOOD_COST = 4
+POTION_COST = 3
 POTION_HEAL = 8
+POTION_STACK_SIZE = 2  # up to this many Potions can share a single Bag slot -- Food does not stack
 BAG_UPGRADE_COST = 16  # back-solved via run_to_bag_upgrade sweeps against the
 # new required-varied QUESTS table to land at ~4.5 trips (~30 pulls) before
 # affording the upgrade -- targeted range for "earned, not repetitive yet"
@@ -158,6 +170,12 @@ def _pull_exceeds_risk(mod, has_stance, mob_name, class_name, hp, risk_tolerance
             if lethal > threshold_count:
                 return True
     return False
+
+
+def _is_potion_slot(slot):
+    """A Potion-holding slot is ('potion', count), count in 1..POTION_STACK_SIZE -- Food stays
+    a bare 'food' string since it never stacks."""
+    return isinstance(slot, tuple) and slot[0] == "potion"
 
 
 def _open_loot_slot_index(bag, locked):
@@ -318,13 +336,21 @@ def run_one_trip(class_name, strategy, rng, bag=None, locked=None, active_quests
 
             if not _bag_has_room(bag, locked):
                 food_index = next((i for i, s in enumerate(bag) if not locked[i] and s == "food"), None)
-                if food_index is None:
-                    return dict(completed=False, died=False, recovered=recovered, hp=hp, pulls=pulls,
-                                bag=bag, locked=locked, active_quests=active_quests,
-                                consumables_used=consumables_used)
-                hp = max_hp
-                bag[food_index] = None
-                consumables_used["food"] += 1
+                if food_index is not None:
+                    hp = max_hp
+                    bag[food_index] = None
+                    consumables_used["food"] += 1
+                else:
+                    potion_index = next((i for i, s in enumerate(bag) if not locked[i] and _is_potion_slot(s)),
+                                         None)
+                    if potion_index is None:
+                        return dict(completed=False, died=False, recovered=recovered, hp=hp, pulls=pulls,
+                                    bag=bag, locked=locked, active_quests=active_quests,
+                                    consumables_used=consumables_used)
+                    hp = min(max_hp, hp + POTION_HEAL)
+                    remaining = bag[potion_index][1] - 1
+                    bag[potion_index] = ("potion", remaining) if remaining > 0 else None
+                    consumables_used["potion"] += 1
 
             # route to whichever node produces the first still-incomplete quest's loot
             node_name = next(n for n, (tier, loot) in NODES.items() if loot == incomplete[0])
@@ -358,7 +384,8 @@ def run_one_trip(class_name, strategy, rng, bag=None, locked=None, active_quests
         # off to compare against a less-rational baseline; every call site
         # defaults it True.
         if risk_only_as_last_resort:
-            has_consumable = any(not locked[i] and bag[i] in ("food", "potion") for i in range(len(bag)))
+            has_consumable = any(not locked[i] and (bag[i] == "food" or _is_potion_slot(bag[i]))
+                                  for i in range(len(bag)))
             worth_the_risk = one_pull_from_done and not has_consumable
         else:
             worth_the_risk = one_pull_from_done
@@ -375,9 +402,10 @@ def run_one_trip(class_name, strategy, rng, bag=None, locked=None, active_quests
                     _close_active_loot_slot(bag, locked)
                     consumed = "food"
                     break
-                if slot == "potion":
+                if _is_potion_slot(slot):
                     hp = min(max_hp, hp + POTION_HEAL)
-                    bag[i] = None  # drinking a Potion frees its slot back to empty, no other effect
+                    remaining = slot[1] - 1
+                    bag[i] = ("potion", remaining) if remaining > 0 else None
                     consumed = "potion"
                     break
             if consumed:
@@ -427,15 +455,28 @@ def _leaving_town_setup(strategy, bag, locked, gold):
         if not locked[i] and isinstance(slot, dict):
             slot["closed"] = False
 
-    wanted = "food" if strategy == "food_only" else "potion" if strategy == "potion_only" else None
-    if wanted:
-        already_have = any(not locked[i] and bag[i] == wanted for i in range(len(bag)))
-        cost = FOOD_COST if wanted == "food" else POTION_COST
-        if not already_have and gold >= cost:
+    if strategy == "food_only":
+        already_have = any(not locked[i] and bag[i] == "food" for i in range(len(bag)))
+        if not already_have and gold >= FOOD_COST:
             empty_index = next((i for i in range(len(bag)) if not locked[i] and bag[i] is None), None)
             if empty_index is not None:
-                bag[empty_index] = wanted
-                gold -= cost
+                bag[empty_index] = "food"
+                gold -= FOOD_COST
+    elif strategy == "potion_only":
+        # Tops off exactly one potion-stack slot to POTION_STACK_SIZE, never opens a second one --
+        # mirrors food_only's "only ever holds one consumable slot," always leaving the other slot
+        # free for loot. A player with a second free slot may well choose to open another Potion
+        # stack there instead of chasing loot, but that's a real, separate strategy to test on its
+        # own footing, not the default "restock like food_only does" comparison this one represents.
+        stack_index = next((i for i in range(len(bag)) if not locked[i] and _is_potion_slot(bag[i])), None)
+        if stack_index is None and gold >= POTION_COST:
+            stack_index = next((i for i in range(len(bag)) if not locked[i] and bag[i] is None), None)
+            if stack_index is not None:
+                bag[stack_index] = ("potion", 0)
+        if stack_index is not None:
+            while gold >= POTION_COST and bag[stack_index][1] < POTION_STACK_SIZE:
+                bag[stack_index] = ("potion", bag[stack_index][1] + 1)
+                gold -= POTION_COST
     return gold
 
 
@@ -452,6 +493,8 @@ def _trip_chain(class_name, strategy, rng, risk_tolerance=RISK_TOLERANCE,
     active_quests = rng.sample(list(QUESTS.keys()), ACTIVE_QUEST_COUNT)
     bag = [None] * bag_size
     locked = [False] * bag_size
+    bag[0] = "food"  # free starting Food, matching DESIGN_DOC.md's locked starting loadout --
+    # previously missing here, so trip 1 of every chain silently started with an empty bag
     corpse_node = None  # set on death; the next trip's first pull is forced there to recover it
 
     trip_num = 0

@@ -58,7 +58,42 @@ Locked, validated at 5000-trial chained comparison against the rest of the
 6-class roster (post-Scout): pulls-survived 5.11 (pack: 5.11-5.63), wins/
 trip 3.83 (pack: 3.83-4.33), wins/pull 75.0% (pack: 73.9-78.5%). Damage
 floor/ceiling 8/14, win rate 93.3-100% across all 6 Standard mobs,
-equilibrium clean. One known hidden-domination flag remains (Withdrawing
+equilibrium clean.
+
+**Beast Bond: Wolf's base block, 0 -> 1 (2026-08-19), fixing the macro-loop risk-gate
+outlier.** Root cause (see CLASS_BALANCE_GUIDE.md's "Rogue and Ranger's macro-loop risk
+outlier"): Ranger's defense floor cracks a full HP-tier earlier than most of the roster,
+entirely because Scout (the one ranged mob) voids grants_range-based evasion, leaving real
+Block as the only defense that still works against it. Traced precisely, this real-HP number
+(not a % checkpoint) was the actual mechanism: across 1000 traced trips, Ranger was forced to
+eat its one starting Food at HP=4.58 on average, a full HP earlier than Paladin's 3.40 --
+small-looking, but decisive, since both classes need that Food in essentially every trip
+(1000/1000), so the whole game comes down to whether a *second* scare arrives before the trip
+would have finished anyway. Confirmed this real-HP gap (not the risk policy's tolerance
+values) was the actual driver by forcing Ranger's risk-gate decisions to run against Paladin's
+own defense-floor curve while leaving Ranger's real combat unchanged: Gold barely moved
+(+1.4) but deaths/run exploded 8x (0.167 -> 1.297) -- proof the caution was correctly reading
+real danger, not an overly conservative policy setting.
+
+The fix targets Beast Bond: Wolf specifically because its Block doesn't depend on
+grants_range at all, so it works against Scout same as any other mob -- unlike
+Withdrawing Hip Shot/Crippling Shot's evasion, which Scout nullifies outright. +2 total Block
+was tried first (a new base value of 2, stacking with the existing +1/round persistent bonus)
+and overcorrected badly -- Ranger swung past Paladin on every metric (Gold 26.2 vs Paladin's
+23.8, deaths/run to 0.000, quests/trip 2.30 vs 2.16), evidence the buff was too strong, not
+just a directional confirmation. **Locked at +1 base** (2 total Block the round it's played,
+1/round after, persistent bonus itself untouched): Gold 22.6, quests/trip 2.11, both landing
+just under Paladin rather than past it. Validated the residual gap is genuine class-flavor
+variance, not a structural one: 35.3% of Ranger's 300 trial runs now beat Paladin's own
+median (was 0.0% before this fix), and 27.7% of Paladin's runs fall below Ranger's median.
+
+Notably, this fix does **not** close the single worst-case hand (`Withdrawing Hip Shot,
+Beast's Challenge, Sure Shot, Crippling Shot` at HP=8 vs. Scout, still exactly 1/90 lethal
+hand-mob pairs, unchanged) -- Beast Bond: Wolf isn't even in that hand. The large aggregate
+improvement comes entirely from the ~67% of hands where Beast Bond: Wolf *is* drawn, compounded
+over a full trip the same way small heal buffs compounded explosively elsewhere in this
+project (Cleric's Heal, Paladin's Sacred Light) -- not from eliminating the worst case, just
+from making everything else meaningfully safer around it. One known hidden-domination flag remains (Withdrawing
 Hip Shot vs. Crippling Shot, both deal 2 DMG and grant Range identically)
 -- confirmed by a direct, out-of-aggregate check that the two cards DO
 genuinely differ against Scout (Crippling Shot's +1 Block reduces a
@@ -80,7 +115,7 @@ RANGER_HP = 15
 # aggro: co-op Party Pull targeting value (0-4), locked via direct user
 # review -- see OPEN_QUESTIONS.md's "Co-op multi-hero vs. one Elite" entry.
 CARDS = {
-    "Beast Bond: Wolf":         dict(dmg=4, block=0, grants_range=False, beast_bond=True, beast_block_value=1,
+    "Beast Bond: Wolf":         dict(dmg=4, block=1, grants_range=False, beast_bond=True, beast_block_value=1,
                                       payoff_prev_range=False, aggro=2),
     "Withdrawing Hip Shot":     dict(dmg=2, block=0, grants_range=True, beast_bond=False, payoff_prev_range=False, aggro=2),
     "Sniper/Point Blank Shot":  dict(dmg=None, block=0, grants_range=False, beast_bond=False, payoff_prev_range=True,

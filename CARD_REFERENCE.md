@@ -70,11 +70,11 @@ Generated directly from each class's real `CARDS` dict in `sim/condensed_<class>
 **Invocation of Grace** [INVOCATION] -- Deal 4 DMG. Heal 1 HP per STRIKE card already played earlier this pull. Every STRIKE card played afterward also heals +1 HP when played. Only the first Invocation card played each pull gets any bonus (backward or forward) -- a second one is legal to play but deals/heals its flat base only and never becomes Active. (Aggro 3)
 
 
-## Rogue (HP 16)
+## Rogue (HP 15)
 
 *Cutthroat/Envenom are finishers scaling off STRIKE cards played since your last finisher (0/1/2), resetting the count on use. Cutthroat alone carries a killing-blow rider.*
 
-**Dodge/Backstab** [STRIKE] -- 4 DMG. 4 Block. (Aggro 3)
+**Backstab and Dodge** [STRIKE] -- 4 DMG. 2 Block. (Aggro 3)
 
 **Evasion** -- 0 DMG. 10 Block. (Aggro 1)
 
@@ -84,14 +84,14 @@ Generated directly from each class's real `CARDS` dict in `sim/condensed_<class>
 
 **Cutthroat** [KILLING BLOW | FINISHER] -- Deals 2/3/6 DMG based on STRIKE cards played since your last finisher (0/1/2). Resets the count to 0. If this attack kills the mob, its attack this round is prevented. (Aggro 4)
 
-**Envenom** [FINISHER] -- Deals 3/4/5 DMG based on STRIKE cards played since your last finisher (0/1/2). Resets the count to 0. (Aggro 2)
+**Envenom** [KILLING BLOW | FINISHER] -- Deals 3/4/5 DMG based on STRIKE cards played since your last finisher (0/1/2). Resets the count to 0. If this attack kills the mob, its attack this round is prevented. (Aggro 2)
 
 
 ## Ranger (HP 15)
 
 *Beast Bond: Wolf grants persistent Block every round for the rest of the pull once played. Sniper/Point Blank Shot rewards having granted At Range the previous round.*
 
-**Beast Bond: Wolf** [PET | PERSISTENT] -- 4 DMG. Activates the Wolf: from this round on (including this one), gain +1 Block every round for the rest of the pull, stacking with any Block your card grants that round. (Aggro 2)
+**Beast Bond: Wolf** [PET | PERSISTENT] -- 4 DMG. 1 Block. Activates the Wolf: from this round on (including this one), gain +1 Block every round for the rest of the pull, stacking with any Block your card grants that round. (Aggro 2)
 
 **Withdrawing Hip Shot** [AT RANGE] -- 2 DMG. Grants At Range this round (evades a melee mob's attack). (Aggro 2)
 

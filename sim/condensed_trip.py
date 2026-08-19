@@ -505,6 +505,68 @@ def equilibrium_check(mod, has_stance, mob_key, max_hp):
     return results
 
 
+def per_round_economy(mod, has_stance, mob_key, max_hp):
+    """Promoted from a one-off script (see CLASS_BALANCE_GUIDE.md's "per-round economy
+    decomposition") to a standing tool after a real cross-class comparison showed the raw,
+    un-normalized version can mislead: a class that kills faster racks up its total HP cost
+    over fewer rounds, inflating its "HP lost per round" rate even when its actual per-pull
+    cost is normal or better, and a class with a bigger HP pool can post a worse raw HP-lost
+    number while still costing the *same fraction* of its own survivability. Concretely: Paladin
+    initially looked like it had the worst per-round economy in the whole 9-class roster (net HP
+    lost/round 1.57, worst mitigation 1.49) versus Necromancer's best-in-roster 1.15/2.10 -- but
+    Paladin also finishes fights in noticeably fewer total rounds (e.g. 35 vs. 44 rounds spent
+    across all hands against Bruiser), and once both classes' total net HP cost per pull is
+    expressed as a % of their own max HP, they land almost identical (Paladin 21.6%, Necromancer
+    22.5%) -- the raw per-round framing was real but not the fair comparison.
+
+    Returns a dict with both raw and max-HP-normalized numbers, per mob and pooled:
+    {per_mob: {mob_name: {net_hp_lost_per_round, net_hp_lost_per_pull, pct_max_hp_per_pull,
+    avg_rounds}}, pooled: {same four keys, averaged across all hands x all mobs}}."""
+    per_mob = {}
+    total_net_all = 0.0
+    total_rounds_all = 0
+    total_hands_all = 0
+    for mob_name in MOB_NAMES:
+        pattern, mob_hp = MOBS[mob_name][mob_key]
+        total_net = 0.0
+        total_rounds = 0
+        for hand in mod.ALL_HANDS:
+            seq, stance, hp_left, rounds = _best_line(mod, has_stance, hand, pattern, mob_hp, max_hp)
+            total_net += (max_hp - hp_left)
+            total_rounds += rounds
+        n_hands = len(mod.ALL_HANDS)
+        per_mob[mob_name] = dict(
+            net_hp_lost_per_round=total_net / total_rounds,
+            net_hp_lost_per_pull=total_net / n_hands,
+            pct_max_hp_per_pull=100 * (total_net / n_hands) / max_hp,
+            avg_rounds=total_rounds / n_hands)
+        total_net_all += total_net
+        total_rounds_all += total_rounds
+        total_hands_all += n_hands
+    pooled = dict(
+        net_hp_lost_per_round=total_net_all / total_rounds_all,
+        net_hp_lost_per_pull=total_net_all / total_hands_all,
+        pct_max_hp_per_pull=100 * (total_net_all / total_hands_all) / max_hp,
+        avg_rounds=total_rounds_all / total_hands_all)
+    return dict(per_mob=per_mob, pooled=pooled)
+
+
+def per_round_economy_table(class_specs):
+    """per_round_economy across multiple classes, printed as a pooled-comparison table --
+    the standard tool to run when comparing classes' HP-economy efficiency, since the pooled
+    pct_max_hp_per_pull column is the fair, size-normalized comparison (see per_round_economy's
+    docstring for why the raw per-round number alone can mislead)."""
+    results = {}
+    for label, mod, has_stance, max_hp, mob_key in class_specs:
+        results[label] = per_round_economy(mod, has_stance, mob_key, max_hp)
+    print(f"{'Class':12s}{'HP/round':>10s}{'HP/pull':>10s}{'%maxHP/pull':>13s}{'avg_rounds':>12s}")
+    for label, r in sorted(results.items(), key=lambda kv: kv[1]["pooled"]["pct_max_hp_per_pull"]):
+        p = r["pooled"]
+        print(f"{label:12s}{p['net_hp_lost_per_round']:10.2f}{p['net_hp_lost_per_pull']:10.2f}"
+              f"{p['pct_max_hp_per_pull']:12.1f}%{p['avg_rounds']:12.2f}")
+    return results
+
+
 def defense_floor_sweep(mod, has_stance, mob_key, max_hp):
     """The clean, policy-independent counterpart to equilibrium_check -- instead of "does net
     HP ever go non-negative," this asks "at this starting HP, is there any hand this class

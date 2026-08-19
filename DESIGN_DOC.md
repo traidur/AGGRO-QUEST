@@ -284,23 +284,39 @@ now fully specified). Not to be confused with the free intra-Zone movement above
 
 **Starting loadout:** 2-slot Bag, 1 Food occupying slot 1, 0 Gold, 0 XP.
 
-**Loot chain, precisely (a common misread — this is not "one loot type per slot").** There is
-at most one currently-*open* Bag slot at a time, and it accepts **any mix** of loot types while
-open — winning three different loot cards in a row all pile into that same open slot together.
-Closing a slot (via Food, below) locks in whatever mix it's holding and opens a fresh, empty
-slot for future loot, up to the Bag's total slot count. Running out of slots (every slot
-closed, locked, or holding an unused consumable) means no more loot can be collected at all
-until a quest turn-in or sale frees one. **A normal Town visit (not a death respawn) reopens
-every Food-closed slot** — its contents stay exactly as they were, but the slot becomes able to
-collect new loot again, the same way it worked before it was closed. This does **not** touch
-LOCKED (post-death) slots — those only ever unlock via corpse recovery, above, never just by
-being in Town.
+**Loot chain, revised — colored quest tokens, any mix per slot, capped at 3.** Each active
+quest is assigned a color (printed on the quest card, or marked with a colored token on it).
+Loot earned for that quest is represented by a token of the matching color, placed into any
+slot with room — the color identifies which quest it belongs to; the slot itself is what
+counts against Bag capacity, the same as a Food or Potion would. **A slot holds up to 3
+tokens total, any mix of colors** — deliberately *not* restricted to one color per slot: a
+same-color-only rule would tie which node a player can profitably pull at to their current
+Bag state (each node maps to one quest's color), quietly punishing a player for chasing a
+favorable mob matchup at a different node just because their Bag is already partway into a
+different quest's color. Keeping colors freely mixable keeps node choice (about the mob
+matchup) and Bag capacity (about token count) fully independent, the way they should be. The
+cap of 3 itself is derived, not guessed — it's the smallest stacking limit under which every
+quest in the current table (requiring 2, 3, 4, or 5 loot) is still completable inside a
+2-slot Bag, while still forcing a real choice: the two smaller quests (Pilfered Goods,
+Syndicate Ledger) comfortably coexist with a consumable in the other slot, while the two
+bigger ones (Contraband Crates, Stolen Signet) force giving that consumable slot up entirely
+to hold enough tokens. Running out of slots (every slot full, locked, or holding an unused
+consumable) means no more loot of any kind can be collected until a quest turn-in or sale
+frees space. This replaces the previous "one open slot accepts any mix of loot types, Food
+closes it" model entirely — colored tokens don't need a "closed" state at all, since each
+quest's progress is now readable directly off the tokens' colors, regardless of which slot(s)
+they end up sharing space in.
 
-**Consumables — two different trade-offs on the same Bag-slot economy:**
-- **Food (2 Gold):** heals to full HP, but **closes the active Bag slot** — subsequent loot
-  opens a fresh slot. The real "push your luck" lever.
-- **Potion (4 Gold):** heals a flat **8 HP**, but does **not** close the slot — preserves the
-  loot chain at a steeper Gold cost.
+**Consumables — the price gap and the stacking exception are what create the real trade-off:**
+- **Food (4 Gold):** heals to full HP. One uncapped, complete reset per slot — never stacks,
+  one Food per slot maximum.
+- **Potion (3 Gold):** heals a flat **8 HP**, cheaper than Food, and **up to 2 can share a
+  single Bag slot**. For the same one slot, a player is choosing between one big guaranteed
+  reset (Food) or two smaller heals at a lower total Gold-per-slot (Potion) — a real choice
+  either way, not one strictly better than the other. (Food previously closed the active loot
+  slot as its own separate trade-off; that clause is cut — traced through mechanically and
+  found not to actually motivate anything a low HP/Food count wasn't already forcing on its
+  own, see `MACRO_LOOP_GUIDE.md`'s Bag Tetris revision entry for the full reasoning.)
 
 **Risk policy (locked default): consumable-before-risk, always.** Exact constants:
 `RISK_TOLERANCE = 0.15` (the fraction of hands allowed to be lethal *when this pull would
@@ -324,14 +340,21 @@ the exact same handling again — a real spiral risk, not special-cased away. If
 safely attempt it (no consumable available to make the risk acceptable), the trip ends with the
 corpse still unrecovered.
 
-**Decaying Bounties.** Players hold exactly 3 Quests at all times. Decay is assessed at the
-**end of each trip**, not on departure: any quest still incomplete once a trip concludes
-downgrades one Gold-ladder tier (Gold → Silver → Bronze → nothing). **A quest's first trip can
-never be decayed before or during that attempt** — this isn't a bolted-on grace period, it
-falls directly out of the mechanism above: decay only ever applies to a quest that's *still*
-incomplete once a trip is over, and a quest completed within its own first trip lands in the
-turn-in branch instead of the decay branch, every time. This is why the "quicker half" of
-completions land at full Gold-tier 100% of the time (see Designer's Notes) — without this,
+**Decaying Bounties, and the "days passing" flavor now attached to it.** Players hold exactly
+3 Quests at all times. Decay is assessed at the **end of each trip**, not on departure: any
+quest still incomplete once a trip concludes downgrades one Gold-ladder tier
+(Gold → Silver → Bronze → nothing). **Reframed as time passing, with zero numbers changed:**
+each decay stage represents one day lost — a normal incomplete return costs the quest-giver's
+patience one day (1-stage decay), a death costs two full days (the already-locked 2-stage
+death decay, above) specifically because two days are spent getting back out to recover the
+corpse before questing can resume. This is flavor only, not a new mechanic, but it gives the
+existing "why does death decay twice as fast" rule a concrete, intuitive reason instead of an
+abstract one. **A quest's first trip can never be decayed before or during that attempt** —
+this isn't a bolted-on grace period, it falls directly out of the mechanism above: decay only
+ever applies to a quest that's *still* incomplete once a trip is over, and a quest completed
+within its own first trip lands in the turn-in branch instead of the decay branch, every time.
+This is why the "quicker half" of completions land at full Gold-tier 100% of the time (see
+Designer's Notes) — without this,
 finishing any quest at full Gold would be structurally impossible, not just unlikely. XP is
 flat and doesn't decay (`base_xp = required`, 1 XP per loot item the quest asks for) — only the
 Gold bonus erodes, so pushing your luck risks the bonus, never the guaranteed baseline progress.
@@ -388,8 +411,14 @@ What an actual physical prototype needs, based on the current locked rules above
   mob info, ever). A melee/ranged type icon (Section IV).
 - **HP trackers:** one per hero, plus a shared mob HP tracker per pull (or per active mob, in a
   co-op multi-mob fight — Section V).
-- **Bag:** physical slots (2 to start, upgradeable), tracking which loot type occupies each.
-- **Quest log:** exactly 3 slots, each tracking its current decay tier (Gold/Silver/Bronze).
+- **Bag:** physical slots (2 to start, upgradeable — the exact target size is still open, see
+  `OPEN_QUESTIONS.md`), each holding either one Food, up to 2 Potions, or up to 3 Quest Loot
+  tokens in any mix of colors.
+- **Quest Loot tokens:** one single generic component, not a distinct token per zone/quest —
+  color-matched to whichever quest card is currently marked that color (a printed color, or a
+  colored marker placed on the quest card at pickup).
+- **Quest log:** exactly 3 slots, each tracking its current decay tier (Gold/Silver/Bronze),
+  and now also its assigned color for token-matching.
 - **Gold and XP counters.**
 - **Aggro reference (co-op only):** each card's printed Aggro value (0-4) is enough on its own —
   no extra token system needed beyond what's already printed on the card.
