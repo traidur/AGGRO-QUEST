@@ -74,12 +74,14 @@ wouldn't refuse a pull just because one bad hand out of many exists),
 the policy will knowingly attempt pulls with some chance of death,
 trading risk for progress.
 
-Scope: Zone 1 only, four farmable Standard-tier Nodes/quests, of which a
-given trip's quest log only holds ACTIVE_QUEST_COUNT (3) at a time. All
-four nodes draw from the same Standard mob pool, so which 3-of-4 quests a
-given trip gets is cosmetic, not a different challenge. Town's Spike-tier
-Elite node is still deferred. Inter-Zone Border Toll travel isn't modeled
-at all.
+Scope: two Zones now (2026-08-19), eight farmable Standard-tier Nodes/quests total, of which
+a given trip's quest log only holds ACTIVE_QUEST_COUNT (3) at a time, drawn from both Zones'
+pools together (see the shuffled-bag quest-refill note above). All eight nodes draw from the
+same Standard mob pool, so which node a given trip's quest routes to is cosmetic within a
+Zone, not a different challenge -- crossing *between* Zones is the real difference, since it
+costs a Scouted Pull toll (NODE_ZONE/_cross_to in run_one_trip). Town's Spike-tier Elite node
+is still deferred. Flight Path (paying Gold to skip the toll) is explicitly not built --
+Border Node crossing is the only way to change Zones right now.
 """
 import random
 
@@ -113,7 +115,17 @@ NODES = {
     "cove": ("standard", "Syndicate Ledger"),
     "ridge": ("standard", "Contraband Crates"),
     "marsh": ("standard", "Stolen Signet"),
+    "shoal": ("standard", "Smuggled Cargo"),
+    "lagoon": ("standard", "Forged Ledger"),
+    "bluff": ("standard", "Plundered Chest"),
+    "wreckage": ("standard", "Buried Treasure"),
 }
+# node -> which Zone it's in. Zone 1 has Town; Zone 2 has the Class Trainer instead
+# (DESIGN_DOC.md's "Starting map, locked" section) -- crossing between them costs a
+# Scouted Pull toll (below), free movement only within a single Zone.
+NODE_ZONE = {"waystation": 1, "cove": 1, "ridge": 1, "marsh": 1,
+             "shoal": 2, "lagoon": 2, "bluff": 2, "wreckage": 2}
+ZONE_TIER = {1: "standard", 2: "standard"}  # both zones are Standard-tier only for now
 ACTIVE_QUEST_COUNT = 3  # each trip's quest log holds this many of the below, not all of them
 
 # loot card name -> quest requirement (keyed by loot type -- one quest per node)
@@ -134,6 +146,12 @@ QUESTS = {
     "Syndicate Ledger":  dict(required=3, base_xp=3, gold_ladder=[4, 2, 1, 0]),
     "Contraband Crates": dict(required=4, base_xp=4, gold_ladder=[4, 2, 1, 0]),
     "Stolen Signet":     dict(required=5, base_xp=5, gold_ladder=[9, 5, 3, 0]),
+    # Zone 2 -- mirrors Zone 1's required/reward shape exactly (DESIGN_DOC.md's "Zone 2's
+    # nodes and quests, locked" section), same coastal-plunder naming thread.
+    "Smuggled Cargo":    dict(required=2, base_xp=2, gold_ladder=[4, 2, 1, 0]),
+    "Forged Ledger":     dict(required=3, base_xp=3, gold_ladder=[4, 2, 1, 0]),
+    "Plundered Chest":   dict(required=4, base_xp=4, gold_ladder=[4, 2, 1, 0]),
+    "Buried Treasure":   dict(required=5, base_xp=5, gold_ladder=[9, 5, 3, 0]),
 }
 
 FOOD_COST = 4
@@ -170,6 +188,73 @@ def _pull_exceeds_risk(mod, has_stance, mob_name, class_name, hp, risk_tolerance
             if lethal > threshold_count:
                 return True
     return False
+
+
+_scouted_pull_costpct_cache = {}
+
+
+def _scouted_pull_mob(class_name, tier, rng):
+    """Scouted Pull, the Border Node toll (OPEN_QUESTIONS.md's "Border Nodes and Scouted
+    Pull" entry): draw 2 mobs from the destination Zone's tier, both revealed, the hero
+    picks which to fight -- a real, informed choice, not blind. Picks whichever of the 2 has
+    the lower average cost% for this class (the same metric class_mob_matchup_chart.py uses
+    to differentiate matchups), matching a rational player scouting a genuinely visible
+    choice rather than a hand-specific one (the hand isn't drawn until after the mob is
+    already chosen, same as every other pull in this sim).
+
+    Doesn't yet model the full physical deck/discard-pile richness the design doc describes
+    (a persistent per-Zone deck, cards leaving to discard rather than being redrawable) --
+    kept at the same level of abstraction condensed_trip.py's mob draw already uses
+    everywhere else in this sim (an independent weighted draw, not a tracked deck), not a
+    gap specific to this mechanic. This sim is solo, so the "only happens if the destination
+    Zone is unoccupied" condition in the locked design is vacuously always true here -- no
+    other hero exists in this model to have already populated the Zone."""
+    pool, weights = T.mob_pool_weights(tier)
+    candidates = rng.choices(pool, weights=weights, k=2)
+    cache = _scouted_pull_costpct_cache.setdefault(class_name, {})
+    mod = CARD_SOURCE[class_name]
+    has_stance = HAS_STANCE[class_name]
+    max_hp = float(getattr(mod, HP_ATTR[class_name]))
+    best_mob, best_cost = None, None
+    for mob_name in candidates:
+        if mob_name not in cache:
+            pattern, mob_hp = T.MOBS[mob_name][class_name]
+            total_cost = 0.0
+            for hand in mod.ALL_HANDS:
+                seq, stance, hp_left, rounds = T._best_line(mod, has_stance, hand, pattern, mob_hp, max_hp)
+                total_cost += max_hp - hp_left
+            cache[mob_name] = 100 * (total_cost / len(mod.ALL_HANDS)) / max_hp
+        cost = cache[mob_name]
+        if best_cost is None or cost < best_cost:
+            best_mob, best_cost = mob_name, cost
+    return best_mob
+
+
+def _best_case_mob(class_name, tier):
+    """The single lowest-cost% mob in a tier's whole pool for this class -- a deterministic,
+    no-rng "what's the best matchup I could hope to land" check, used to decide whether an
+    optional Border Node crossing is even worth attempting (see run_one_trip). Not the same
+    as _scouted_pull_mob, which simulates the real 2-card draw-and-choose toll itself; this
+    is a cheaper, non-random proxy for "is there a real chance this goes fine," used only to
+    gate the decision to cross at all, not the crossing's own outcome."""
+    pool, weights = T.mob_pool_weights(tier)
+    cache = _scouted_pull_costpct_cache.setdefault(class_name, {})
+    mod = CARD_SOURCE[class_name]
+    has_stance = HAS_STANCE[class_name]
+    max_hp = float(getattr(mod, HP_ATTR[class_name]))
+    best_mob, best_cost = None, None
+    for mob_name in set(pool):
+        if mob_name not in cache:
+            pattern, mob_hp = T.MOBS[mob_name][class_name]
+            total_cost = 0.0
+            for hand in mod.ALL_HANDS:
+                seq, stance, hp_left, rounds = T._best_line(mod, has_stance, hand, pattern, mob_hp, max_hp)
+                total_cost += max_hp - hp_left
+            cache[mob_name] = 100 * (total_cost / len(mod.ALL_HANDS)) / max_hp
+        cost = cache[mob_name]
+        if best_cost is None or cost < best_cost:
+            best_mob, best_cost = mob_name, cost
+    return best_mob
 
 
 def _is_potion_slot(slot):
@@ -256,7 +341,7 @@ def _remove_loot(bag, locked, loot_name, amount):
 def run_one_trip(class_name, strategy, rng, bag=None, locked=None, active_quests=None,
                   bag_size=BAG_SIZE, risk_tolerance=RISK_TOLERANCE,
                   risk_tolerance_base=RISK_TOLERANCE_BASE, corpse_node=None,
-                  risk_only_as_last_resort=True):
+                  risk_only_as_last_resort=True, current_zone=1):
     """One field trip: alternates between the active Nodes, prioritizing
     whichever quest isn't yet satisfied.
 
@@ -299,7 +384,15 @@ def run_one_trip(class_name, strategy, rng, bag=None, locked=None, active_quests
     POTION_HEAL and touches nothing else) if available, or the trip ends.
     At risk_tolerance > 0, a pull can still actually kill the hero if the
     drawn hand is one of the lethal ones -- that's a real death, handled
-    by the caller (see module docstring)."""
+    by the caller (see module docstring).
+
+    current_zone: "a town is a town is a town" -- both Zones have full Town amenities
+    (turn-in, decay, Bag Upgrade, Food/Potion restock), only the Class Trainer is
+    Zone-2-exclusive, so a trip can end in *either* Zone with nothing special required to
+    "get home" first. That means, unlike an earlier version of this function, zone state
+    persists *across* trips (passed in here, returned in the result for the caller to persist
+    forward) rather than always resetting to 1 -- a hero who ended their last trip in Zone 2
+    simply starts the next one there too."""
     mod = CARD_SOURCE[class_name]
     has_stance = HAS_STANCE[class_name]
     max_hp = float(getattr(mod, HP_ATTR[class_name]))
@@ -320,8 +413,75 @@ def run_one_trip(class_name, strategy, rng, bag=None, locked=None, active_quests
     pulls = 0
     recovered = False
     pending_recovery = corpse_node
+    border_crossings = 0
+    zone_pulls = {1: 0, 2: 0}
+
+    def _make_result(**kwargs):
+        return dict(pulls=pulls, bag=bag, locked=locked, active_quests=active_quests,
+                    consumables_used=consumables_used, border_crossings=border_crossings,
+                    zone1_pulls=zone_pulls[1], zone2_pulls=zone_pulls[2],
+                    current_zone=current_zone, **kwargs)
+
+    def _cross_to(target_zone, tier):
+        """Resolves one Scouted Pull toll to enter target_zone. Fully discretionary now that
+        both Zones have Town -- the caller decides whether it's worth attempting before ever
+        calling this (see the risk check just above each call site); by the time this runs,
+        the hero has already committed. Uses a consumable first if the crossing looks risky
+        and one's available, then attempts it regardless of outcome once committed -- a real
+        death is possible here, same as any other pull. Returns a death result dict if the
+        hero dies crossing, else None (crossing succeeded, current_zone/border_crossings/
+        zone_pulls/pulls/hp already updated by the time this returns)."""
+        nonlocal hp, pulls, current_zone, border_crossings
+        mob_name = _scouted_pull_mob(class_name, tier, rng)
+        if risk_only_as_last_resort:
+            has_consumable = any(not locked[i] and (bag[i] == "food" or _is_potion_slot(bag[i]))
+                                  for i in range(len(bag)))
+        else:
+            has_consumable = False
+        if _pull_exceeds_risk(mod, has_stance, mob_name, class_name, hp, risk_tolerance_base) and has_consumable:
+            for i, slot in enumerate(bag):
+                if locked[i]:
+                    continue
+                if slot == "food":
+                    hp = max_hp
+                    bag[i] = None
+                    _close_active_loot_slot(bag, locked)
+                    consumables_used["food"] += 1
+                    break
+                if _is_potion_slot(slot):
+                    hp = min(max_hp, hp + POTION_HEAL)
+                    remaining = slot[1] - 1
+                    bag[i] = ("potion", remaining) if remaining > 0 else None
+                    consumables_used["potion"] += 1
+                    break
+        pattern, mob_hp = T.MOBS[mob_name][class_name]
+        hand = rng.choice(mod.ALL_HANDS)
+        seq, stance, hp_left, rounds = T._best_line(mod, has_stance, hand, pattern, mob_hp, hp)
+        win, final_hp, final_rounds = T._simulate(mod, has_stance, seq, stance, pattern, mob_hp, hp)
+        hp = final_hp
+        pulls += 1
+        zone_pulls[target_zone] += 1
+        border_crossings += 1
+        if hp <= 0:
+            return _make_result(completed=False, died=True, recovered=recovered,
+                                 death_node=f"border(zone{target_zone})", hp=0)
+        current_zone = target_zone
+        return None
 
     while True:
+        if pending_recovery is not None and pending_recovery.startswith("border(zone"):
+            # died mid-crossing last time -- recovery means attempting that same crossing
+            # again (a fresh Scouted Pull, not a NODES lookup; there's no ordinary node at
+            # a border). Reuses _cross_to's own death handling, so a second death here
+            # produces the identical "border(zoneN)" corpse marker, same spiral-risk shape
+            # as dying twice at an ordinary node.
+            target_zone = int(pending_recovery[len("border(zone"):-1])
+            died_result = _cross_to(target_zone, ZONE_TIER[target_zone])
+            if died_result is not None:
+                return died_result
+            pending_recovery = None
+            recovered = True
+            continue
         if pending_recovery is not None:
             node_name = pending_recovery
             tier, loot_name = NODES[node_name]
@@ -330,9 +490,9 @@ def run_one_trip(class_name, strategy, rng, bag=None, locked=None, active_quests
             incomplete = [loot for loot in active_quests
                           if _accessible_count(bag, locked, loot) < QUESTS[loot]["required"]]
             if not incomplete:
-                return dict(completed=True, died=False, recovered=recovered, hp=hp, pulls=pulls,
-                            bag=bag, locked=locked, active_quests=active_quests,
-                            consumables_used=consumables_used)
+                # A town is a town is a town -- the trip just ends here, wherever "here" is,
+                # no crossing needed just to reach a Town that's already present in this Zone.
+                return _make_result(completed=True, died=False, recovered=recovered, hp=hp)
 
             if not _bag_has_room(bag, locked):
                 food_index = next((i for i, s in enumerate(bag) if not locked[i] and s == "food"), None)
@@ -344,17 +504,51 @@ def run_one_trip(class_name, strategy, rng, bag=None, locked=None, active_quests
                     potion_index = next((i for i, s in enumerate(bag) if not locked[i] and _is_potion_slot(s)),
                                          None)
                     if potion_index is None:
-                        return dict(completed=False, died=False, recovered=recovered, hp=hp, pulls=pulls,
-                                    bag=bag, locked=locked, active_quests=active_quests,
-                                    consumables_used=consumables_used)
+                        return _make_result(completed=False, died=False, recovered=recovered, hp=hp)
                     hp = min(max_hp, hp + POTION_HEAL)
                     remaining = bag[potion_index][1] - 1
                     bag[potion_index] = ("potion", remaining) if remaining > 0 else None
                     consumables_used["potion"] += 1
 
-            # route to whichever node produces the first still-incomplete quest's loot
-            node_name = next(n for n, (tier, loot) in NODES.items() if loot == incomplete[0])
+            # Route to whichever still-incomplete quest's node to visit next -- a rational
+            # hero finishes everything reachable in the Zone they're already standing in
+            # before ever paying a Border Node toll (confirmed directly, not assumed: an
+            # earlier version routed to plain incomplete[0], zone-blind, and produced wildly
+            # inflated crossing counts -- ~11 crossings to reach Level 2 + one skill, because
+            # it would zigzag Zone 1 -> Zone 2 -> Zone 1 -> Zone 2 purely by quest-list order).
+            same_zone_first = sorted(incomplete, key=lambda loot: NODE_ZONE[next(
+                n for n, (t, l) in NODES.items() if l == loot)] != current_zone)
+            node_name = next(n for n, (tier, loot) in NODES.items() if loot == same_zone_first[0])
             tier, loot_name = NODES[node_name]
+
+        target_zone = NODE_ZONE[node_name]
+        if target_zone != current_zone:
+            # Crossing is now fully discretionary in *both* directions -- since both Zones
+            # have Town, there's never a "must get home" pressure forcing it the way an
+            # earlier version required for the Zone-2 -> Zone-1 leg specifically. A rational
+            # hero who judges the crossing too risky, with no consumable to back it up,
+            # simply doesn't go -- they end the trip with whatever they've already got
+            # (including, if current_zone is 2, just staying there and using Zone 2's own
+            # Town), rather than being forced into a gamble they'd never actually choose.
+            if risk_only_as_last_resort:
+                has_consumable = any(not locked[i] and (bag[i] == "food" or _is_potion_slot(bag[i]))
+                                      for i in range(len(bag)))
+            else:
+                has_consumable = False
+            # Deterministic best-case-matchup check, not a live draw -- a real Scouted
+            # Pull reveals 2 mobs and picks the better, so "is this worth trying" is
+            # judged against the single best matchup this class has in the zone's pool,
+            # not a random preview (which would consume real rng state for a decision
+            # that might not lead to an actual crossing, desyncing it from the real draw
+            # _cross_to makes if the hero does go).
+            best_mob = _best_case_mob(class_name, ZONE_TIER[target_zone])
+            if (_pull_exceeds_risk(mod, has_stance, best_mob, class_name, hp, risk_tolerance_base)
+                    and not has_consumable):
+                return _make_result(completed=False, died=False, recovered=recovered, hp=hp)
+            died_result = _cross_to(target_zone, tier)
+            if died_result is not None:
+                return died_result
+            continue  # crossing is its own turn -- the actual node pull happens next iteration
 
         # the specific mob is revealed on arrival, same as turning over a
         # monster token at the table -- drawn before the consumable
@@ -411,13 +605,9 @@ def run_one_trip(class_name, strategy, rng, bag=None, locked=None, active_quests
             if consumed:
                 consumables_used[consumed] += 1
                 if _pull_exceeds_risk(mod, has_stance, mob_name, class_name, hp, effective_risk_tolerance):
-                    return dict(completed=False, died=False, recovered=recovered, hp=hp, pulls=pulls,
-                                bag=bag, locked=locked, active_quests=active_quests,
-                                consumables_used=consumables_used)
+                    return _make_result(completed=False, died=False, recovered=recovered, hp=hp)
             else:
-                return dict(completed=False, died=False, recovered=recovered, hp=hp, pulls=pulls,
-                            bag=bag, locked=locked, active_quests=active_quests,
-                            consumables_used=consumables_used)
+                return _make_result(completed=False, died=False, recovered=recovered, hp=hp)
 
         pattern, mob_hp = T.MOBS[mob_name][class_name]
         hand = rng.choice(mod.ALL_HANDS)
@@ -425,11 +615,10 @@ def run_one_trip(class_name, strategy, rng, bag=None, locked=None, active_quests
         win, final_hp, final_rounds = T._simulate(mod, has_stance, seq, stance, pattern, mob_hp, hp)
         hp = final_hp
         pulls += 1
+        zone_pulls[current_zone] += 1
 
         if hp <= 0:
-            return dict(completed=False, died=True, recovered=recovered, death_node=node_name, hp=0,
-                        pulls=pulls, bag=bag, locked=locked, active_quests=active_quests,
-                        consumables_used=consumables_used)
+            return _make_result(completed=False, died=True, recovered=recovered, death_node=node_name, hp=0)
 
         if pending_recovery is not None:
             # survived the recovery pull -- win or flee, doesn't matter, the corpse is retrieved
@@ -440,9 +629,7 @@ def run_one_trip(class_name, strategy, rng, bag=None, locked=None, active_quests
         if win:
             if not _add_loot(bag, locked, loot_name):
                 # shouldn't happen given the _bag_has_room check above, but stay safe
-                return dict(completed=False, died=False, recovered=recovered, hp=hp, pulls=pulls,
-                            bag=bag, locked=locked, active_quests=active_quests,
-                            consumables_used=consumables_used)
+                return _make_result(completed=False, died=False, recovered=recovered, hp=hp)
         # if not win (fled), no loot gained, but the pull still happened -- loop continues
 
 
@@ -490,12 +677,24 @@ def _trip_chain(class_name, strategy, rng, risk_tolerance=RISK_TOLERANCE,
     gold = 0
     xp = 0
     decay_stage = {loot: 0 for loot in QUESTS}  # 0=Gold,1=Silver,2=Bronze,3=nothing
-    active_quests = rng.sample(list(QUESTS.keys()), ACTIVE_QUEST_COUNT)
+    # Shuffled-bag refill: no quest can repeat until every other quest has cycled through once --
+    # same "reshuffle on empty" shape already locked for mob decks (OPEN_QUESTIONS.md's
+    # "Zone-node mob dealing" entry). quest_bag holds the not-yet-drawn-this-cycle quests;
+    # refilled drawn from its front, reshuffled fresh (excluding whatever's currently active,
+    # so the reshuffle boundary itself can't produce an immediate duplicate) once it empties.
+    quest_bag = list(QUESTS.keys())
+    rng.shuffle(quest_bag)
+    active_quests = [quest_bag.pop(0) for _ in range(ACTIVE_QUEST_COUNT)]
     bag = [None] * bag_size
     locked = [False] * bag_size
     bag[0] = "food"  # free starting Food, matching DESIGN_DOC.md's locked starting loadout --
     # previously missing here, so trip 1 of every chain silently started with an empty bag
     corpse_node = None  # set on death; the next trip's first pull is forced there to recover it
+    # "A town is a town is a town" -- both Zones have full Town amenities, so zone state
+    # genuinely persists across trips now (a hero who ended a trip in Zone 2 starts the next
+    # one there too), unlike an earlier single-Town version where every trip reset to Zone 1
+    # by construction. See run_one_trip's own current_zone docstring note for the full reasoning.
+    current_zone = 1
 
     trip_num = 0
     while True:
@@ -505,7 +704,9 @@ def _trip_chain(class_name, strategy, rng, risk_tolerance=RISK_TOLERANCE,
         result = run_one_trip(class_name, strategy, rng, bag=bag, locked=locked,
                                active_quests=list(active_quests), risk_tolerance=risk_tolerance,
                                risk_tolerance_base=risk_tolerance_base, corpse_node=corpse_node,
-                               risk_only_as_last_resort=risk_only_as_last_resort)
+                               risk_only_as_last_resort=risk_only_as_last_resort,
+                               current_zone=current_zone)
+        current_zone = result["current_zone"]
 
         if result["recovered"]:
             for i in range(len(locked)):
@@ -521,6 +722,11 @@ def _trip_chain(class_name, strategy, rng, risk_tolerance=RISK_TOLERANCE,
                 q = QUESTS[loot]
                 decay_stage[loot] = min(decay_stage[loot] + 2, len(q["gold_ladder"]) - 1)
             corpse_node = result["death_node"]
+            # A dead hero's remains get returned to Zone 1 -- the recovery pull targets the
+            # actual death_node (which _cross_to's own recovery branch in run_one_trip already
+            # handles, crossing back out to a Zone-2 death_node if needed), but the hero
+            # themself restarts the next trip from Zone 1's Town, not wherever they fell.
+            current_zone = 1
         else:
             still_incomplete = []
             turned_in = []
@@ -537,8 +743,15 @@ def _trip_chain(class_name, strategy, rng, risk_tolerance=RISK_TOLERANCE,
                     decay_stage[loot] = min(decay_stage[loot] + 1, len(q["gold_ladder"]) - 1)
                     still_incomplete.append(loot)
 
-            refill_pool = [loot for loot in QUESTS if loot not in still_incomplete]
-            newly_active = rng.sample(refill_pool, len(turned_in))
+            newly_active = []
+            for _ in range(len(turned_in)):
+                if not quest_bag:
+                    # exclude both still-incomplete quests AND anything already drawn earlier
+                    # in this same refill batch -- otherwise a mid-batch reshuffle can hand back
+                    # a quest that was just placed into the log a moment ago
+                    quest_bag = [loot for loot in QUESTS if loot not in still_incomplete and loot not in newly_active]
+                    rng.shuffle(quest_bag)
+                newly_active.append(quest_bag.pop(0))
             active_quests = still_incomplete + newly_active
             quests_completed_this_trip = len(turned_in)
 

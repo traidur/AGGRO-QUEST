@@ -438,8 +438,8 @@
     }
   },
   "rogue": {
-    "Dodge/Backstab": {
-      "text": "4 DMG. 4 Block.",
+    "Backstab and Dodge": {
+      "text": "4 DMG. 2 Block.",
       "aggro": "Aggro 3",
       "tags": [
         "STRIKE"
@@ -447,12 +447,12 @@
       "split": false,
       "badges": {
         "dmg": "4",
-        "block": "4"
+        "block": "2"
       },
       "panels": [
         {
           "type": "base",
-          "text": "**4 DMG**. **4 Block**."
+          "text": "**4 DMG**. **2 Block**."
         }
       ]
     },
@@ -531,9 +531,10 @@
       ]
     },
     "Envenom": {
-      "text": "Deals 3/4/5 DMG based on STRIKE cards played since your last finisher (0/1/2). Resets the count to 0.",
+      "text": "Deals 3/4/5 DMG based on STRIKE cards played since your last finisher (0/1/2). Resets the count to 0. If this attack kills the mob, its attack this round is prevented.",
       "aggro": "Aggro 2",
       "tags": [
+        "KILLING BLOW",
         "FINISHER"
       ],
       "split": false,
@@ -545,13 +546,18 @@
           "type": "finisher",
           "label": "FINISHER",
           "text": "**3** / **4** / **5 DMG** (based on 0 / 1 / 2+ previous STRIKE cards this pull)."
+        },
+        {
+          "type": "rider",
+          "label": "KILLING BLOW",
+          "text": "If this kills the mob, it deals no damage this round."
         }
       ]
     }
   },
   "ranger": {
     "Beast Bond: Wolf": {
-      "text": "4 DMG. Activates the Wolf: from this round on (including this one), gain +1 Block every round for the rest of the pull, stacking with any Block your card grants that round.",
+      "text": "4 DMG. 1 Block. Activates the Wolf: from this round on (including this one), gain +1 Block every round for the rest of the pull, stacking with any Block your card grants that round.",
       "aggro": "Aggro 2",
       "tags": [
         "PET",
@@ -560,7 +566,7 @@
       "split": false,
       "badges": {
         "dmg": "4",
-        "block": "1",
+        "block": "2",
         "delayed_block": "1+"
       }
     },

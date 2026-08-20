@@ -278,9 +278,55 @@ Deliberately not a blind draw — see `OPEN_QUESTIONS.md`'s "Border Nodes and Sc
 entry for the full resolved mechanic (turn structure, why the destination deck and not the
 zone being left, and how this reconciles with the zone-refresh rule). **Flight Paths** let a
 player spend Gold in Town to bypass a Border Node's toll entirely, commuting straight to
-another Zone instead — the Gold cost itself is still undecided. `sim/macro_sim.py`'s scope
-note still correctly flags Border Toll travel as "not modeled at all" (not yet built, though
-now fully specified). Not to be confused with the free intra-Zone movement above.
+another Zone instead — the Gold cost itself is still undecided and Flight Path itself isn't
+built. Border Toll travel *is* now built and tested (`sim/macro_sim.py`, 2026-08-20) — see the
+"Starting map, locked" note below for the two-Town map shape this was validated against and
+why an earlier single-Town version got replaced. Not to be confused with the free intra-Zone
+movement above.
+
+**Starting map, locked (revised 2026-08-20): two Zones, one Border Node, a Town in each.**
+Zone 1 (the starting zone) holds Town — Bag/Food/Potion purchases, quest turn-in, the Bag
+Upgrade. Zone 2, reached via the single Border Node connecting them, holds **both** a second
+Town and the **Class Trainer** — purchased (Level-2+) upgrade cards are bought at the Trainer
+specifically, not folded into Town's shopping list, but "a town is a town is a town": every
+other amenity (turn-in, decay, Bag Upgrade, Food/Potion restock) works identically at either
+Town, with no zone restriction on which quest's loot can be turned in where. A trip can end at
+whichever Town the hero happens to be nearest, without any "must get home to Zone 1" pressure.
+
+**Superseded design, kept for the record:** an earlier version of this section gave Zone 1 the
+only Town and Zone 2 only the Trainer, forcing every Zone-2 excursion into a mandatory round
+trip (cross out, cross back) before a trip could ever conclude. Built and tested directly in
+`sim/macro_sim.py` — the round-trip requirement alone (independent of routing quality) drove
+real, severe cost: trips-to-Level-2-plus-first-skill went from a ~2.1-2.4-trip baseline up to
+6.8-56 trips depending on class, with real death rates appearing where the zone-less baseline
+had a clean 0.000 across the board (up to 13.2 deaths/run for Wizard). Even after fixing the
+routing policy to stop zigzagging between zones and to decline genuinely risky *outbound*
+crossings, trips only came back down to 3.6-7.0 and deaths to 0.5-1.7 -- still well above
+baseline, because the *return* leg stayed genuinely mandatory (Zone 1 was the only Town) no
+matter how well the hero routed. Adding a Zone 2 Town removes that forced-return pressure
+entirely, which is what actually explains the difference -- not smarter play, a different map.
+Re-tested with two Towns and a fully discretionary crossing in both directions: trips dropped
+to 2.33-2.71 and deaths to 0.000-0.020, both matching the original zone-less baseline almost
+exactly, while the hero still genuinely works both Zones (roughly even Zone1/Zone2 pull splits
+in testing, not "avoid Zone 2 entirely"). This 2-zone, 2-Town/1-Trainer shape is explicitly a
+starting-slice artifact, not a pattern meant to generalize to N zones once the map expands
+further (later zones' hub content is undecided).
+
+**Zone 2's nodes and quests, locked** — mirrors Zone 1's structure exactly (4 nodes, required
+2/3/4/5, same coastal/pirate-plunder naming thread as Zone 1's waystation/cove/ridge/marsh and
+Pilfered Goods/Syndicate Ledger/Contraband Crates/Stolen Signet):
+
+| Node | Quest | Required | XP |
+|---|---|---|---|
+| shoal | Smuggled Cargo | 2 | 2 |
+| lagoon | Forged Ledger | 3 | 3 |
+| bluff | Plundered Chest | 4 | 4 |
+| wreckage | Buried Treasure | 5 | 5 |
+
+**Built in `sim/macro_sim.py`** (2026-08-20) — `NODES`/`NODE_ZONE`/`QUESTS` carry all 8 entries
+across both Zones; Border Node crossing is a real Scouted Pull toll (`_scouted_pull_mob`/
+`_cross_to`/`_best_case_mob` in `run_one_trip`), fully discretionary in both directions now
+that both Zones have Town. Flight Path (paying Gold to skip the toll) is still not built.
 
 **Starting loadout:** 2-slot Bag, 1 Food occupying slot 1, 0 Gold, 0 XP.
 

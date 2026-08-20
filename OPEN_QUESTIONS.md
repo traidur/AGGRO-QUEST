@@ -126,12 +126,14 @@ hero) — not a shared table reference, not printed once for the whole group.
 
 Per-class "Comfortable against: X, Y / Struggles against: Z, W" matchup text (top 2 / bottom
 2 mobs by cost%, uniform format for every class, leaves the middle 2 mobs deliberately
-unlabeled — see `CLASS_BALANCE_GUIDE.md`'s matchup-chart section and
-`sim/class_mob_matchup_chart.py` for the real numbers and reasoning behind why cost%, not
-win rate, and why 2/2 rather than 3/3 or a per-class-varying count). Real per-class content,
-e.g. Warrior favors Bruiser/Scout and struggles with Enforcer/Ambusher; Wizard's struggle
-list is Raider/Scout instead, tracing directly to its evasion tools doing nothing against
-Scout specifically.
+unlabeled — see `sim/class_mob_matchup_chart.py`'s own module docstring for the real numbers
+and reasoning behind why cost%, not win rate, and why 2/2 rather than 3/3 or a
+per-class-varying count). Real per-class content, e.g. Warrior favors Bruiser/Scout and
+struggles with Enforcer/Ambusher; Wizard's struggle list is Raider/Scout instead, tracing
+directly to its evasion tools doing nothing against Scout specifically. Re-confirmed live
+against the current kits (2026-08-19, after that session's Ranger/Rogue/Druid fixes): Ranger
+comfortable Bruiser/Grunt, struggles Scout/Enforcer; Rogue comfortable Grunt/Scout, struggles
+Enforcer/Ambusher; Druid comfortable Grunt/Scout, struggles Ambusher/Enforcer.
 
 **A real strategic wrinkle surfaced discussing it, not yet evaluated or decided:** this
 interacts directly with the already-resolved blind-refill rule (see "Zone-node mob dealing"

@@ -280,11 +280,38 @@ Food, none badly in either direction. A real, healthy choice, not a trap.
 flagged as the one lever here that needs its own back-solved derivation, the same way the
 16-Gold Bag Upgrade price got one, rather than a number chosen by feel.
 
+## Quest refill: shuffled-bag, no repeat until the pool cycles (locked 2026-08-19)
+
+`active_quests` used to refill via a plain `rng.sample` from every quest not currently in the
+log, meaning a quest could reappear on the very next roll immediately after being turned in --
+a real fairness problem once quests can sit in different, travel-costed Zones (crossing a
+Border Node isn't free, per `DESIGN_DOC.md`'s Inter-Zone travel rule), since an instant repeat
+could mean doubling back on a trip that was just made. **Fixed with a shuffled bag, the same
+"reshuffle on empty" shape already locked for mob decks** (`OPEN_QUESTIONS.md`'s "Zone-node mob
+dealing" entry): `_trip_chain` now maintains a `quest_bag` list, shuffled once per full cycle
+through every quest in `QUESTS`; each refill draws from the front, and the bag only reshuffles
+once it empties. No quest can repeat until every other quest has appeared at least once since
+its last appearance -- for the real physical game this would need more printed quest content
+than the simulator needs (explicitly not a simulator concern, per direct user confirmation).
+
+**A real bug caught and fixed while validating this, not just a clean implementation:** the
+first version excluded only quests still sitting incomplete in the log from the reshuffle pool,
+not quests already drawn earlier in the *same* refill batch -- when a bag emptied mid-batch (two
+or more quests turning in on the same trip), the reshuffle could immediately hand back a quest
+that had been placed into the log moments earlier in that same refill, producing a genuine
+duplicate (the same quest appearing twice in one active-quest log). Caught by a direct assertion
+check across a 20-trip trace before trusting the mechanic; fixed by also excluding
+already-drawn-this-batch quests from the reshuffle pool. Re-verified duplicate-free across 20
+trips and confirmed Gold-at-checkpoint numbers are unchanged (13.2 vs. the prior 13.0 for
+Warrior at 12 XP, within normal Monte Carlo noise) -- the fix only changes *sequencing*, not the
+underlying reward math.
+
 ## Not yet done
 
-- **Player-chosen quest pool.** `active_quests` is still randomly sampled by the sim
-  (`rng.sample`) every refill, not actually chosen by the player from a curated set. The
-  reward math above is ready for this, the selection mechanic itself isn't built.
+- **Player-chosen quest pool.** `active_quests` is now a no-repeat-until-cycled shuffled bag
+  (see above), but still drawn automatically by the sim, not actually chosen by the player from
+  a curated set. The reward math and the no-repeat sequencing are both ready for this; the
+  selection mechanic itself isn't built.
 - **Node-difficulty as a second axis** (some nodes predetermined harder, independent of
   `required`) -- blocked on Spike-tier mobs, which are still empty/deferred.
 - **Bag size derivation.** Currently 2 (unchanged); whether it should move, and to what,
