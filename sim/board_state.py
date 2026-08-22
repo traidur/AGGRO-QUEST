@@ -130,6 +130,8 @@ class HeroBoardState:
     consumables_used: dict = field(default_factory=lambda: {"food": 0, "potion": 0})
     corpse_node: object = None  # (zone, node) of an unrecovered corpse, or None
     alive: bool = True
+    decay_stage: dict = field(default_factory=dict)  # loot name -> 0=Gold/1=Silver/2=Bronze/3=nothing
+    quest_bag: list = field(default_factory=list)  # LEVEL2_QUESTS shuffle-refill reserve only
 
 
 @dataclass

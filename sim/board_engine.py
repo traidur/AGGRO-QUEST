@@ -1,9 +1,8 @@
 """
-Node-pull declare/resolve mechanism -- the FIRST slice of BoardState's turn loop, deliberately
-scoped to just "hero stands in an already-occupied Zone, sees dealt Nodes, declares one,
-resolves the pull" (checkpointed 2026-08-21, see unified-sprouting-aurora.md's Part 3a).
-Town visits, Border crossings, the Purchase Queue, and XP/leveling are NOT here -- those are
-later chunks, each getting their own checkpoint the same way this one did.
+Node-pull and Town-turn declare/resolve mechanisms -- the first two slices of BoardState's
+turn loop, deliberately built and checkpointed one at a time (2026-08-21, see
+unified-sprouting-aurora.md's Part 3a). Border crossings and cross-zone travel routing are
+NOT here yet -- next chunk, its own checkpoint.
 
 Reuses macro_sim.py's own helpers directly rather than reimplementing them (_pull_exceeds_risk,
 _is_potion_slot, _add_loot, _accessible_count, _engine_pull, POTION_HEAL, NODES, etc.) --
@@ -115,3 +114,81 @@ def resolve_node_pull(hero, class_name, node_name, mob_name, quest_pool, rng,
             return {"outcome": "no_room", "mob_name": mob_name}
         return {"outcome": "win", "mob_name": mob_name}
     return {"outcome": "flee", "mob_name": mob_name}
+
+
+def resolve_town_turn(hero, class_name, strategy, purchase_queue, purchase_policy, rng):
+    """Resolves one full Town turn -- "a hero may do as much business as they want in one
+    visit... one turn total per Town visit" (OPEN_QUESTIONS.md's "What a turn is," verbatim).
+    Faithful port of _trip_chain's Town bookkeeping (quest turn-in/decay/refill, the
+    leaving-town restock, Phase 1 Logistics, Phase 3 Purchase Queue), bundled into a single
+    call since all of it happens at one Town stop under BoardState -- the OLD code only split
+    it across the tail of one _trip_chain loop iteration (turn-in) and the head of the next
+    (restock/pickup/purchases) for implementation convenience, not because they're two
+    separate turns. Order matches the old code's own dependency chain exactly: turn-in first
+    (so its Gold is available to spend this same stop), then restock, then Logistics, then
+    Purchase Queue.
+
+    One real, documented difference from _trip_chain: a brand-new hero there starts already
+    holding an active_quests log (drawn before turn 0 even begins) -- here, active_quests
+    starts empty and gets bootstrapped by this function's own Phase 1 pickup branch on the
+    hero's first Town turn instead. Functionally equivalent (a hero standing in Zone 1, a
+    valid quest zone, on their very first turn), just deferred by one explicit turn rather
+    than happening before any turn exists, since BoardState has no "before turn 0" concept.
+
+    Mutates hero in place. Returns a dict: {"quests_completed": int, "trainer_turn": bool}."""
+    zone_id, _node = hero.position
+    pool = M.LEVEL2_QUESTS if hero.xp >= M.LEVEL2_XP_THRESHOLD else M.QUESTS
+    for loot in pool:
+        hero.decay_stage.setdefault(loot, 0)
+
+    quests_completed = 0
+    if hero.active_quests:
+        still_incomplete = []
+        turned_in = []
+        for loot in hero.active_quests:
+            q = pool[loot]
+            collected = M._accessible_count(hero.bag, hero.locked, loot)
+            if collected >= q["required"]:
+                hero.gold += q["gold_ladder"][min(hero.decay_stage[loot], len(q["gold_ladder"]) - 1)]
+                hero.xp += q["base_xp"]
+                hero.decay_stage[loot] = 0
+                M._remove_loot(hero.bag, hero.locked, loot, collected)
+                turned_in.append(loot)
+            else:
+                hero.decay_stage[loot] = min(hero.decay_stage[loot] + 1, len(q["gold_ladder"]) - 1)
+                still_incomplete.append(loot)
+
+        if pool is M.QUESTS:
+            hero.active_quests = still_incomplete
+        else:
+            newly_active = []
+            for _ in range(len(turned_in)):
+                if not hero.quest_bag:
+                    hero.quest_bag = [loot for loot in M.LEVEL2_QUESTS
+                                       if loot not in still_incomplete and loot not in newly_active]
+                    rng.shuffle(hero.quest_bag)
+                newly_active.append(hero.quest_bag.pop(0))
+            hero.active_quests = still_incomplete + newly_active
+        quests_completed = len(turned_in)
+
+    hero.gold = M._leaving_town_setup(strategy, hero.bag, hero.locked, hero.gold)
+
+    # Re-read: xp may have just risen from a quest turned in above, crossing LEVEL2_XP_THRESHOLD
+    # mid-call -- the same live-lookup discipline run_one_trip's own win_rate uses.
+    pool = M.LEVEL2_QUESTS if hero.xp >= M.LEVEL2_XP_THRESHOLD else M.QUESTS
+    valid_quest_zones = M.LEVEL2_QUEST_ZONES if hero.xp >= M.LEVEL2_XP_THRESHOLD else M.LEVEL1_QUEST_ZONES
+    if not hero.active_quests and zone_id in valid_quest_zones:
+        hero.active_quests = rng.sample(list(pool.keys()), min(M.ACTIVE_QUEST_COUNT, len(pool)))
+        if pool is M.LEVEL2_QUESTS:
+            hero.acquired.add("started_l2_quests")
+
+    mandatory_turn = False
+    if (zone_id in M.TRAINER_ZONES and hero.xp >= M.LEVEL2_XP_THRESHOLD
+            and class_name in M.LEVEL2_MANDATORY and "mandatory" not in hero.acquired):
+        hero.acquired.add("mandatory")
+        mandatory_turn = True
+
+    hero.gold, purchase_trainer_turn = M._walk_purchase_queue(
+        purchase_queue, hero.acquired, hero.bag, hero.locked, zone_id, hero.gold, purchase_policy)
+
+    return {"quests_completed": quests_completed, "trainer_turn": mandatory_turn or purchase_trainer_turn}
