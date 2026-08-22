@@ -35,7 +35,7 @@ def verify_class(class_name, strategy="food_only", trials=30, chain_trips=15, ve
 
         rng_new = random.Random(seed)
         new_log = []
-        for trip_num, alive, gold, xp, quests_completed, trainer_turn in BE.run_solo_chain(
+        for trip_num, alive, gold, xp, quests_completed, trainer_turn, turns in BE.run_solo_chain(
                 class_name, strategy, rng_new, chain_trips, purchase_policy="save", bag_queue_position=0):
             new_log.append((gold, xp, quests_completed, trainer_turn, not alive))
             if not alive:

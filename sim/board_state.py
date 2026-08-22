@@ -132,6 +132,12 @@ class HeroBoardState:
     alive: bool = True
     decay_stage: dict = field(default_factory=dict)  # loot name -> 0=Gold/1=Silver/2=Bronze/3=nothing
     quest_bag: list = field(default_factory=list)  # LEVEL2_QUESTS shuffle-refill reserve only
+    turns: int = 0  # OPEN_QUESTIONS.md's "What a turn is" (locked 2026-08-20): a resolved Node
+    # pull, a Border crossing, or one Town visit (regardless of how much business happens
+    # there) each cost exactly one turn -- the real, comparable cross-class/cross-run unit,
+    # NOT "trips" (a trip's own length varies wildly by class and luck). A declined pull
+    # (resolve_node_pull's "declined" outcome) does NOT increment this -- nothing was actually
+    # attempted at the table, matching "a turn is defined by the action, not the movement."
 
 
 @dataclass
