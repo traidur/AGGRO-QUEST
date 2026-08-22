@@ -1,8 +1,22 @@
 """
-Node-pull and Town-turn declare/resolve mechanisms -- the first two slices of BoardState's
-turn loop, deliberately built and checkpointed one at a time (2026-08-21, see
-unified-sprouting-aurora.md's Part 3a). Border crossings and cross-zone travel routing are
-NOT here yet -- next chunk, its own checkpoint.
+Node-pull, Town-turn, Border-crossing, and travel-routing declare/resolve mechanisms -- four
+slices of BoardState's turn loop, deliberately built and checkpointed one at a time
+(2026-08-21, see unified-sprouting-aurora.md's Part 3a). Not yet built: stitching all four
+into one cohesive turn-by-turn driver (the advance_board barrier), and wiring the real
+LevelDeck into Scouted Pull / choose_node_to_declare (both still source mobs via macro_sim's
+old rng-based functions, kept that way deliberately so each piece stayed Layer-1-verifiable
+against run_one_trip -- see each function's own docstring).
+
+**Leveled-kit wiring (2026-08-21, fixed after being missed in the first pass):**
+resolve_node_pull, resolve_border_crossing, and decide_travel's own risk-gate check all wrap
+their combat-touching work in `with LV.leveled_kit(mod, _level2_swaps_for(class_name,
+hero.acquired)):` -- matching _trip_chain's own `with LV.leveled_kit(...): run_one_trip(...)`
+scope, which covers risk-gate checks and hand draws, not just the final pull. Without this, a
+BoardState hero could buy every Level 2 upgrade in Town and never actually fight with the
+upgraded cards -- caught by taking stock of what was built, not by a test (see
+verify_board_engine_leveled_kit.py, the one suite that actually exercises a non-empty swap;
+every other verify_board_engine*.py suite runs with an empty hero.acquired, where leveled_kit
+is a documented no-op, so they couldn't have caught this).
 
 Reuses macro_sim.py's own helpers directly rather than reimplementing them (_pull_exceeds_risk,
 _is_potion_slot, _add_loot, _accessible_count, _engine_pull, POTION_HEAL, NODES, etc.) --
@@ -23,7 +37,34 @@ Spice-dealt Node in the routing preference, same as it would skip a Node that do
 incomplete quest.
 """
 import board_state as B
+import leveling_validation as LV
 import macro_sim as M
+
+
+def _level2_swaps_for(class_name, acquired):
+    """The same level2_swaps dict _trip_chain computes fresh every trip, right before its own
+    `with LV.leveled_kit(...): result = run_one_trip(...)` block -- factored out here so every
+    combat-touching resolver (resolve_node_pull, resolve_border_crossing, and decide_travel's
+    own risk-gate check) can wrap itself in the identical context. Old code's leveled_kit scope
+    covers the ENTIRE run_one_trip call for a trip -- risk-gate checks, hand draws, and pull
+    resolution all read the leveled CARDS/DECK/ALL_HANDS, not just the final combat_engine
+    call -- so every one of those call sites needs this same wrapping, not just the pull
+    itself. Safe to recompute and re-enter once per resolver call rather than once per whole
+    trip: hero.acquired only changes during Town turns, never mid-trip, so this dict is
+    identical across every pull within one trip either way, and leveled_kit's own contract
+    (mutate-then-restore CARDS/DECK/ALL_HANDS, no persistent state) makes repeated re-entry
+    with the same swaps a no-op layered on a no-op. Empty for a class with no Level 2 slate
+    yet, or before the mandatory upgrade has been collected -- leveled_kit with an empty swap
+    dict is itself a harmless no-op (verified in leveling_validation.py's own docstring)."""
+    swaps = {}
+    if class_name in M.LEVEL2_MANDATORY and "mandatory" in acquired:
+        _, old_name, new_name, new_card = M.LEVEL2_MANDATORY[class_name]
+        swaps[old_name] = (new_name, new_card)
+        for i in range(len(M.LEVEL2_PURCHASED_ORDER[class_name])):
+            if f"skill_{i}" in acquired:
+                old_name, new_name, new_card = M.LEVEL2_PURCHASED_ORDER[class_name][i]
+                swaps[old_name] = (new_name, new_card)
+    return swaps
 
 
 def legal_node_declares(zone_board):
@@ -59,61 +100,68 @@ def resolve_node_pull(hero, class_name, node_name, mob_name, quest_pool, rng,
     mod = M.CARD_SOURCE[class_name]
     has_stance = M.HAS_STANCE[class_name]
     tier, loot_name = M.NODES[node_name]
-    pattern, mob_hp = M._pattern_hp_for_mob(class_name, mob_name)
 
-    one_pull_from_done = (M._accessible_count(hero.bag, hero.locked, loot_name)
-                           == quest_pool[loot_name]["required"] - 1)
-    if risk_only_as_last_resort:
-        has_consumable = any(not hero.locked[i] and (hero.bag[i] == "food" or M._is_potion_slot(hero.bag[i]))
-                              for i in range(len(hero.bag)))
-        worth_the_risk = one_pull_from_done and not has_consumable
-    else:
-        worth_the_risk = one_pull_from_done
-    effective_risk_tolerance = risk_tolerance if worth_the_risk else risk_tolerance_base
+    # Old code's `with LV.leveled_kit(...): result = run_one_trip(...)` scope covers the
+    # ENTIRE trip -- risk-gate checks and hand draws read the leveled CARDS/DECK/ALL_HANDS
+    # too, not just the final combat_engine call -- so this wraps everything from here down,
+    # not just the pull itself. See _level2_swaps_for's own docstring for why re-entering this
+    # once per pull (rather than once per whole trip) is safe.
+    with LV.leveled_kit(mod, _level2_swaps_for(class_name, hero.acquired)):
+        pattern, mob_hp = M._pattern_hp_for_mob(class_name, mob_name)
 
-    if M._pull_exceeds_risk(mod, has_stance, mob_name, class_name, hero.hp, effective_risk_tolerance,
-                             mob_pattern_hp=(pattern, mob_hp)):
-        consumed = None
-        for i, slot in enumerate(hero.bag):
-            if hero.locked[i]:
-                continue
-            if slot == "food":
-                hero.hp = hero.max_hp
-                hero.bag[i] = None
-                M._close_active_loot_slot(hero.bag, hero.locked)
-                consumed = "food"
-                break
-            if M._is_potion_slot(slot):
-                hero.hp = min(hero.max_hp, hero.hp + M.POTION_HEAL)
-                remaining = slot[1] - 1
-                hero.bag[i] = ("potion", remaining) if remaining > 0 else None
-                consumed = "potion"
-                break
-        if consumed:
-            hero.consumables_used[consumed] += 1
-            if M._pull_exceeds_risk(mod, has_stance, mob_name, class_name, hero.hp, effective_risk_tolerance,
-                                     mob_pattern_hp=(pattern, mob_hp)):
-                return {"outcome": "declined", "mob_name": mob_name}
+        one_pull_from_done = (M._accessible_count(hero.bag, hero.locked, loot_name)
+                               == quest_pool[loot_name]["required"] - 1)
+        if risk_only_as_last_resort:
+            has_consumable = any(not hero.locked[i] and (hero.bag[i] == "food" or M._is_potion_slot(hero.bag[i]))
+                                  for i in range(len(hero.bag)))
+            worth_the_risk = one_pull_from_done and not has_consumable
         else:
-            return {"outcome": "declined", "mob_name": mob_name}
+            worth_the_risk = one_pull_from_done
+        effective_risk_tolerance = risk_tolerance if worth_the_risk else risk_tolerance_base
 
-    hand = rng.choice(mod.ALL_HANDS)
-    win, final_hp, final_rounds = M._engine_pull(class_name, mob_name, hand, pattern, mob_hp, hero.hp)
-    hero.hp = final_hp
+        if M._pull_exceeds_risk(mod, has_stance, mob_name, class_name, hero.hp, effective_risk_tolerance,
+                                 mob_pattern_hp=(pattern, mob_hp)):
+            consumed = None
+            for i, slot in enumerate(hero.bag):
+                if hero.locked[i]:
+                    continue
+                if slot == "food":
+                    hero.hp = hero.max_hp
+                    hero.bag[i] = None
+                    M._close_active_loot_slot(hero.bag, hero.locked)
+                    consumed = "food"
+                    break
+                if M._is_potion_slot(slot):
+                    hero.hp = min(hero.max_hp, hero.hp + M.POTION_HEAL)
+                    remaining = slot[1] - 1
+                    hero.bag[i] = ("potion", remaining) if remaining > 0 else None
+                    consumed = "potion"
+                    break
+            if consumed:
+                hero.consumables_used[consumed] += 1
+                if M._pull_exceeds_risk(mod, has_stance, mob_name, class_name, hero.hp, effective_risk_tolerance,
+                                         mob_pattern_hp=(pattern, mob_hp)):
+                    return {"outcome": "declined", "mob_name": mob_name}
+            else:
+                return {"outcome": "declined", "mob_name": mob_name}
 
-    if hero.hp <= 0:
-        # Clamped to exactly 0, matching run_one_trip's own death result (_make_result(...,
-        # hp=0) -- hardcoded, not whatever raw negative value the pull actually produced.
-        hero.hp = 0
-        hero.alive = False
-        return {"outcome": "died", "mob_name": mob_name}
+        hand = rng.choice(mod.ALL_HANDS)
+        win, final_hp, final_rounds = M._engine_pull(class_name, mob_name, hand, pattern, mob_hp, hero.hp)
+        hero.hp = final_hp
 
-    if win:
-        hero.gold += 1
-        if not M._add_loot(hero.bag, hero.locked, loot_name):
-            return {"outcome": "no_room", "mob_name": mob_name}
-        return {"outcome": "win", "mob_name": mob_name}
-    return {"outcome": "flee", "mob_name": mob_name}
+        if hero.hp <= 0:
+            # Clamped to exactly 0, matching run_one_trip's own death result (_make_result(...,
+            # hp=0) -- hardcoded, not whatever raw negative value the pull actually produced.
+            hero.hp = 0
+            hero.alive = False
+            return {"outcome": "died", "mob_name": mob_name}
+
+        if win:
+            hero.gold += 1
+            if not M._add_loot(hero.bag, hero.locked, loot_name):
+                return {"outcome": "no_room", "mob_name": mob_name}
+            return {"outcome": "win", "mob_name": mob_name}
+        return {"outcome": "flee", "mob_name": mob_name}
 
 
 def resolve_town_turn(hero, class_name, strategy, purchase_queue, purchase_policy, rng):
@@ -192,3 +240,170 @@ def resolve_town_turn(hero, class_name, strategy, purchase_queue, purchase_polic
         purchase_queue, hero.acquired, hero.bag, hero.locked, zone_id, hero.gold, purchase_policy)
 
     return {"quests_completed": quests_completed, "trainer_turn": mandatory_turn or purchase_trainer_turn}
+
+
+def resolve_border_crossing(hero, class_name, border_name, target_zone, mob_name, rng,
+                             risk_tolerance_base, risk_only_as_last_resort):
+    """Resolves one Scouted Pull toll crossing -- faithful port of run_one_trip's own
+    _cross_to. mob_name is supplied by the caller, not sourced internally (mirrors
+    resolve_node_pull's own shape) -- today's real caller uses macro_sim._scouted_pull_mob
+    (the OLD rng-based 2-draw, kept for Layer-1 verifiability against run_one_trip, see this
+    module's own docstring), but resolve_border_crossing itself doesn't know or care where
+    mob_name came from, so swapping in the real LevelDeck's 2-card draw later is a pure
+    caller-side change, not a rewrite here.
+
+    Always uses risk_tolerance_base (never the higher "fluid risk" tolerance Node-pulls get
+    when one pull from completing a quest) -- a Border crossing is never itself a
+    quest-completing action, matching the old code's own asymmetry there. Also unlike
+    resolve_node_pull: after a consumable is used, old _cross_to does NOT re-check risk and
+    cannot decline -- once a crossing is committed to, the pull always happens, matching that
+    faithfully (no "declined" outcome exists for this function).
+
+    On success, hero.position becomes (border_name, None) -- a Border Node is its own
+    physical position, not part of either Zone it connects (OPEN_QUESTIONS.md's "Border
+    Nodes and Scouted Pull" entry). On death, position is left untouched (the hero hadn't
+    actually left their origin Zone when the toll pull happened) and the returned dict
+    carries a death_marker string in the same "border:{border_name}:{origin_zone}:
+    {target_zone}" shape run_one_trip's own death_node encoding uses, so a later corpse-
+    recovery chunk can parse it identically.
+
+    Mutates hero in place. Returns a dict: {"outcome": "win"/"flee"/"died", "mob_name": ...,
+    "death_marker": ... (died only)}."""
+    mod = M.CARD_SOURCE[class_name]
+    has_stance = M.HAS_STANCE[class_name]
+    origin_zone, _node = hero.position
+
+    # Same leveled_kit scope reasoning as resolve_node_pull -- old code's per-trip
+    # `with LV.leveled_kit(...): run_one_trip(...)` covers this crossing's risk-gate check and
+    # hand draw too, not just the final pull.
+    with LV.leveled_kit(mod, _level2_swaps_for(class_name, hero.acquired)):
+        pattern, mob_hp = M._pattern_hp_for_mob(class_name, mob_name)
+
+        if risk_only_as_last_resort:
+            has_consumable = any(not hero.locked[i] and (hero.bag[i] == "food" or M._is_potion_slot(hero.bag[i]))
+                                  for i in range(len(hero.bag)))
+        else:
+            has_consumable = False
+
+        if (M._pull_exceeds_risk(mod, has_stance, mob_name, class_name, hero.hp, risk_tolerance_base,
+                                  mob_pattern_hp=(pattern, mob_hp))
+                and has_consumable):
+            for i, slot in enumerate(hero.bag):
+                if hero.locked[i]:
+                    continue
+                if slot == "food":
+                    hero.hp = hero.max_hp
+                    hero.bag[i] = None
+                    M._close_active_loot_slot(hero.bag, hero.locked)
+                    hero.consumables_used["food"] += 1
+                    break
+                if M._is_potion_slot(slot):
+                    hero.hp = min(hero.max_hp, hero.hp + M.POTION_HEAL)
+                    remaining = slot[1] - 1
+                    hero.bag[i] = ("potion", remaining) if remaining > 0 else None
+                    hero.consumables_used["potion"] += 1
+                    break
+
+        hand = rng.choice(mod.ALL_HANDS)
+        win, final_hp, final_rounds = M._engine_pull(class_name, mob_name, hand, pattern, mob_hp, hero.hp)
+        hero.hp = final_hp
+
+        if hero.hp <= 0:
+            hero.hp = 0
+            hero.alive = False
+            death_marker = f"border:{border_name}:{origin_zone}:{target_zone}"
+            return {"outcome": "died", "mob_name": mob_name, "death_marker": death_marker}
+
+        hero.position = (border_name, None)
+        if win:
+            hero.gold += 1
+        return {"outcome": "win" if win else "flee", "mob_name": mob_name}
+
+
+def decide_travel(hero, class_name, quest_pool, fallback_target_zones, risk_tolerance_base,
+                   risk_only_as_last_resort):
+    """Decides what a hero does THIS turn when they're not already standing somewhere with a
+    dealt Node to declare -- faithful port of run_one_trip's own routing block (target-zone
+    selection, bag-deadlock consumable use, Flight Path, Border-crossing risk gate). Does NOT
+    resolve a pull or a crossing itself -- returns an action descriptor for the caller to act
+    on next:
+      {"action": "arrived", "zone_id": ..., "node_name": ...} -- target reached this turn
+          (Flight Path already applied to hero.position/hero.gold if that's how it got here).
+          node_name is None if there were no active quests to route toward at all (arrived at
+          a fallback zone with nothing to pull) -- old code's own "travel with zero active
+          quests costs no turn, loop immediately" rule (a bare `continue`, no _engine_pull
+          call) means a caller seeing node_name=None should call decide_travel again rather
+          than counting this as a resolved turn.
+      {"action": "cross_border", "border_name": ..., "target_zone": ...} -- attempt this
+          crossing via resolve_border_crossing next (that IS its own turn).
+      {"action": "end_trip"} -- nothing left to do (quests already satisfied, bag deadlocked
+          with no consumable, or a crossing judged not worth the risk with no consumable to
+          back it up).
+
+    Corpse-recovery routing (run_one_trip's pending_recovery branches) is NOT covered here --
+    death/recovery handling isn't built yet, matching resolve_node_pull/resolve_border_
+    crossing's own scope notes. Mutates hero in place (position/gold/hp/bag/consumables_used,
+    depending on which branch fires)."""
+    mod = M.CARD_SOURCE[class_name]
+    has_stance = M.HAS_STANCE[class_name]
+    zone_id, _node = hero.position
+
+    if not hero.active_quests:
+        if isinstance(zone_id, int) and zone_id in fallback_target_zones:
+            return {"action": "end_trip"}
+        target_zone = min(fallback_target_zones, key=lambda z: M._hop_distance(zone_id, z))
+        node_name = None
+    else:
+        incomplete = [loot for loot in hero.active_quests
+                      if M._accessible_count(hero.bag, hero.locked, loot) < quest_pool[loot]["required"]]
+        if not incomplete:
+            return {"action": "end_trip"}
+
+        if not M._bag_has_room(hero.bag, hero.locked):
+            food_index = next((i for i, s in enumerate(hero.bag) if not hero.locked[i] and s == "food"), None)
+            if food_index is not None:
+                hero.hp = hero.max_hp
+                hero.bag[food_index] = None
+                hero.consumables_used["food"] += 1
+            else:
+                potion_index = next((i for i, s in enumerate(hero.bag)
+                                      if not hero.locked[i] and M._is_potion_slot(s)), None)
+                if potion_index is None:
+                    return {"action": "end_trip"}
+                hero.hp = min(hero.max_hp, hero.hp + M.POTION_HEAL)
+                remaining = hero.bag[potion_index][1] - 1
+                hero.bag[potion_index] = ("potion", remaining) if remaining > 0 else None
+                hero.consumables_used["potion"] += 1
+
+        same_zone_first = sorted(incomplete, key=lambda loot: M._hop_distance(
+            zone_id, M.NODE_ZONE[next(n for n, (t, l) in M.NODES.items() if l == loot)]))
+        node_name = next(n for n, (tier, loot) in M.NODES.items() if loot == same_zone_first[0])
+        target_zone = M.NODE_ZONE[node_name]
+
+    can_fly = (isinstance(zone_id, int) and zone_id in M.FLIGHT_PATH_ZONES
+               and target_zone in M.FLIGHT_PATH_ZONES and zone_id != target_zone
+               and hero.gold >= M.FLIGHT_PATH_COST)
+    if can_fly:
+        hero.gold -= M.FLIGHT_PATH_COST
+        hero.position = (target_zone, None)
+        return {"action": "arrived", "zone_id": target_zone, "node_name": node_name}
+
+    if not M._reachable_free(target_zone, zone_id):
+        border_name, next_zone = M._next_border_toward(zone_id, target_zone)
+        if risk_only_as_last_resort:
+            has_consumable = any(not hero.locked[i] and (hero.bag[i] == "food" or M._is_potion_slot(hero.bag[i]))
+                                  for i in range(len(hero.bag)))
+        else:
+            has_consumable = False
+        # Same leveled_kit scope reasoning as resolve_node_pull/resolve_border_crossing --
+        # this risk-gate check reads mod.ALL_HANDS (via _best_case_mob/_pull_exceeds_risk)
+        # too, inside old code's per-trip leveled_kit scope.
+        with LV.leveled_kit(mod, _level2_swaps_for(class_name, hero.acquired)):
+            best_mob = M._best_case_mob(class_name, M.ZONE_TIER[next_zone])
+            exceeds = M._pull_exceeds_risk(mod, has_stance, best_mob, class_name, hero.hp, risk_tolerance_base)
+        if exceeds and not has_consumable:
+            return {"action": "end_trip"}
+        return {"action": "cross_border", "border_name": border_name, "target_zone": next_zone}
+
+    hero.position = (target_zone, None)
+    return {"action": "arrived", "zone_id": target_zone, "node_name": node_name}
