@@ -85,22 +85,62 @@ def run_direct_checks(verbose=True):
     hero4 = HeroBoardState(class_name="warrior", hp=18.0, max_hp=18.0, position=(2, None),
                             bag=[None, None], locked=[False, False], gold=M.FLIGHT_PATH_COST)
     BE.apply_travel_action(hero4, {"type": "flight_path", "target_zone": 4, "cost": M.FLIGHT_PATH_COST},
-                            "warrior", M.QUESTS, board, rng, M.RISK_TOLERANCE, M.RISK_TOLERANCE_BASE, True)
+                            "warrior", board, rng, M.RISK_TOLERANCE_BASE, True)
     check("flight_path spends gold", hero4.gold == 0, hero4.gold)
     check("flight_path moves to target Zone", hero4.position == (4, None), hero4.position)
 
     hero5 = HeroBoardState(class_name="warrior", hp=18.0, max_hp=18.0, position=("border_3_4", None),
                             bag=[None, None], locked=[False, False], gold=5)
     BE.apply_travel_action(hero5, {"type": "enter_zone", "target_zone": 4},
-                            "warrior", M.QUESTS, board, rng, M.RISK_TOLERANCE, M.RISK_TOLERANCE_BASE, True)
+                            "warrior", board, rng, M.RISK_TOLERANCE_BASE, True)
     check("enter_zone moves for free", (hero5.position, hero5.gold) == ((4, None), 5), hero5.position)
 
     hero6 = HeroBoardState(class_name="warrior", hp=18.0, max_hp=18.0, position=(3, None),
                             bag=[None, None], locked=[False, False], gold=5)
     BE.apply_travel_action(hero6, {"type": "return_to_town"},
-                            "warrior", M.QUESTS, board, rng, M.RISK_TOLERANCE, M.RISK_TOLERANCE_BASE, True)
+                            "warrior", board, rng, M.RISK_TOLERANCE_BASE, True)
     check("return_to_town moves to (zone, town) for free", (hero6.position, hero6.gold) == ((3, "town"), 5),
           hero6.position)
+
+    # 6. use_food/use_potion: heal, consume/decrement the slot, no position or turn change.
+    hero7 = HeroBoardState(class_name="warrior", hp=10.0, max_hp=18.0, position=(1, None),
+                            bag=["food", None], locked=[False, False], gold=0)
+    turns_before = hero7.turns
+    BE.apply_travel_action(hero7, {"type": "use_food"}, "warrior", board, rng, M.RISK_TOLERANCE_BASE, True)
+    check("use_food heals to full", hero7.hp == 18.0, hero7.hp)
+    check("use_food consumes the slot", hero7.bag == [None, None], hero7.bag)
+    check("use_food costs no turn", hero7.turns == turns_before, (hero7.turns, turns_before))
+
+    hero8 = HeroBoardState(class_name="warrior", hp=10.0, max_hp=18.0, position=(1, None),
+                            bag=[("potion", 2), None], locked=[False, False], gold=0)
+    BE.apply_travel_action(hero8, {"type": "use_potion"}, "warrior", board, rng, M.RISK_TOLERANCE_BASE, True)
+    check("use_potion heals by POTION_HEAL", hero8.hp == min(18.0, 10.0 + M.POTION_HEAL), hero8.hp)
+    check("use_potion decrements charges", hero8.bag[0] == ("potion", 1), hero8.bag)
+
+    # 7. A locked food/potion slot is never touched by use_food/use_potion.
+    hero9 = HeroBoardState(class_name="warrior", hp=10.0, max_hp=18.0, position=(1, None),
+                            bag=["food"], locked=[True], gold=0)
+    actions9 = BE.get_travel_actions(hero9, board, rng)
+    check("locked food doesn't offer use_food", not any(a["type"] == "use_food" for a in actions9), actions9)
+
+    # 8. Full-HP hero isn't offered use_food/use_potion even holding both.
+    hero10 = HeroBoardState(class_name="warrior", hp=18.0, max_hp=18.0, position=(1, None),
+                             bag=["food", ("potion", 1)], locked=[False, False], gold=0)
+    actions10 = BE.get_travel_actions(hero10, board, rng)
+    check("full HP hero isn't offered use_food/use_potion",
+          not any(a["type"] in ("use_food", "use_potion") for a in actions10), actions10)
+
+    # 9. commit_node_pull never returns "declined" -- declaring is unconditional now.
+    outcomes_seen = set()
+    for seed_i in range(40):
+        rng_c = random.Random(seed_i + 100)
+        hero_c = HeroBoardState(class_name="warrior", hp=18.0, max_hp=18.0, position=(1, None),
+                                 bag=[None, None], locked=[False, False], gold=0)
+        node_name = BE._nodes_in_zone(1)[0]
+        mob_name = rng_c.choice(list(B._STANDARD_MOBS))
+        result = BE.commit_node_pull(hero_c, "warrior", node_name, mob_name, rng_c)
+        outcomes_seen.add(result["outcome"])
+    check("commit_node_pull never declines", "declined" not in outcomes_seen, outcomes_seen)
 
     print(f"\n{len(failures)} failures" if failures else "\nAll direct checks passed")
     return not failures
@@ -146,12 +186,10 @@ def _play_full_chain_via_seam(class_name, strategy, rng, max_turns):
                     break
             continue
 
-        quest_pool = M.LEVEL2_QUESTS if hero.xp >= M.LEVEL2_XP_THRESHOLD else M.QUESTS
         actions = BE.get_travel_actions(hero, board, rng)
         non_retreat = [a for a in actions if a["type"] != "return_to_town"]
         chosen = rng.choice(non_retreat) if non_retreat else actions[0]
-        result = BE.apply_travel_action(hero, chosen, class_name, quest_pool, board, rng,
-                                         M.RISK_TOLERANCE, M.RISK_TOLERANCE_BASE, True)
+        result = BE.apply_travel_action(hero, chosen, class_name, board, rng, M.RISK_TOLERANCE_BASE, True)
         turns_seen += 1
         if result.get("outcome") == "died":
             # Minimal death handling for this smoke test only -- just enough to keep the

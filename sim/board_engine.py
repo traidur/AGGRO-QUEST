@@ -171,33 +171,69 @@ def resolve_node_pull(hero, class_name, node_name, mob_name, quest_pool, rng,
             else:
                 return {"outcome": "declined", "mob_name": mob_name}
 
-        hand = rng.choice(mod.ALL_HANDS)
-        win, final_hp, final_rounds = M._engine_pull(class_name, mob_name, hand, pattern, mob_hp, hero.hp)
-        hero.hp = final_hp
-        # One turn -- OPEN_QUESTIONS.md's "What a turn is" (locked): "Quest node: one pull is
-        # one turn." A "declined" pull (returned above, before reaching here) does NOT count --
-        # nothing was actually attempted at the table.
-        hero.turns += 1
+        return _pull_and_resolve(hero, class_name, mod, mob_name, loot_name, rng, suppress_loot)
 
-        if hero.hp <= 0:
-            # Clamped to exactly 0, matching run_one_trip's own death result (_make_result(...,
-            # hp=0) -- hardcoded, not whatever raw negative value the pull actually produced.
-            hero.hp = 0
-            hero.alive = False
-            return {"outcome": "died", "mob_name": mob_name}
 
-        if win:
-            # Gold is unconditional on any win, recovery pull or not -- "the +1 Gold still
-            # requires an actual win though, not just survival -- same win-only standard as
-            # every other pull, not a separate rule for recovery" (run_one_trip's own comment,
-            # verbatim). Only the quest LOOT is suppressed.
-            hero.gold += 1
-            if suppress_loot:
-                return {"outcome": "win", "mob_name": mob_name}
-            if not M._add_loot(hero.bag, hero.locked, loot_name):
-                return {"outcome": "no_room", "mob_name": mob_name}
+def _pull_and_resolve(hero, class_name, mod, mob_name, loot_name, rng, suppress_loot):
+    """Shared tail of resolve_node_pull and commit_node_pull -- draws a hand, runs the actual
+    combat_engine pull, and resolves win/loss/loot bookkeeping. Must be called from inside an
+    already-open LV.leveled_kit(...) scope (both callers open one for their own risk-gate/
+    hand-draw work). Factored out 2026-08-22 so the AI-automatic risk-gated path and the
+    human-facing unconditional-commit path can't drift apart on the one piece they genuinely
+    share -- only what happens BEFORE the pull differs between them.
+
+    Mutates hero in place. Returns {"outcome": "win"/"flee"/"died"/"no_room", "mob_name": ...}."""
+    pattern, mob_hp = M._pattern_hp_for_mob(class_name, mob_name)
+    hand = rng.choice(mod.ALL_HANDS)
+    win, final_hp, final_rounds = M._engine_pull(class_name, mob_name, hand, pattern, mob_hp, hero.hp)
+    hero.hp = final_hp
+    # One turn -- OPEN_QUESTIONS.md's "What a turn is" (locked): "Quest node: one pull is
+    # one turn." A "declined" pull (returned above, before reaching here, resolve_node_pull
+    # only) does NOT count -- nothing was actually attempted at the table.
+    hero.turns += 1
+
+    if hero.hp <= 0:
+        # Clamped to exactly 0, matching run_one_trip's own death result (_make_result(...,
+        # hp=0) -- hardcoded, not whatever raw negative value the pull actually produced.
+        hero.hp = 0
+        hero.alive = False
+        return {"outcome": "died", "mob_name": mob_name}
+
+    if win:
+        # Gold is unconditional on any win, recovery pull or not -- "the +1 Gold still
+        # requires an actual win though, not just survival -- same win-only standard as
+        # every other pull, not a separate rule for recovery" (run_one_trip's own comment,
+        # verbatim). Only the quest LOOT is suppressed.
+        hero.gold += 1
+        if suppress_loot:
             return {"outcome": "win", "mob_name": mob_name}
-        return {"outcome": "flee", "mob_name": mob_name}
+        if not M._add_loot(hero.bag, hero.locked, loot_name):
+            return {"outcome": "no_room", "mob_name": mob_name}
+        return {"outcome": "win", "mob_name": mob_name}
+    return {"outcome": "flee", "mob_name": mob_name}
+
+
+def commit_node_pull(hero, class_name, node_name, mob_name, rng, suppress_loot=False):
+    """Human-facing equivalent of resolve_node_pull, used by apply_travel_action's declare_node
+    handling -- checkpointed 2026-08-22 after confirming the shape directly: get_travel_actions
+    already shows every dealt Node's mob up front (OPEN_QUESTIONS.md: "what's currently at each
+    node, visible before committing to a pull"), across every active quest at once, not just
+    one AI-preselected candidate -- so there's no separate "reveal, then decide" moment left to
+    gate here. use_food/use_potion are their own standalone Travel actions (see
+    get_travel_actions/apply_travel_action), available beforehand for anyone wanting better odds
+    before committing. Declaring a Node IS the commitment, so this goes straight to the pull --
+    no decline path (a human who doesn't want this fight simply doesn't choose this declare_node
+    action in the first place; retreating lives in the Travel menu itself, not as a second gate
+    bolted on after declaring).
+
+    The AI-automatic path (decide_travel + resolve_node_pull, used by run_solo_trip/
+    run_solo_chain) is completely untouched -- this is an additive sibling, not a replacement.
+
+    Mutates hero in place. Returns {"outcome": "win"/"flee"/"died"/"no_room", "mob_name": ...}."""
+    mod = M.CARD_SOURCE[class_name]
+    _tier, loot_name = M.NODES[node_name]
+    with LV.leveled_kit(mod, _level2_swaps_for(class_name, hero.acquired)):
+        return _pull_and_resolve(hero, class_name, mod, mob_name, loot_name, rng, suppress_loot)
 
 
 def _town_automatic_setup(hero, class_name, strategy, rng):
@@ -404,6 +440,16 @@ def get_travel_actions(hero, board, rng):
     represented here as a direct return_to_town option for convenience rather than forcing a
     two-step "enter_zone then return_to_town").
 
+    use_food/use_potion (checkpointed 2026-08-22, the Risk-gate slice) are offered whenever
+    the hero holds an unlocked one and isn't at full HP, regardless of position (Zone or
+    Border Node) -- eating/drinking isn't tied to any specific declared fight, matching
+    "What a turn is" (OPEN_QUESTIONS.md, locked): only the 5 listed node-type actions cost a
+    turn, and consuming a Food/Potion isn't one of them (it's already turn-free even inside
+    resolve_node_pull's own automatic version). This is what actually replaces the AI's old
+    reactive "use a consumable if this pull looks too risky" heuristic for the human path --
+    not a second gate after declare_node (see commit_node_pull's own docstring for why that
+    isn't needed once the mob is already visible in this same menu).
+
     Returns a list of action dicts, does not mutate hero."""
     zone_or_border, _node = hero.position
     actions = []
@@ -429,22 +475,34 @@ def get_travel_actions(hero, board, rng):
         for target_zone in M.BORDER_NODES[border_name]:
             actions.append({"type": "enter_zone", "target_zone": target_zone})
 
+    if hero.hp < hero.max_hp:
+        if any(not hero.locked[i] and hero.bag[i] == "food" for i in range(len(hero.bag))):
+            actions.append({"type": "use_food"})
+        if any(not hero.locked[i] and M._is_potion_slot(hero.bag[i]) for i in range(len(hero.bag))):
+            actions.append({"type": "use_potion"})
+
     actions.append({"type": "return_to_town"})
     return actions
 
 
-def apply_travel_action(hero, action, class_name, quest_pool, board, rng,
-                         risk_tolerance, risk_tolerance_base, risk_only_as_last_resort):
-    """Resolves one Travel action from get_travel_actions. The in-pull risk-gate/consumable
-    logic inside resolve_node_pull/resolve_border_crossing is UNCHANGED and still automatic
-    for this slice (same scope split Town got -- the destination is a real human choice here,
-    whether to eat a Potion mid-pull is a separate, later slice). Mutates hero and board in
-    place. Returns a dict: {"outcome": str, ...} -- shape depends on action type:
-      declare_node/cross_border: whatever resolve_node_pull/resolve_border_crossing returned
-          ("win"/"flee"/"died"/"declined"/"no_room"), plus the Zone gets Discarded afterward
-          for a declare_node (end-of-turn cleanup, matching run_solo_trip's own).
+def apply_travel_action(hero, action, class_name, board, rng,
+                         risk_tolerance_base, risk_only_as_last_resort):
+    """Resolves one Travel action from get_travel_actions. declare_node now commits
+    unconditionally via commit_node_pull -- no automatic risk-gate or consumable substitution
+    (checkpointed 2026-08-22, the Risk-gate slice: see commit_node_pull's own docstring for
+    why that gate isn't needed once the mob is already visible in this same menu).
+    resolve_border_crossing's own risk-gate/consumable logic is UNCHANGED and still automatic
+    for cross_border -- Scouted Pull's own "draw 2, reveal both, hero picks one" tabletop
+    choice is a separate, not-yet-built gap, explicitly out of scope for this slice.
+
+    Mutates hero and board in place. Returns a dict: {"outcome": str, ...} -- shape depends on
+    action type:
+      declare_node: whatever commit_node_pull returned ("win"/"flee"/"died"/"no_room"), plus
+          the Zone gets Discarded afterward (end-of-turn cleanup, matching run_solo_trip's own).
+      cross_border: whatever resolve_border_crossing returned ("win"/"flee"/"died").
       flight_path/enter_zone/return_to_town: {"outcome": "moved"} -- no combat, just position
           (and Gold, for flight_path) changes.
+      use_food/use_potion: {"outcome": "healed"} -- no position/turn change.
     A caller should check outcome == "died" the same way run_solo_trip does; a death here
     does NOT do the death/recovery post-processing itself (that lives in run_solo_chain's own
     loop, matching every other resolver's scope boundary -- this function resolves one action,
@@ -452,8 +510,7 @@ def apply_travel_action(hero, action, class_name, quest_pool, board, rng,
     if action["type"] == "declare_node":
         zone_id, _node = hero.position
         level = TIER_TO_LEVEL[M.ZONE_TIER[zone_id]]
-        result = resolve_node_pull(hero, class_name, action["node_name"], action["mob_name"], quest_pool, rng,
-                                    risk_tolerance, risk_tolerance_base, risk_only_as_last_resort)
+        result = commit_node_pull(hero, class_name, action["node_name"], action["mob_name"], rng)
         B.discard_zone(board, zone_id, level)
         return result
 
@@ -472,6 +529,30 @@ def apply_travel_action(hero, action, class_name, quest_pool, board, rng,
     if action["type"] == "enter_zone":
         hero.position = (action["target_zone"], None)
         return {"outcome": "moved"}
+
+    if action["type"] == "use_food":
+        for i, slot in enumerate(hero.bag):
+            if hero.locked[i]:
+                continue
+            if slot == "food":
+                hero.hp = hero.max_hp
+                hero.bag[i] = None
+                M._close_active_loot_slot(hero.bag, hero.locked)
+                hero.consumables_used["food"] += 1
+                break
+        return {"outcome": "healed"}
+
+    if action["type"] == "use_potion":
+        for i, slot in enumerate(hero.bag):
+            if hero.locked[i]:
+                continue
+            if M._is_potion_slot(slot):
+                hero.hp = min(hero.max_hp, hero.hp + M.POTION_HEAL)
+                remaining = slot[1] - 1
+                hero.bag[i] = ("potion", remaining) if remaining > 0 else None
+                hero.consumables_used["potion"] += 1
+                break
+        return {"outcome": "healed"}
 
     # return_to_town -- free, matches Golden Rule 1 ("travel itself is free"). If currently on
     # a Border Node, "returning to Town" means walking into whichever connected Zone is
