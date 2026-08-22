@@ -73,22 +73,28 @@ def run_direct_checks(verbose=True):
     return not failures
 
 
-def aggregate_sanity_check(class_name, strategy="food_only", trials=100, chain_trips=15, seed=7, verbose=True):
+def aggregate_sanity_check(class_name, strategy="food_only", trials=100, old_chain_trips=15, seed=7, verbose=True):
     """Compares run_solo_chain (real deck for Border crossings) against decay_stress_test
     (old rng-based crossings) using gold-PER-TURN, not gold-after-N-trips -- "trips" isn't a
     comparable unit (a trip's own length varies wildly by class and luck); decay_stress_test
     already computes its own gold_per_turn for exactly this reason (OPEN_QUESTIONS.md's "What
-    a turn is," locked). Expects the ratio in a similar ballpark, not exact."""
-    old = M.decay_stress_test(class_name, strategy, random.Random(seed), chain_trips=chain_trips)
+    a turn is," locked). run_solo_chain itself is turn-denominated (takes max_turns, not
+    chain_trips) -- old_chain_trips only bounds the OLD _trip_chain-based baseline call, since
+    that's still the old code's own API; the new side is driven for old["total_turns"] turns,
+    the exact turn count the old side actually took, so both sides cover the same amount of
+    real simulated playtime rather than merely a similar one. Expects the ratio in a similar
+    ballpark, not exact."""
+    old = M.decay_stress_test(class_name, strategy, random.Random(seed), chain_trips=old_chain_trips)
     old_gold_per_turn = old["gold_per_turn"]
+    max_turns = old["total_turns"]
 
     rng = random.Random(seed)
     total_gold_per_turn = 0.0
     deaths = 0
     for t in range(trials):
         final_gold, final_turns, died = 0, 0, False
-        for trip_num, alive, gold, xp, quests_completed, trainer_turn, turns in BE.run_solo_chain(
-                class_name, strategy, rng, chain_trips):
+        for alive, gold, xp, quests_completed, trainer_turn, turns in BE.run_solo_chain(
+                class_name, strategy, rng, max_turns):
             final_gold, final_turns = gold, turns
             if not alive:
                 died = True
@@ -107,5 +113,5 @@ if __name__ == "__main__":
     ok = run_direct_checks()
     print("\n=== Aggregate sanity check (single trial per class matching decay_stress_test's own shape) ===")
     for class_name in M.CARD_SOURCE:
-        aggregate_sanity_check(class_name, trials=1, chain_trips=20, seed=1)
+        aggregate_sanity_check(class_name, trials=1, old_chain_trips=20, seed=1)
     raise SystemExit(0 if ok else 1)

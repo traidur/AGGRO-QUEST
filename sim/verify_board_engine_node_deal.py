@@ -81,17 +81,24 @@ def run_direct_checks(verbose=True):
     return not failures
 
 
-def aggregate_sanity_check(class_name, strategy="food_only", trials=20, chain_trips=20, seed=1, verbose=True):
+def aggregate_sanity_check(class_name, strategy="food_only", trials=20, old_chain_trips=20, seed=1, verbose=True):
     """gold-PER-TURN, not gold-after-N-trips -- "trips" isn't a comparable cross-run unit (a
     trip's own length varies wildly by class and luck); decay_stress_test already computes
     its own gold_per_turn for exactly this reason (OPEN_QUESTIONS.md's "What a turn is,"
-    locked)."""
-    old = []
+    locked). run_solo_chain itself is turn-denominated (takes max_turns, not chain_trips) --
+    old_chain_trips only bounds the OLD _trip_chain baseline call per seed; each new-side run
+    uses that SAME seed's own old["total_turns"] as its max_turns, so both sides cover
+    identical real playtime per seed, not merely similar."""
+    old_gpt = []
+    old_deaths = 0
+    old_turns_by_seed = []
     for s in range(trials):
-        r = M.decay_stress_test(class_name, strategy, random.Random(s + seed), chain_trips=chain_trips)
-        old.append((r["gold_per_turn"], r["died_count"] > 0))
-    old_avg_gpt = sum(g for g, _ in old) / trials
-    old_deaths = sum(1 for _, d in old if d)
+        r = M.decay_stress_test(class_name, strategy, random.Random(s + seed), chain_trips=old_chain_trips)
+        old_gpt.append(r["gold_per_turn"])
+        old_turns_by_seed.append(r["total_turns"])
+        if r["died_count"] > 0:
+            old_deaths += 1
+    old_avg_gpt = sum(old_gpt) / trials
 
     new_gpt = []
     new_deaths = 0
@@ -99,8 +106,8 @@ def aggregate_sanity_check(class_name, strategy="food_only", trials=20, chain_tr
         rng = random.Random(s + seed)
         final_gold, final_turns = 0, 0
         died = False
-        for trip_num, alive, gold, xp, quests_completed, trainer_turn, turns in BE.run_solo_chain(
-                class_name, strategy, rng, chain_trips):
+        for alive, gold, xp, quests_completed, trainer_turn, turns in BE.run_solo_chain(
+                class_name, strategy, rng, old_turns_by_seed[s]):
             final_gold, final_turns = gold, turns
             if not alive:
                 died = True

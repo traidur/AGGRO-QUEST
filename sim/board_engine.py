@@ -97,13 +97,22 @@ def choose_node_to_declare(hero, zone_board, quest_pool):
 
 
 def resolve_node_pull(hero, class_name, node_name, mob_name, quest_pool, rng,
-                       risk_tolerance, risk_tolerance_base, risk_only_as_last_resort):
+                       risk_tolerance, risk_tolerance_base, risk_only_as_last_resort,
+                       suppress_loot=False):
     """Resolves one declared Node pull for a single hero -- faithful port of run_one_trip's own
     per-pull block: fluid risk-tolerance gate (higher tolerance only when this pull, if won,
     would complete the quest being pursued), consumable use if the gate trips, the actual pull
     via macro_sim._engine_pull (the same combat_engine-backed path run_one_trip itself now
     uses), and win/loss Gold + loot bookkeeping. Mutates hero in place. Returns a dict:
-    {"outcome": "win"/"flee"/"died"/"declined"/"no_room", "mob_name": ...}."""
+    {"outcome": "win"/"flee"/"died"/"declined"/"no_room", "mob_name": ...}.
+
+    suppress_loot=True is for corpse-recovery pulls only ("a recovery pull earns no loot,
+    regardless of outcome" -- run_one_trip's own comment, verbatim) -- matches the OLD code's
+    exact mechanism (setting loot_name=None before this whole block runs) in both of its real
+    effects: no loot is granted on a win, AND the fluid risk-tolerance bonus never applies
+    (old code's own guard is `one_pull_from_done = loot_name is not None and ...` -- a
+    recovery pull can never be "one pull from completing a quest" since it isn't pursuing one
+    at all)."""
     mod = M.CARD_SOURCE[class_name]
     has_stance = M.HAS_STANCE[class_name]
     tier, loot_name = M.NODES[node_name]
@@ -116,7 +125,8 @@ def resolve_node_pull(hero, class_name, node_name, mob_name, quest_pool, rng,
     with LV.leveled_kit(mod, _level2_swaps_for(class_name, hero.acquired)):
         pattern, mob_hp = M._pattern_hp_for_mob(class_name, mob_name)
 
-        one_pull_from_done = (M._accessible_count(hero.bag, hero.locked, loot_name)
+        one_pull_from_done = (not suppress_loot
+                               and M._accessible_count(hero.bag, hero.locked, loot_name)
                                == quest_pool[loot_name]["required"] - 1)
         if risk_only_as_last_resort:
             has_consumable = any(not hero.locked[i] and (hero.bag[i] == "food" or M._is_potion_slot(hero.bag[i]))
@@ -168,7 +178,13 @@ def resolve_node_pull(hero, class_name, node_name, mob_name, quest_pool, rng,
             return {"outcome": "died", "mob_name": mob_name}
 
         if win:
+            # Gold is unconditional on any win, recovery pull or not -- "the +1 Gold still
+            # requires an actual win though, not just survival -- same win-only standard as
+            # every other pull, not a separate rule for recovery" (run_one_trip's own comment,
+            # verbatim). Only the quest LOOT is suppressed.
             hero.gold += 1
+            if suppress_loot:
+                return {"outcome": "win", "mob_name": mob_name}
             if not M._add_loot(hero.bag, hero.locked, loot_name):
                 return {"outcome": "no_room", "mob_name": mob_name}
             return {"outcome": "win", "mob_name": mob_name}
@@ -483,17 +499,67 @@ def _nodes_in_zone(zone_id):
     return [n for n in M.NODES if M.NODE_ZONE[n] == zone_id]
 
 
+def _resolve_forced_recovery(hero, class_name, quest_pool, board, rng,
+                              risk_tolerance, risk_tolerance_base, risk_only_as_last_resort):
+    """The trip's forced first action when hero.corpse_node is set -- faithful port of
+    run_one_trip's own pending_recovery branches. Two shapes, matching the two ways a corpse
+    can form:
+      - hero.corpse_node == "border:{border_name}:{origin_zone}:{target_zone}": retry that
+        EXACT crossing (same border_name/target_zone) via a fresh Scouted Pull. A second
+        death here produces a fresh death_marker for the SAME crossing, same spiral-risk
+        shape as dying twice at an ordinary Node.
+      - hero.corpse_node == a Node name: forced pull at that exact Node, loot suppressed
+        (suppress_loot=True -- "a recovery pull earns no loot, regardless of outcome",
+        verbatim). Sources its mob from the real deck like any other Node-pull (Deal that
+        Node's Zone, pull specifically the corpse's Node regardless of quest priority,
+        Discard) -- Spice can never block a recovery attempt since deal_zone now redraws a
+        Spice hit away (see its own docstring).
+
+    Returns None if recovery succeeded (hero.corpse_node already cleared, caller proceeds to
+    normal routing), or a result dict ({"alive": False, "recovered": False, "death_node":
+    ...}) if the hero died again attempting it."""
+    corpse = hero.corpse_node
+    if isinstance(corpse, str) and corpse.startswith("border:"):
+        _, border_name, _origin_zone, target_zone_s = corpse.split(":")
+        target_zone = int(target_zone_s)
+        tier = M.ZONE_TIER[target_zone]
+        level_deck = board.level_decks[TIER_TO_LEVEL[tier]]
+        mob_name = scouted_pull_from_deck(class_name, level_deck, rng)
+        outcome = resolve_border_crossing(hero, class_name, border_name, target_zone, mob_name, rng,
+                                           risk_tolerance_base, risk_only_as_last_resort)
+        if outcome["outcome"] == "died":
+            return {"alive": False, "recovered": False, "death_node": outcome["death_marker"]}
+        hero.corpse_node = None
+        return None
+
+    node_name = corpse
+    zone_id = M.NODE_ZONE[node_name]
+    level = TIER_TO_LEVEL[M.ZONE_TIER[zone_id]]
+    node_names = _nodes_in_zone(zone_id)
+    B.deal_zone(board, zone_id, level, node_names, rng)
+    zone_board = board.zones[zone_id]
+    mob_name = zone_board.dealt[node_name]  # forced -- the corpse's own Node, not a quest choice
+    outcome = resolve_node_pull(hero, class_name, node_name, mob_name, quest_pool, rng,
+                                 risk_tolerance, risk_tolerance_base, risk_only_as_last_resort,
+                                 suppress_loot=True)
+    B.discard_zone(board, zone_id, level)
+    if outcome["outcome"] == "died":
+        return {"alive": False, "recovered": False, "death_node": node_name}
+    hero.corpse_node = None
+    return None
+
+
 def run_solo_trip(hero, class_name, quest_pool, fallback_target_zones, board, rng,
                    risk_tolerance, risk_tolerance_base, risk_only_as_last_resort):
     """One full field trip -- matches run_one_trip's own scope -- driven by decide_travel plus
     resolve_node_pull/resolve_border_crossing. board is a board_state.BoardState (zones +
     level_decks) -- both Border crossings (via scouted_pull_from_deck) and Node-pulls (via
-    Deal + choose_node_to_declare) now source their mob from the REAL level deck, not
-    independent rng draws. This means run_solo_trip/run_solo_chain are no longer bit-for-bit
-    comparable against _trip_chain at all (a real deck is a structurally different random
-    process than independent rng.choices, same reasoning as every other real-deck swap this
-    session) -- verified by aggregate stats instead (see verify_board_engine_scouted_pull.py
-    and verify_board_engine_node_deal.py).
+    Deal + choose_node_to_declare) source their mob from the REAL level deck, not independent
+    rng draws. This means run_solo_trip/run_solo_chain are no longer bit-for-bit comparable
+    against _trip_chain at all (a real deck is a structurally different random process than
+    independent rng.choices, same reasoning as every other real-deck swap this session) --
+    verified by aggregate stats instead (see verify_board_engine_scouted_pull.py and
+    verify_board_engine_node_deal.py).
 
     Node-pull mechanics, checkpointed 2026-08-22: every turn spent in a Zone gets a FULL,
     unconditional Deal to every one of that Zone's Nodes (OPEN_QUESTIONS.md's own words: "a
@@ -501,16 +567,22 @@ def run_solo_trip(hero, class_name, quest_pool, fallback_target_zones, board, rn
     by an end-of-turn Discard of everything dealt, played or not ("nothing persists into next
     turn"). choose_node_to_declare picks which of the freshly-dealt Nodes to pull (already
     built to skip a Spice-dealt Node in favor of the next incomplete quest, see its own
-    docstring) -- if NOTHING declarable exists this turn (every relevant Node came up Spice,
-    or nothing here serves an incomplete quest despite decide_travel routing here), the trip
-    ends, matching resolve_node_pull's own "declined" shape (there's no equivalent old-code
-    branch for "the thing I need to fight isn't a fight yet").
+    docstring) -- if NOTHING declarable exists this turn, the trip ends, matching
+    resolve_node_pull's own "declined" shape.
 
-    Mutates hero and board in place. Returns True if the hero is still alive when the trip
-    ends (quests exhausted, or a crossing/pull declined), False if they died this trip.
-    Corpse recovery is explicitly NOT handled -- a caller sees hero.alive=False and hero.
-    position/hp exactly as they were the instant of death; respawn/corpse-lock bookkeeping is
-    a separate, later chunk (matching every other resolver's same scope boundary)."""
+    Corpse recovery, checkpointed 2026-08-22: if hero.corpse_node is set (from a previous
+    trip's death, see run_solo_chain's own death post-processing), the trip's FIRST action is
+    forced to retry that exact crossing/pull -- see _resolve_forced_recovery. Only once that
+    succeeds (or if there was no corpse to begin with) does normal decide_travel routing take
+    over for the rest of the trip.
+
+    Mutates hero and board in place. Returns a dict: {"alive": bool, "recovered": bool,
+    "death_node": str|None}. recovered is True only if a corpse was successfully retrieved
+    THIS trip (independent of alive -- a trip can recover an old corpse and then die again
+    elsewhere, matching run_one_trip's own result shape, where "recovered" and "died" are
+    separate flags, not mutually exclusive). death_node is the new corpse's location if
+    alive=False, matching run_one_trip's own death_node encoding exactly (either a Node name,
+    or "border:{border_name}:{origin_zone}:{target_zone}")."""
     # HP does NOT carry across trips -- run_one_trip's own very first line is `hp = max_hp`,
     # unconditional, every trip (implicit "resting" at Town between excursions; HP only
     # carries across PULLS within one trip, never across trip boundaries). Missing this was a
@@ -518,11 +590,27 @@ def run_solo_trip(hero, class_name, quest_pool, fallback_target_zones, board, rn
     # (trip 2's first pull showed hp=18 in the old code, hp=2 -- carried over from trip 1's
     # ending wounds -- in this driver, cascading into every downstream decision that trip).
     hero.hp = hero.max_hp
+    recovered = False
+
+    if hero.corpse_node is not None:
+        died_result = _resolve_forced_recovery(hero, class_name, quest_pool, board, rng,
+                                                 risk_tolerance, risk_tolerance_base, risk_only_as_last_resort)
+        if died_result is not None:
+            return died_result
+        recovered = True
+        # hero.alive is only ever SET to False (on a death, inside resolve_node_pull/
+        # resolve_border_crossing) -- nothing else resets it back to True, so a hero who just
+        # survived their own recovery pull is still marked dead from the ORIGINAL death unless
+        # explicitly cleared here. Missing this was a real bug, not a design choice -- caught
+        # via a live trace showing a successfully-recovered hero's trip still reporting
+        # alive=False for the rest of that same trip.
+        hero.alive = True
+
     while True:
         action = decide_travel(hero, class_name, quest_pool, fallback_target_zones,
                                 risk_tolerance_base, risk_only_as_last_resort)
         if action["action"] == "end_trip":
-            return hero.alive
+            return {"alive": hero.alive, "recovered": recovered, "death_node": None}
 
         if action["action"] == "cross_border":
             tier = M.ZONE_TIER[action["target_zone"]]
@@ -531,7 +619,7 @@ def run_solo_trip(hero, class_name, quest_pool, fallback_target_zones, board, rn
             outcome = resolve_border_crossing(hero, class_name, action["border_name"], action["target_zone"],
                                                mob_name, rng, risk_tolerance_base, risk_only_as_last_resort)
             if outcome["outcome"] == "died":
-                return False
+                return {"alive": False, "recovered": recovered, "death_node": outcome["death_marker"]}
             continue
 
         # action["action"] == "arrived"
@@ -548,14 +636,14 @@ def run_solo_trip(hero, class_name, quest_pool, fallback_target_zones, board, rn
         node_name = choose_node_to_declare(hero, zone_board, quest_pool)
         if node_name is None:
             B.discard_zone(board, zone_id, level)
-            return hero.alive  # nothing declarable this turn -- see docstring
+            return {"alive": hero.alive, "recovered": recovered, "death_node": None}  # nothing declarable
 
         mob_name = zone_board.dealt[node_name]
         outcome = resolve_node_pull(hero, class_name, node_name, mob_name, quest_pool, rng,
                                      risk_tolerance, risk_tolerance_base, risk_only_as_last_resort)
         B.discard_zone(board, zone_id, level)  # end-of-turn cleanup regardless of outcome
         if outcome["outcome"] == "died":
-            return False
+            return {"alive": False, "recovered": recovered, "death_node": node_name}
         if outcome["outcome"] in ("declined", "no_room"):
             # Matches run_one_trip's own behavior exactly: a declined pull (too risky, no
             # consumable left) or a bag-deadlock fallback both end the trip right there
@@ -564,42 +652,63 @@ def run_solo_trip(hero, class_name, quest_pool, fallback_target_zones, board, rn
             # decide_travel would otherwise see the identical hero state next iteration and
             # make the identical decision forever (caught via a genuine hang in
             # verify_board_engine_solo_chain.py, not by reasoning about it in advance).
-            return hero.alive
+            return {"alive": hero.alive, "recovered": recovered, "death_node": None}
         # win/flee just loop back to decide_travel again
 
 
-def run_solo_chain(class_name, strategy, rng, chain_trips, risk_tolerance=M.RISK_TOLERANCE,
+def run_solo_chain(class_name, strategy, rng, max_turns, risk_tolerance=M.RISK_TOLERANCE,
                     risk_tolerance_base=M.RISK_TOLERANCE_BASE, risk_only_as_last_resort=True,
                     purchase_policy="save", bag_queue_position=0):
-    """Chains solo trips together -- the BoardState-driven equivalent of _trip_chain.
+    """Runs a hero's career until hero.turns reaches max_turns -- the BoardState-driven
+    equivalent of _trip_chain, restructured 2026-08-22 to be turn-denominated rather than
+    trip-denominated, since a real turn (OPEN_QUESTIONS.md's "What a turn is," locked) is the
+    only unit that's actually meaningful at the table; a "trip" is pure simulator-side
+    bookkeeping for grouping the turns between two Town departures, never something a player
+    declares or a rule references. This was the entire stated point of building BoardState in
+    the first place -- an earlier version of this function still took chain_trips and yielded
+    trip_num, which meant the ONE thing this whole rewrite was for hadn't actually reached the
+    outermost, caller-visible layer yet, even though every resolver underneath it already
+    resolved exactly one real turn each.
 
-    Structured as [chain-init resolve_town_turn] then, per trip, [run_solo_trip] then
-    [resolve_town_turn] -- NOT [resolve_town_turn] then [run_solo_trip] the way an earlier
-    version of this function had it. That ordering had a real bug: every trip's OWN turn-in
-    only ever happened at the START of the FOLLOWING resolve_town_turn call, which meant the
-    very last trip's turn-in reward never got flushed at all (there's no trip after it to
-    trigger it) -- caught via a live comparison against _trip_chain showing every trip
-    missing its own gold/xp/quests_completed, not by reasoning about it in advance.
+    Internally still advances one [run_solo_trip] + [death/recovery post-processing, if
+    needed] + [resolve_town_turn] cycle at a time (interrupting mid-trip would need a bigger
+    declare/resolve statechart change -- decide_travel would have to expose "visit Town" as
+    an ordinary per-turn action instead of something the driver triggers between trips,
+    tracked as a real follow-up, not done here) -- so a chain can overshoot max_turns by
+    however many turns its last cycle took, and never undershoots it. Each cycle's own
+    resolve_town_turn call still costs exactly one turn on top of whatever the trip itself
+    cost, same as it always has.
 
-    Because resolve_town_turn bundles turn-in(trip N) with shopping(trip N+1) into one call
-    (see its own docstring for why that's the correct real-Town-visit model), a clean yield
-    for trip N needs pieces from TWO different resolve_town_turn calls: quests_completed and
-    gold_after_turnin from the call that just ran (turnin(N)), but trainer_turn from the
-    PREVIOUS call (shopping(N), which happened before trip N's own field excursion, not
-    after it) -- tracked via prev_trainer_turn across loop iterations.
+    Death does NOT stop the chain -- matching _trip_chain's own respawn-and-continue behavior
+    exactly. On a death: lock every non-empty Bag slot, apply +1 decay to every active quest
+    (see below for why +1 here, not +2 directly), set hero.corpse_node to the death's
+    location, and respawn hero.position to the nearest Town's Zone (the Zone containing the
+    death Node, or the ORIGIN Zone of a mid-crossing death -- the hero hadn't actually left
+    that Zone yet when the toll pull happened). On a recovery (hero.corpse_node successfully
+    cleared this cycle, see run_solo_trip/_resolve_forced_recovery): unlock every Bag slot.
+    Both checks are independent, not mutually exclusive -- a single cycle can recover an old
+    corpse AND then die again forming a new one, matching _trip_chain's own two separate (not
+    elif-chained) `if` blocks for this.
 
-    Yields (trip_num, alive, gold, xp, quests_completed, trainer_turn, turns) per trip. turns
-    is hero.turns, the cumulative real-turn count (OPEN_QUESTIONS.md's "What a turn is,"
-    locked) -- "trips" is NOT a comparable cross-class/cross-run unit (a trip's own length
-    varies wildly by class and luck, the same reason macro_sim.decay_stress_test computes its
-    own gold_per_turn instead of reporting a raw per-trip figure); this field is what a caller
-    should actually divide by for any gold/turn or xp/turn comparison, not trip_num.
+    resolve_town_turn is called UNCONDITIONALLY every cycle, death or not -- skipping it on
+    death broke the very next cycle's "shopping happens before the recovery attempt"
+    guarantee in an earlier version of this function (_trip_chain's shopping/Phase-1/
+    Purchase-Queue always runs at the top of every iteration, recovery-attempt or not). Since
+    every Bag slot just got locked on a death, its own turn-in loop naturally sees 0
+    accessible loot for every active quest (matching _accessible_count's own "locked slots
+    don't count" contract) -- no quest can look complete, so quests_completed comes out 0
+    automatically, and its own per-incomplete-quest +1 decay bump fires too, landing on TOP
+    of the +1 already applied here for a combined +2 -- reproducing _trip_chain's single
+    `decay_stage[loot] = min(decay_stage[loot] + 2, ...)` death penalty exactly (two separate
+    capped +1 bumps land identically to one capped +2 bump, checked directly:
+    min(min(x+1,cap)+1,cap) == min(x+2,cap) for every x), without needing a second, parallel
+    turn-in implementation just for the death case.
 
-    Death handling is a stub -- the chain simply stops without calling resolve_town_turn
-    again (a dead hero doesn't do Town business), no respawn/corpse-recovery yet (a separate
-    later chunk); the final yielded tuple has alive=False and gold/xp/quests_completed=0/
-    unchanged/0, matching _trip_chain's own death-branch shape (it doesn't touch gold/xp and
-    leaves quests_completed_this_trip at its initialized 0 on a death trip either)."""
+    Yields (alive, gold, xp, quests_completed, trainer_turn, turns) once per cycle. turns is
+    hero.turns, the cumulative real-turn count -- the field a caller should actually track
+    for any gold/turn or xp/turn comparison. No trip index is yielded at all; if a caller
+    needs to know how many cycles ran, that's len() of the collected results, not something
+    this function hands out as a meaningful unit."""
     mod = M.CARD_SOURCE[class_name]
     max_hp = float(getattr(mod, M.HP_ATTR[class_name]))
     hero = HeroBoardState(class_name=class_name, hp=max_hp, max_hp=max_hp, position=(1, "town"),
@@ -614,25 +723,35 @@ def run_solo_chain(class_name, strategy, rng, chain_trips, risk_tolerance=M.RISK
     init_result = resolve_town_turn(hero, class_name, strategy, purchase_queue, purchase_policy, rng)
     prev_trainer_turn = init_result["trainer_turn"]
 
-    for trip_num in range(1, chain_trips + 1):
+    while hero.turns < max_turns:
         pending_mandatory = (class_name in M.LEVEL2_MANDATORY and hero.xp >= M.LEVEL2_XP_THRESHOLD
                               and "mandatory" not in hero.acquired)
         valid_quest_zones = M.LEVEL2_QUEST_ZONES if hero.xp >= M.LEVEL2_XP_THRESHOLD else M.LEVEL1_QUEST_ZONES
         fallback_target_zones = M.TRAINER_ZONES if pending_mandatory else valid_quest_zones
         quest_pool = M.LEVEL2_QUESTS if hero.xp >= M.LEVEL2_XP_THRESHOLD else M.QUESTS
 
-        alive = run_solo_trip(hero, class_name, quest_pool, fallback_target_zones, board, rng,
-                               risk_tolerance, risk_tolerance_base, risk_only_as_last_resort)
-        if not alive:
-            # trainer_turn here is the shopping that happened BEFORE this trip started (same
-            # as any other trip -- _trip_chain computes trainer_turn_this_trip once at the top
-            # of its iteration and yields it unconditionally at the bottom, regardless of how
-            # the trip itself ends), not hardcoded False -- caught via a live divergence, a
-            # death trip preceded by a real purchase showed trainer_turn=True in _trip_chain.
-            yield (trip_num, False, hero.gold, hero.xp, 0, prev_trainer_turn, hero.turns)
-            return
+        trip_result = run_solo_trip(hero, class_name, quest_pool, fallback_target_zones, board, rng,
+                                     risk_tolerance, risk_tolerance_base, risk_only_as_last_resort)
+
+        if trip_result["recovered"]:
+            hero.locked = [False] * len(hero.locked)
+
+        if not trip_result["alive"]:
+            for i, slot in enumerate(hero.bag):
+                if slot is not None:
+                    hero.locked[i] = True
+            for loot in hero.active_quests:
+                q = quest_pool[loot]
+                hero.decay_stage[loot] = min(hero.decay_stage.get(loot, 0) + 1, len(q["gold_ladder"]) - 1)
+            death_node = trip_result["death_node"]
+            hero.corpse_node = death_node
+            if death_node.startswith("border:"):
+                _, _, origin_zone_s, _ = death_node.split(":")
+                hero.position = (int(origin_zone_s), "town")
+            else:
+                hero.position = (M.NODE_ZONE[death_node], "town")
 
         town_result = resolve_town_turn(hero, class_name, strategy, purchase_queue, purchase_policy, rng)
-        yield (trip_num, True, town_result["gold_after_turnin"], hero.xp,
+        yield (trip_result["alive"], town_result["gold_after_turnin"], hero.xp,
                town_result["quests_completed"], prev_trainer_turn, hero.turns)
         prev_trainer_turn = town_result["trainer_turn"]
