@@ -141,6 +141,32 @@ caught and flagged during the `DESIGN_DOC.md` rewrite/audit. If Wizard's actual 
 all-or-nothing outcome variance under condensed combat's real rules ever needs its own
 investigation, that's a fresh, unrelated question — see task #29.)*
 
+### "Dungeon" node concept — forced multi-pull chain, not evaluated or decided
+
+Raised 2026-08-22, inspired by how the WoW board game handles dungeons. Not yet scoped to a
+level, Zone, or even confirmed as its own Node type versus some other delivery mechanism —
+recorded here so the idea isn't lost, not because any of it is settled.
+
+The core idea: a Dungeon node commits a hero to a chain of 3 pulls back-to-back, with
+consumable use (Food/Potion) restricted somewhere across that chain rather than freely
+available between each pull the way an ordinary Node visit works today. Two variants raised,
+neither settled:
+- No consumable use at all between any of the 3 pulls — full HP-management pressure across
+  the whole chain, arrive with what you've got.
+- Exactly one consumable use allowed, but only immediately before the third (final) pull, not
+  between pulls 1 and 2.
+
+Not discussed or checked against anything yet:
+- What a Dungeon actually rewards for the added risk (bigger/guaranteed loot? something rarer
+  than normal Node loot? a distinct reward track entirely?).
+- Whether all 3 pulls draw from the same tier/deck or escalate in difficulty across the chain.
+- Whether declining or retreating mid-chain is possible at all, or a hero is fully locked in
+  once the first pull of the three is committed to.
+- How this interacts with the already-locked "one turn = one pull" accounting (OPEN_QUESTIONS.
+  md's "What a turn is") — does a 3-pull Dungeon cost 3 turns like 3 ordinary pulls would, or
+  does committing to the whole chain read as something else turn-wise (e.g. one committed
+  "turn" that resolves 3 rounds of combat internally).
+
 ### Per-class matchup info for the hero tracker boards, and how it interacts with blind-refill risk
 
 **This information is meant to live on each hero's own tracker board** (the physical
