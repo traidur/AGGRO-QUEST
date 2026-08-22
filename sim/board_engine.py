@@ -125,7 +125,16 @@ def resolve_node_pull(hero, class_name, node_name, mob_name, quest_pool, rng,
     with LV.leveled_kit(mod, _level2_swaps_for(class_name, hero.acquired)):
         pattern, mob_hp = M._pattern_hp_for_mob(class_name, mob_name)
 
-        one_pull_from_done = (not suppress_loot
+        # loot_name may not be a key in quest_pool at all -- quest_pool is picked per-trip by
+        # the hero's own XP level, but a Node's loot tier is a fixed property of its Zone
+        # ("never the hero's XP", macro_sim.py's own NODES comment). Under the old
+        # decide_travel-only routing this never mismatched (fallback_target_zones kept a low-
+        # level hero out of high-tier Zones entirely), but get_travel_actions/apply_travel_action
+        # deliberately show every reachable Zone regardless of level -- a human can walk into a
+        # Zone whose Node loot isn't in their current pool at all. In that case this pull simply
+        # isn't "one pull from completing a quest" (it can't be pursuing a quest for loot outside
+        # its own pool), not a crash.
+        one_pull_from_done = (not suppress_loot and loot_name in quest_pool
                                and M._accessible_count(hero.bag, hero.locked, loot_name)
                                == quest_pool[loot_name]["required"] - 1)
         if risk_only_as_last_resort:
@@ -191,30 +200,19 @@ def resolve_node_pull(hero, class_name, node_name, mob_name, quest_pool, rng,
         return {"outcome": "flee", "mob_name": mob_name}
 
 
-def resolve_town_turn(hero, class_name, strategy, purchase_queue, purchase_policy, rng):
-    """Resolves one full Town turn -- "a hero may do as much business as they want in one
-    visit... one turn total per Town visit" (OPEN_QUESTIONS.md's "What a turn is," verbatim).
-    Faithful port of _trip_chain's Town bookkeeping (quest turn-in/decay/refill, the
-    leaving-town restock, Phase 1 Logistics, Phase 3 Purchase Queue), bundled into a single
-    call since all of it happens at one Town stop under BoardState -- the OLD code only split
-    it across the tail of one _trip_chain loop iteration (turn-in) and the head of the next
-    (restock/pickup/purchases) for implementation convenience, not because they're two
-    separate turns. Order matches the old code's own dependency chain exactly: turn-in first
-    (so its Gold is available to spend this same stop), then restock, then Logistics, then
-    Purchase Queue.
+def _town_automatic_setup(hero, class_name, strategy, rng):
+    """Everything about a Town visit that is NOT a discretionary player choice -- quest
+    turn-in/decay/refill, the leaving-town restock, Phase 1 quest pickup, and the free
+    mandatory-upgrade grant. Factored out of resolve_town_turn (2026-08-22) so both the
+    AI-automatic path (resolve_town_turn, unchanged) and the new human-facing macro seam
+    (get_town_actions/apply_town_action) share the identical logic for this part -- only the
+    Purchase Queue (genuinely discretionary: which upgrade, in what order, whether to stop)
+    differs between the two callers, matching how none of turn-in/restock/pickup/mandatory-
+    grant are real choices in the physical game either (you don't decline a completed
+    quest's reward, or decline being handed a new quest by the quest-giver).
 
-    One real, documented difference from _trip_chain: a brand-new hero there starts already
-    holding an active_quests log (drawn before turn 0 even begins) -- here, active_quests
-    starts empty and gets bootstrapped by this function's own Phase 1 pickup branch on the
-    hero's first Town turn instead. Functionally equivalent (a hero standing in Zone 1, a
-    valid quest zone, on their very first turn), just deferred by one explicit turn rather
-    than happening before any turn exists, since BoardState has no "before turn 0" concept.
-
-    Mutates hero in place. Returns a dict: {"quests_completed": int, "trainer_turn": bool,
-    "gold_after_turnin": int}. gold_after_turnin is hero.gold's value right after turn-in,
-    before restock/Purchase-Queue spend it further this same call -- exposed purely for
-    external observability/verification (e.g. a UI wanting to show "you earned X from
-    quests" separately from "then spent Y at the shop"), not used internally."""
+    Mutates hero in place. Returns a dict: {"quests_completed": int, "mandatory_turn": bool,
+    "gold_after_turnin": int}."""
     zone_id, _node = hero.position
     pool = M.LEVEL2_QUESTS if hero.xp >= M.LEVEL2_XP_THRESHOLD else M.QUESTS
     for loot in pool:
@@ -268,6 +266,39 @@ def resolve_town_turn(hero, class_name, strategy, purchase_queue, purchase_polic
         hero.acquired.add("mandatory")
         mandatory_turn = True
 
+    return {"quests_completed": quests_completed, "mandatory_turn": mandatory_turn,
+            "gold_after_turnin": gold_after_turnin}
+
+
+def resolve_town_turn(hero, class_name, strategy, purchase_queue, purchase_policy, rng):
+    """Resolves one full Town turn -- "a hero may do as much business as they want in one
+    visit... one turn total per Town visit" (OPEN_QUESTIONS.md's "What a turn is," verbatim).
+    Faithful port of _trip_chain's Town bookkeeping (quest turn-in/decay/refill, the
+    leaving-town restock, Phase 1 Logistics, Phase 3 Purchase Queue), bundled into a single
+    call since all of it happens at one Town stop under BoardState -- the OLD code only split
+    it across the tail of one _trip_chain loop iteration (turn-in) and the head of the next
+    (restock/pickup/purchases) for implementation convenience, not because they're two
+    separate turns. Order matches the old code's own dependency chain exactly: turn-in first
+    (so its Gold is available to spend this same stop), then restock, then Logistics, then
+    Purchase Queue. This is the AI-automatic path -- see get_town_actions/apply_town_action
+    for the human-facing equivalent, which shares _town_automatic_setup for everything here
+    except the Purchase Queue walk.
+
+    One real, documented difference from _trip_chain: a brand-new hero there starts already
+    holding an active_quests log (drawn before turn 0 even begins) -- here, active_quests
+    starts empty and gets bootstrapped by this function's own Phase 1 pickup branch on the
+    hero's first Town turn instead. Functionally equivalent (a hero standing in Zone 1, a
+    valid quest zone, on their very first turn), just deferred by one explicit turn rather
+    than happening before any turn exists, since BoardState has no "before turn 0" concept.
+
+    Mutates hero in place. Returns a dict: {"quests_completed": int, "trainer_turn": bool,
+    "gold_after_turnin": int}. gold_after_turnin is hero.gold's value right after turn-in,
+    before restock/Purchase-Queue spend it further this same call -- exposed purely for
+    external observability/verification (e.g. a UI wanting to show "you earned X from
+    quests" separately from "then spent Y at the shop"), not used internally."""
+    zone_id, _node = hero.position
+    setup = _town_automatic_setup(hero, class_name, strategy, rng)
+
     hero.gold, purchase_trainer_turn = M._walk_purchase_queue(
         purchase_queue, hero.acquired, hero.bag, hero.locked, zone_id, hero.gold, purchase_policy)
 
@@ -277,8 +308,180 @@ def resolve_town_turn(hero, class_name, strategy, purchase_queue, purchase_polic
     # nothing still counts (the hero still visited).
     hero.turns += 1
 
-    return {"quests_completed": quests_completed, "trainer_turn": mandatory_turn or purchase_trainer_turn,
-            "gold_after_turnin": gold_after_turnin}
+    return {"quests_completed": setup["quests_completed"],
+            "trainer_turn": setup["mandatory_turn"] or purchase_trainer_turn,
+            "gold_after_turnin": setup["gold_after_turnin"]}
+
+
+def enter_town(hero, class_name, strategy, rng):
+    """Human-facing equivalent of resolve_town_turn's first half -- runs the automatic parts
+    of a Town visit (turn-in, restock, quest pickup, mandatory grant, see
+    _town_automatic_setup) and marks the ONE turn this whole visit costs (unconditional,
+    matching resolve_town_turn's own timing exactly -- charged on arrival, not per purchase,
+    since "one turn total per Town visit, no matter how much gets done there" is the locked
+    rule). Call this ONCE when a hero arrives at Town, then drive purchases via
+    get_town_actions/apply_town_action in a loop until leave_town is chosen.
+
+    Mutates hero in place. Returns _town_automatic_setup's own dict (quests_completed,
+    mandatory_turn, gold_after_turnin)."""
+    setup = _town_automatic_setup(hero, class_name, strategy, rng)
+    hero.turns += 1
+    return setup
+
+
+def get_town_actions(hero, purchase_queue):
+    """Legal Town actions available RIGHT NOW: any Purchase Queue item that's currently
+    eligible (right location for a Trainer-gated skill, Level-2-quests-started for the Bag
+    Upgrade, not already owned) AND affordable this instant, plus leave_town (always legal).
+    Deliberately does NOT apply purchase_policy's save-vs-skip ordering at all -- that's an AI
+    heuristic for walking the queue unattended; a human sees every affordable option and picks
+    freely, in whatever order they want, same as combat_engine.get_legal_actions doesn't
+    pre-filter down to "the AI's preferred card" either."""
+    zone_id, _node = hero.position
+    actions = []
+    for item in purchase_queue:
+        if item["tag"] in hero.acquired:
+            continue
+        if item["requires_trainer"] and zone_id not in M.TRAINER_ZONES:
+            continue
+        if item["requires_l2_started"] and "started_l2_quests" not in hero.acquired:
+            continue
+        if hero.gold < item["cost"]:
+            continue
+        actions.append({"type": "buy", "tag": item["tag"], "kind": item["kind"], "cost": item["cost"]})
+    actions.append({"type": "leave_town"})
+    return actions
+
+
+def apply_town_action(hero, action, purchase_queue):
+    """Resolves one Town action from get_town_actions. Mutates hero in place. Returns True if
+    the hero is still at Town (call get_town_actions again for the next choice), False if
+    they just left (leave_town) -- no separate turn cost either way, matching enter_town's own
+    "the whole visit is one turn, charged on arrival" accounting.
+
+    leave_town also clears hero.position's node marker from "town" back to None -- the
+    symmetric counterpart of apply_travel_action's return_to_town, which sets it TO "town".
+    Without this, a human-facing driver checking hero.position for "am I in Town right now"
+    (the natural way to decide whether to call get_town_actions or get_travel_actions next)
+    would see "town" forever after the first visit and never actually leave -- caught live via
+    verify_board_engine_travel_actions.py's end-to-end smoke drive, which got stuck re-entering
+    Town every iteration with zero declares or crossings ever happening. decide_travel/
+    resolve_node_pull/resolve_border_crossing never read this marker (only zone_or_border, the
+    first element) so nothing in the AI-automatic path was ever affected by its absence."""
+    if action["type"] == "leave_town":
+        zone_id, _node = hero.position
+        hero.position = (zone_id, None)
+        return False
+    item = next(i for i in purchase_queue if i["tag"] == action["tag"])
+    hero.gold -= item["cost"]
+    hero.acquired.add(item["tag"])
+    if item["kind"] == "bag":
+        hero.bag.append(None)
+        hero.locked.append(False)
+    return True
+
+
+def get_travel_actions(hero, board, rng):
+    """Legal Travel actions right now -- the human-facing equivalent of decide_travel's
+    single auto-picked target, checkpointed 2026-08-22. Unlike decide_travel (which only ever
+    considers whichever incomplete quest's Node is closest), this shows EVERY currently real
+    option: any non-Spice dealt Node in the hero's own Zone (regardless of whether it serves
+    an active quest -- a human might want the easy mob, the Gold, or just to explore), every
+    Border Node reachable from here (not just the one leading toward the AI's preferred
+    target), Flight Path if eligible, and returning to Town (always legal -- a human can
+    retreat mid-trip for no forced reason, unlike the AI which only stops per its own rules).
+
+    Dealing a Zone happens here, automatically, the FIRST time this is called for that Zone
+    this turn (matching Deal-on-entry / the full-refresh-every-turn rule -- flipping the cards
+    face-up is not a player choice) -- calling this again without an intervening
+    apply_travel_action returns the SAME menu, it does not re-deal.
+
+    Standing on a Border Node is a distinct, smaller case: no Node declares or further
+    crossings are offered there (a Border Node has no Nodes of its own and the hero hasn't
+    entered a Zone yet to consider crossing onward) -- only entering either connected Zone,
+    or returning to Town (free, matching "travel itself is free," Golden Rule 1 -- the hero
+    can just walk back into a Zone they can already freely reach and declare Town there,
+    represented here as a direct return_to_town option for convenience rather than forcing a
+    two-step "enter_zone then return_to_town").
+
+    Returns a list of action dicts, does not mutate hero."""
+    zone_or_border, _node = hero.position
+    actions = []
+
+    if isinstance(zone_or_border, int):
+        zone_id = zone_or_border
+        level = TIER_TO_LEVEL[M.ZONE_TIER[zone_id]]
+        if zone_id not in board.zones or not board.zones[zone_id].dealt:
+            B.deal_zone(board, zone_id, level, _nodes_in_zone(zone_id), rng)
+        zone_board = board.zones[zone_id]
+        for node_name in legal_node_declares(zone_board):
+            actions.append({"type": "declare_node", "node_name": node_name,
+                             "mob_name": zone_board.dealt[node_name]})
+        for border_name, connects in M.BORDER_NODES.items():
+            if zone_id in connects:
+                target_zone = next(iter(connects - {zone_id}))
+                actions.append({"type": "cross_border", "border_name": border_name, "target_zone": target_zone})
+        if zone_id in M.FLIGHT_PATH_ZONES and hero.gold >= M.FLIGHT_PATH_COST:
+            target_zone = next(iter(M.FLIGHT_PATH_ZONES - {zone_id}))
+            actions.append({"type": "flight_path", "target_zone": target_zone, "cost": M.FLIGHT_PATH_COST})
+    else:
+        border_name = zone_or_border
+        for target_zone in M.BORDER_NODES[border_name]:
+            actions.append({"type": "enter_zone", "target_zone": target_zone})
+
+    actions.append({"type": "return_to_town"})
+    return actions
+
+
+def apply_travel_action(hero, action, class_name, quest_pool, board, rng,
+                         risk_tolerance, risk_tolerance_base, risk_only_as_last_resort):
+    """Resolves one Travel action from get_travel_actions. The in-pull risk-gate/consumable
+    logic inside resolve_node_pull/resolve_border_crossing is UNCHANGED and still automatic
+    for this slice (same scope split Town got -- the destination is a real human choice here,
+    whether to eat a Potion mid-pull is a separate, later slice). Mutates hero and board in
+    place. Returns a dict: {"outcome": str, ...} -- shape depends on action type:
+      declare_node/cross_border: whatever resolve_node_pull/resolve_border_crossing returned
+          ("win"/"flee"/"died"/"declined"/"no_room"), plus the Zone gets Discarded afterward
+          for a declare_node (end-of-turn cleanup, matching run_solo_trip's own).
+      flight_path/enter_zone/return_to_town: {"outcome": "moved"} -- no combat, just position
+          (and Gold, for flight_path) changes.
+    A caller should check outcome == "died" the same way run_solo_trip does; a death here
+    does NOT do the death/recovery post-processing itself (that lives in run_solo_chain's own
+    loop, matching every other resolver's scope boundary -- this function resolves one action,
+    it doesn't own the surrounding chain bookkeeping)."""
+    if action["type"] == "declare_node":
+        zone_id, _node = hero.position
+        level = TIER_TO_LEVEL[M.ZONE_TIER[zone_id]]
+        result = resolve_node_pull(hero, class_name, action["node_name"], action["mob_name"], quest_pool, rng,
+                                    risk_tolerance, risk_tolerance_base, risk_only_as_last_resort)
+        B.discard_zone(board, zone_id, level)
+        return result
+
+    if action["type"] == "cross_border":
+        return resolve_border_crossing(hero, class_name, action["border_name"], action["target_zone"],
+                                        scouted_pull_from_deck(class_name,
+                                                                board.level_decks[TIER_TO_LEVEL[M.ZONE_TIER[action["target_zone"]]]],
+                                                                rng),
+                                        rng, risk_tolerance_base, risk_only_as_last_resort)
+
+    if action["type"] == "flight_path":
+        hero.gold -= action["cost"]
+        hero.position = (action["target_zone"], None)
+        return {"outcome": "moved"}
+
+    if action["type"] == "enter_zone":
+        hero.position = (action["target_zone"], None)
+        return {"outcome": "moved"}
+
+    # return_to_town -- free, matches Golden Rule 1 ("travel itself is free"). If currently on
+    # a Border Node, "returning to Town" means walking into whichever connected Zone is
+    # closer -- picks the first one listed, since both are equally free from a Border Node and
+    # neither is objectively "closer" in hop terms; a real UI would let the human pick which
+    # Zone's Town to walk into instead of defaulting.
+    zone_or_border, _node = hero.position
+    zone_id = zone_or_border if isinstance(zone_or_border, int) else next(iter(M.BORDER_NODES[zone_or_border]))
+    hero.position = (zone_id, "town")
+    return {"outcome": "moved"}
 
 
 def resolve_border_crossing(hero, class_name, border_name, target_zone, mob_name, rng,
