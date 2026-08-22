@@ -25,10 +25,21 @@ When a class moves up one hero level, four things should hold:
    docstring). Chosen because the whole roster is already validated to sit in a tight 14-16
    ceiling / 8-10 floor band at Level 1 -- a uniform +1 preserves that tightness rather than
    requiring re-validating relative class balance from scratch.
-2. **Max HP moves up by about +1.** A uniform, passive baseline bump, not a targeted fix --
-   directly tested (see "HP vs. mitigation" below) and confirmed to have wildly uneven,
-   threshold-dependent effects on survivability. It's cheap and safe to apply uniformly
-   precisely *because* it isn't relied on to close any specific class's gap.
+2. **Max HP moves up by +1 -- but per Tier, not per Level (locked 2026-08-21).** The 6 hero
+   levels group into 3 Tiers of 2 Levels each (Tier 1: Levels 1-2, Tier 2: Levels 3-4, Tier 3:
+   Levels 5-6, per OPEN_QUESTIONS.md's "Tier/level/zone structure" entry). HP moves up only on
+   the level that *enters* a new Tier -- Level 3 and Level 5 -- not on Level 2, 4, or 6, which
+   stay within the Tier they're already in. This is why none of the 6 classes' real, locked
+   Level 2 slates ever touched their `_HP` constant: Level 2 never crosses a Tier boundary, so
+   under this rule it was never supposed to. Card upgrades (mandatory + purchased) still land
+   every Level; HP is the slower-cadence system -- a uniform, passive baseline bump, not a
+   targeted fix, directly tested earlier (see "HP vs. mitigation" below) and confirmed to have
+   wildly uneven, threshold-dependent effects on survivability if applied more aggressively.
+   Whether this HP gain requires a Trainer visit (like the mandatory card upgrade now does) or
+   applies automatically on crossing the Tier's XP threshold is still open -- unlike a card
+   technique, HP reads more like accumulated toughness from the adventuring already done,
+   which leans toward automatic, but this hasn't been decided for real yet, and doesn't need to
+   be until Tier 2 content actually exists.
 3. **Survivability against the new level's appropriate mobs must not regress meaningfully**
    compared to that same class's own previous-level baseline -- not an absolute target, a
    self-comparison. "Survivability" here means **cost%** (average HP lost per pull, win or
@@ -85,6 +96,20 @@ bearing, not just organization.
    upgrade candidate's numbers, not just which card gets picked, must be derived against the
    mandatory-only baseline, and re-verified against it if the sweep script's swap dict ever
    drifts to include a previously-locked purchased upgrade for convenience.
+
+   **Writing this rule down did not stop it from recurring -- it was violated twice more
+   while building Rogue (Relentless Ambush's sweep included Quicker Slash already locked;
+   Backstab and Dodge's sweep included both prior purchased upgrades), in the same session
+   that has this exact paragraph already written. Prose alone doesn't work here. Use
+   `sim/leveling_validation.py`'s `sweep_purchased_candidate(mod, has_stance, mob_key,
+   max_hp, mandatory_swap, candidate_old_name, candidate_variants, L1_cost, L1_win,
+   L1_pulls)` for every purchased-upgrade sweep from here on -- it raises `ValueError` if
+   `mandatory_swap` contains anything other than exactly the one locked mandatory upgrade,
+   so a swap dict that's grown to include a previously-locked purchased upgrade fails loudly
+   at the point of the mistake instead of silently producing contaminated numbers three steps
+   later. Never build `mandatory_swap` by copy-pasting and extending a previous candidate's
+   swap dict -- construct it fresh from scratch every single time, containing only the
+   mandatory upgrade, no matter how many purchased upgrades are already locked.**
 4. **For each purchased-upgrade candidate, test whether its distinctive mechanic (a combo
    bonus, a conditional trigger, anything beyond flat stats) actually has a measurable effect
    before investing further sweep time in it.** Don't assume the flavorful lever is
@@ -129,6 +154,524 @@ chosen below the strongest legal value, for headroom reasons no sweep could have
 own), and the final go/no-go on locking anything. The procedure above is meant to remove the
 repeated methodology mistakes from the process, not the judgment calls -- every step produces
 options and evidence, not a single forced answer, and the last call stays a design decision.
+
+## The unplayed-card diagnostic has a tie-artifact bug -- found on Rogue, checked against all three finished classes (2026-08-20)
+
+**The raw `unplayed_card_diagnostic` (Step 1's main tool) counts a card as "unplayed" every
+time it's excluded from the reported best line, even when that exclusion was an arbitrary
+tie-break, not a genuine weakness.** Found while leveling Rogue: giving Quick Slash a strict,
+no-downside +1 Block (never worse in any hand, sometimes better) made its raw unplayed% go
+*up*, not down (23.3% -> 31.1%). Traced every one of the 15 hand/mob pairs that flipped --
+all 15 were exact ties (Quick Slash and some other card landing on the identical (win,
+hp_left)), where a `leveled_kit` side effect (swapping a card under its own name moves it to
+the end of dict insertion order, reordering `DECK` and therefore which hand-tuples get
+enumerated) flipped which of two equally-good options the solver's first-found tie-break
+happened to report. Zero genuine changes. **The raw stat isn't wrong about what the solver
+did, but it isn't the number that answers "is this card actually weak" -- ties are real noise
+sitting on top of real signal, not a rounding error.**
+
+**Fix: `condensed_trip.py`'s new `unplayed_card_diagnostic_genuine`** -- only tallies a card as
+unplayed when *every* 3-card set achieving the best (win, hp_left) for that hand excludes it,
+i.e. no tied alternative would have kept it in. Skips (and separately counts) hand/mob pairs
+where multiple different 3-card sets tie for best, since no single card can be honestly blamed
+as "the" unplayed one there.
+
+**Re-ran it against all three already-finished classes' unmodified Level 1 kits, not just
+Rogue, to check whether the noise had already caused a real misdiagnosis anywhere:**
+
+| Class | Raw diagnostic's top pick | Genuine diagnostic's actual top | Verdict |
+|---|---|---|---|
+| Warrior | Shield Block | Shield Block, 65.0% (39/60) vs. Heavy Swing 20.0% | **Confirmed** -- still dominant with ties removed |
+| Cleric | Heal (58.9% raw, looked dominant) | Heal 45.8% (11/24) vs. Void Mark 41.7% (10/24) | **Weakened** -- was "dominant," is actually a near-coin-flip once ties are filtered, though still technically #1 |
+| Paladin | Invocation of Sanctuary (42.2% raw) | **Sacred Light 50.0% (12/24) vs. Invocation of Sanctuary 33.3% (8/24)** | **Reversed** -- Sacred Light was the more genuinely weak card, not the one that actually got the mandatory slot |
+
+Also worth noting how much of the raw diagnostic's total sample is tie-noise, not signal: 61 of
+90 Rogue pairs (68%), 30 of 90 Warrior pairs, 66 of 90 each for Cleric and Paladin -- the
+majority of every one of these diagnostics' raw counts, across every class checked, was ties.
+
+**None of the three finished classes got reopened over this.** Warrior's pick holds up cleanly
+regardless. Cleric's still technically wins even with the weaker margin. Paladin's is a real,
+deliberate difference (Sacred Light became Sanctified Light, a *purchased* upgrade instead of
+the mandatory one) that the user confirmed they're comfortable with on its own terms -- not an
+oversight, a genuine choice to give Paladin's slate a different shape than Cleric's, backed by
+the fact that Paladin's full four-card slate already passed its complete cost%/win%/pulls
+validation regardless of which specific card carries the mandatory label. Recorded here as a
+real finding and a real, considered non-fix, the same way this guide already records the
+Warrior Dominate and Cleric contamination incidents -- **use `unplayed_card_diagnostic_genuine`
+for every class going forward, not the raw version, and don't retroactively second-guess a
+class whose full slate already passed real validation just because this tool would have
+pointed somewhere slightly different at the diagnosis step.**
+
+## Fourth class worked example: Rogue
+
+**Diagnosis exposed the tie-artifact bug described above -- this class's worked example starts
+mid-correction, not from a clean raw-diagnostic read.** The raw `unplayed_card_diagnostic`
+pointed at Quick Slash (23.3%) as the top candidate. Swept Quick Slash's Block (+1, the value
+the user picked directly rather than the numerically-stronger alternative found in an earlier,
+broader sweep) as the mandatory upgrade -- but its own unplayed% then went *up* after the buff
+(23.3% -> 31.1%), which is impossible for a strict, no-downside improvement and is what
+surfaced the tie-artifact bug in the first place (see the section above for the full
+investigation). Re-ran the diagnosis with the fixed `unplayed_card_diagnostic_genuine`:
+**Evasion, not Quick Slash, is the class's actual most genuinely weak card** (51.7% of real,
+non-tied comparisons, more than double Quick Slash's genuine 20.7%) -- 68% of the raw
+diagnostic's total sample (61 of 90 pairs) was tie-noise, which is why the raw version never
+surfaced this.
+
+**Evasion's own stat (Block, already 10) is a confirmed dead lever** -- swept 10 through 16,
+completely flat, zero movement on any metric at any value. Makes sense once named directly:
+Evasion isn't cut for being *too weak* (10 Block already fully absorbs anything a Standard mob
+throws in one round), it's cut on pure opportunity cost -- a 0-damage card competing against
+cards that deal damage. More of the same stat can't fix a problem that was never about
+magnitude.
+
+**Locked: Evasion -> Evasion and Riposte, gains 2 DMG** (Block unchanged at 10). Swept damage
+1-3; 3 was still climbing and hadn't saturated, but the user chose to stop at 2 deliberately,
+matching this guide's own repeated pattern of landing short of the strongest legal value on
+purpose (see Shield Bash's X=3 vs. X=4, Cleric's Void Mark) rather than always taking the
+biggest number swept. Cost margin -2.4, win margin -3.2 (structurally near-untouched by a
++2 DMG bump on a card whose real job is defense, matching every other class's mandatory slot
+never fully closing win% alone), pulls margin -0.44 -- still short of fully closing the L1/L2
+gap on its own, same as every other class's mandatory pick, left for purchased upgrades.
+Verified as a genuine fix, not another tie artifact: Evasion and Riposte's genuine unplayed
+rate dropped from 51.7% to 8.0% after the change. Clean diagnostic otherwise -- equilibrium
+clear, no hidden-domination, damage floor/ceiling unchanged (9/15, correct for a card that
+doesn't touch the top end of the damage distribution).
+
+**Re-diagnosed for the first purchased-upgrade candidate against the correct mandatory-only
+baseline, using the genuine (tie-filtered) diagnostic this time:** Quick Slash, 48.0% of real
+comparisons (12 of 25) -- the clear next candidate. Swept its damage (deliberately not Block --
+the user's own call, to avoid an unknown interaction with the STRIKE-tag/finisher-curve
+mechanic Quick Slash already feeds into): win margin saturates at dmg=4 (-3.2 -> -0.7, flat
+through dmg=5). **Locked: Quick Slash -> Quicker Slash, damage 3->4.** Cost margin -1.9, pulls
+margin -0.27 -- still short of closing alone, expected with two more purchased-upgrade slots
+still open.
+
+**Third candidate, re-diagnosed against the correct baseline (mandatory + Quicker Slash both
+locked):** Ambush, 40.9% of genuine comparisons, just ahead of Quicker Slash's own remaining
+36.4%. Swept its damage/round1_dmg pair together (3/5 through 6/8): win margin saturates at
+5/7. Also tried a genuinely different lever, not just a bigger number: widening *when* the
+existing round-1 bonus can fire, from round 1 only to round 1 or 2 -- a real mechanic change
+(`bonus_rounds` field added to `condensed_rogue.py`'s `simulate()`, defaulting to `(0,)` so the
+locked Level-1 card is an exact no-op; verified directly, cost/win/pulls unchanged from
+baseline). The wider window improved every damage level tested over the round-1-only version
+(e.g. at 5/7: +0.6/+0.3/+0.28 vs. round-1-only's +0.3/+0.3/+0.21). **Locked: Ambush ->
+Relentless Ambush, damage/round1_dmg left at the original 3/5 -- gains bonus_rounds=(0,1)
+(the existing +2 round-1 bonus now also fires in round 2)**, a deliberately conservative pick
+matching this guide's repeated pattern: cost margin -1.5, win margin -0.7, pulls margin -0.18 --
+a real, positive move over the unmodified card (-1.9/-0.7/-0.27) without taking the strongest
+swept combination.
+
+**Contamination caught and corrected (2026-08-20) -- both Relentless Ambush's and Backstab and
+Dodge's sweeps above were run against a kit that already included previously-locked purchased
+upgrades, the exact mistake this guide's own Step 3 already warns about, violated twice more
+in the same session that has the warning written down.** See the section above ("The
+unplayed-card diagnostic has a tie-artifact bug") and `sim/leveling_validation.py`'s new
+`sweep_purchased_candidate` (raises `ValueError` on a contaminated baseline going forward) for
+the full incident and the fix. Corrected, true-isolation numbers for both, against a baseline
+with *only* Evasion and Riposte applied:
+
+| Candidate | Contaminated win margin | True-isolation win margin |
+|---|---|---|
+| Relentless Ambush (3/5) | -0.7 | **-3.2** |
+| Backstab and Dodge (dmg=4) | -0.7 | **-3.2** |
+
+**Fourth candidate, Backstab and Dodge, re-swept clean:** damage sweep (block fixed at 2) and
+Block sweep (damage fixed at 4) both tested independently against the true mandatory-only
+baseline. Damage is the only lever that moves win margin (block stays flat at -3.2 across its
+whole range, matching every other pure-Block sweep this guide has ever run). **First lock
+attempt (superseded below): Backstab and Dodge -> Backstab and Dodge [Lv 2], damage 4->5,
+Block unchanged at 2.** Cost margin +0.1, win margin -2.6, pulls margin +0.27 -- a deliberately
+conservative pick short of where win margin would saturate (dmg=7, -1.6).
+
+**Revised (2026-08-20) via the new `armor_pierce` mechanic** (opt-in field added to
+`condensed_rogue.py`'s `simulate()` -- ignores the mob's own block value entirely for that
+card's damage; absent on every base card, verified no-op). Swept four ways against the true
+mandatory-only baseline:
+
+```
+                       variant  cost_marg  win_marg  pulls_marg
+   4/2, no pierce (unmodified)       -2.4      -3.2       -0.44
+             4/2 + armor_pierce       -1.1      -2.9       -0.11
+       5/2, no pierce (1st lock)        0.1      -2.5        0.25
+             5/2 + armor_pierce        0.6      -2.5        0.44
+```
+
+Different shape than Evasion and Riposte's own armor-pierce finding: win margin barely moves
+with pierce at either damage level (4-5 damage already overkills through the game's max Block
+of 2 most of the time, so win rate doesn't care), but cost/pulls both get a real, additional
+gain layered on top of the flat damage bump. **Locked: Backstab and Dodge -> Backstab and Dodge
+[Lv 2], damage held at 4 (unbumped from Level 1), gains armor_pierce, Block unchanged at 2.**
+Cost margin -1.1, win margin -2.9, pulls margin -0.11 -- deliberately the unbumped-damage
+variant rather than 5/2+pierce (the numerically stronger combination), matching this guide's
+repeated discipline of not automatically taking the strongest swept value, and keeping the
+same "different lever, not a strictly bigger number" spirit as the mandatory-slot exploration
+above.
+
+**Relentless Ambush's locked value (3/5) has not yet been re-confirmed against the corrected,
+true-isolation numbers** -- flagged here explicitly rather than silently left as-is, since its
+contaminated win margin (-0.7) and true win margin (-3.2) are a real, large gap the user should
+see before treating 3/5 as final.
+
+## Fifth class worked example: Ranger
+
+**Diagnosis, genuine-diagnostic version used from the start this time.** `unplayed_card_diagnostic_genuine` on the unmodified Level 1 kit found a very thin sample -- only 13 of 90 pairs genuine (77 ties, 85.6%, the highest tie rate of any class checked so far). Beast's Challenge topped it (53.8%, 7/13), Sure Shot second (30.8%, 4/13); flagged explicitly as a real but low-confidence lead given the sample size, not treated as a settled answer. L1 baseline: cost 18.0%, win 95.6%, pulls 6.07. Unmodified L2: cost 21.7%, win 92.4%, pulls 5.36 (margins -3.7/-3.2/-0.71).
+
+**Traced *why* Beast's Challenge loses, not just accepted the diagnostic number.** Every genuine unplayed case for it (6 of 7) shares the same mechanism: a hand containing *both* grants_range cards (Withdrawing Hip Shot and Crippling Shot) plus Sniper/Point Blank Shot -- Sniper's damage depends on whether the *previous* round's card granted Range (7 dmg vs. 5), so an evasion card played right before it is a real, deliberate combo. Beast's Challenge doesn't grant Range and doesn't feed that combo at all, and its own bonus (5 dmg if Beast Bond: Wolf active, 2 otherwise) usually can't fire either since Beast Bond usually isn't in the same hand. It loses to combo synergy, not raw weakness -- a flat buff patches around this rather than fixing it, a legitimate but explicitly acknowledged tradeoff, not an oversight.
+
+**Swept three ways: secondary damage alone, Block alone, both together.** Damage alone (block=0) actually made cost margin *worse* (-3.7 -> -4.6 at dmg_else=4) before recovering slightly -- matches the established pattern that pure damage bumps with zero Block backing them hurt survivability via faster-but-riskier throughput. Block alone (dmg_else=2 unchanged) was a clean, purely positive lever (cost -3.7 -> +2.7 at block=3, win margin flat throughout, as always for pure Block). Combined, the two levers were strongly superadditive -- e.g. dmg_else=5/block=3 hit cost +5.0/win +1.5/pulls +3.18, far more than either alone predicts. **Flagged directly: at dmg_else=4/block=2 and above, the combined sweep closes *both* cost margin and win margin at once -- exactly what rule 2b says a mandatory upgrade must not do.** Only dmg_else=3/block=1 stayed inside that boundary.
+
+**First lock attempt (superseded below): Beast's Challenge, secondary damage 2->3, Block 0->1**
+(the 5-dmg Beast-Bond-active payoff untouched). Cost margin -1.4, win margin -0.7, pulls margin
+-0.01. Clean diagnostic: equilibrium clear, damage floor/ceiling unchanged (9/14), no real
+hidden-domination (the one still-flagged pair is the same pre-existing, already-explained Beast
+Bond: Wolf vs. Withdrawing Hip Shot thin-sample flag from lock-in, not new).
+
+**Revised after the first purchased-upgrade sweep (Sure Shot) showed win margin crossing
+positive at just dmg=5 -- one purchased upgrade in, with two more slots still to come.** User
+flagged this as overshooting too early given the stated concern above, and asked to check
+whether pulling the mandatory card back further (rather than tuning Sure Shot down) bought
+more headroom. **Locked: Beast's Challenge -> Beast's Stand, secondary damage held at 2
+(unchanged from Level 1), Block 0->1** -- a full rename, not a `[Lv 2]` tag, since dropping the
+damage lever changes the card's actual identity from an offensive payoff to a purely defensive
+one. Confirmed structurally, not just by the numbers: `simulate()`'s
+`payoff_wolf` branch only ever touches `dmg` (`dmg_if_wolf` vs `dmg_else`); Block is read
+straight from the card's own flat `block` field with no conditional at all, so the +1 Block
+lands whether or not Beast Bond: Wolf was played this pull. Mandatory-only margins: cost -1.0,
+win **-3.2**, pulls +0.05. The win-margin number looks alarming next to the first attempt's
+-0.7 until you check it against the *unmodified*, zero-upgrade L2 baseline quoted above
+(margins -3.7/-3.2/-0.71) -- it's essentially identical. That's expected, not a regression: a
+pure-Block lever has already been shown in this same sweep (and independently on Crippling
+Shot) to leave win margin flat, since Block never changes whether the mob dies. Cost and pulls
+both did genuinely improve over that same raw baseline (-3.7 -> -1.0, -0.71 -> +0.05), consistent
+with Block being a real, clean, purely defensive contribution. Net effect: 100% of the win-margin
+recovery now has to come from the three purchased upgrades, none from the mandatory slot -- a
+bigger ask of the purchased slate than the first attempt, but it buys one more grain-step of
+headroom (Sure Shot's own sweep now crosses positive at dmg=6 instead of dmg=5).
+
+**Locked: Sure Shot -> Bullseye, damage 4->5.** A full rename by explicit user choice, not the
+usual `[Lv 2]` tag a same-shape flat numeric bump would otherwise get (matching the "the
+user's call, not a strict application of the convention" precedent set by Invocation of
+Grace). Swept fresh against the revised 2/1 mandatory baseline:
+
+```
+   variant  cost_marg  win_marg  pulls_marg
+         4       -1.0      -3.2       -0.02
+         5       -1.1      -1.3       -0.04
+         6       -0.3       1.3        0.15
+         7       -0.0       1.6        0.21
+```
+
+Landed on dmg=5 -- win margin still negative (-1.3), leaving real room for the next two
+purchased-upgrade slots rather than closing the gap off one card at a time.
+
+**Third candidate, re-diagnosed via `unplayed_card_diagnostic_genuine` on the mandatory+Bullseye
+kit:** 24 genuine comparisons, 66 ties. Bullseye and Beast's Stand (the two cards just buffed)
+topped the left-out list (41.7%, 25.0%) -- not a weakness signal, just other hands finding a
+stronger combo elsewhere now that those two are stronger. Of the untouched cards, Sniper/Point
+Blank Shot (20.8%) and Beast Bond: Wolf (8.3%) read as the real remaining candidates; Crippling
+Shot is never left out (0.0%).
+
+**Withdrawing Hip Shot checked and rejected for this slot.** Its own earlier side-candidate
+finding (win margin +3.1 at dmg=4, isolated) was confirmed to still apply once actually stacked
+with Bullseye: dmg=3 alone already pushed the three-upgrade combined win margin to +2.5 --
+well past Paladin's own final reference (-0.7) with one purchased slot still open after it.
+Same lever, same overshoot risk already flagged for the mandatory slot -- set aside again, not
+locked.
+
+**Sniper/Point Blank Shot swept two ways.** First pass moved only one conditional branch at a
+time (`dmg_if_prev_range` alone, or `dmg_else` alone) -- flagged as not a fair equivalent to a
+flat-damage card's single-value bump, since Sniper has two damage numbers. Re-swept bumping
+both branches together (the honest "+1" equivalent): 8/6 only reached win margin -2.5, 9/7
+(+2 both) only -2.2 -- confirms the earlier single-branch finding wasn't an artifact of testing
+the wrong thing. Root cause traced directly: only 9 of 15 hands even contain both Sniper and a
+grants_range card together, and of the resulting 54 hand-mob pairs, the best line only actually
+sequences them adjacent (realizing the combo) 24 times -- a hard structural cap on how much of
+the deck this card's bonus can ever reach, on top of the payoff itself being already
+near-saturated at its own Level 1 value (win rate barely moves between dmg_if_prev_range 5, 7,
+and 8 on the plain 6-mob set).
+
+**Locked anyway, by explicit user choice: Sniper/Point Blank Shot -> Deadeye/Point Blank Shot,
+dmg_if_prev_range 7->8 only** (dmg_else held at 5, the weaker single-branch variant rather than
+the fairer-but-still-weak 8/6 pair). Margin in isolation (mandatory-only baseline): cost -0.4,
+win -2.5, pulls +0.12 -- a small, real improvement over mandatory-only alone, not enough on its
+own to be a strong purchased upgrade, but a deliberate, modest pick given the two stronger
+candidates in this slot (Withdrawing Hip Shot's damage) were rejected specifically for
+overshoot risk.
+
+**Running three-upgrade total (mandatory Beast's Stand + Bullseye + Deadeye/Point Blank
+Shot, all stacked):** cost 18.5% (margin -0.5), win 94.9% (margin -0.6), pulls 6.20 (margin
++0.12). Landing close to Paladin's own final reference (cost +0.7, win -0.7, pulls +0.55) --
+win margin in particular is nearly identical (-0.6 vs -0.7) -- without the earlier overshoot
+risk materializing. Cost and pulls still trail Paladin's reference somewhat, leaving room for
+a possible fourth purchased-upgrade slot if the class ends up needing one, matching the
+variable per-class purchased-upgrade count already established (Warrior/Rogue: 3, Cleric/
+Paladin: 2).
+
+**Fourth-slot investigation: both remaining untouched cards (Beast Bond: Wolf, Withdrawing Hip
+Shot) turned out to be dead ends, not the deck as a whole.** Swept Beast Bond: Wolf four ways,
+adding a new opt-in `beast_block_value_decayed` field to `simulate()` (verified no-op for the
+unmodified card -- defaults to `beast_block_value` itself when absent) to let the persistent
+Block bonus step down starting two rounds after Wolf is played, instead of staying flat forever:
+
+```
+   variant           dmg  R1/R2/R3  cost_marg  win_marg  pulls_marg
+   Wolf unchanged      4     2/1/1       -1.0      -3.2        0.05
+   candidate A         4     2/2/1        1.7      -3.2        1.13
+   candidate B         5     2/1/1        1.2      -2.5        0.71
+   candidate C         3     2/2/1        1.4      -6.0        0.99
+   candidate D         2     2/2/2       -0.0     -12.7        0.43
+```
+
+Win margin tracked damage directly (worse at lower dmg, matching the established damage/win-rate
+lever pattern), while every variant's cost/pulls margin ran well past what a single purchased
+slot should contribute -- even the smallest possible single-step bump (own Block 1->2 only, dmg
+and persistent otherwise untouched) still posted pulls margin +0.83, bigger than the entire
+three-upgrade stack's own total (+0.12). Confirmed this is a property of Wolf's persistent-
+stacking mechanic itself, not the specific variants tried: the same mechanism already forced a
+correction during the class's own macro-loop fix (+2 Block landed past Paladin before settling
+on +1). Withdrawing Hip Shot's damage lever was already known to overshoot (see the three-way
+sweep above); its Block lever swept clean but nearly inert (0->2 only moved cost -1.0 -> -0.7,
+win margin flat at -3.2 throughout) -- and buffing it to block=1 would make it numerically
+identical to Crippling Shot's own base stats (dmg=2/block=1/grants_range=True), a real
+duplicate-identity problem flagged directly by the user, not just a numbers concern.
+
+**Locked: Crippling Shot -> Crippling Shot [Lv 2], Block 1->2** (damage held at 2). Deliberately
+not Withdrawing Hip Shot's matching lever, specifically to keep the two cards' identities
+distinct rather than converging them. Margin in isolation (mandatory-only baseline): cost -0.8,
+win -3.2 (flat, as expected for a pure-Block bump), pulls +0.15 -- the smallest, safest of the
+three untouched cards' minimum bumps by a wide margin (compare Wolf's own smallest bump at
+pulls +0.83 above).
+
+**Final four-upgrade total (mandatory Beast's Stand + Bullseye + Deadeye/Point Blank Shot +
+Crippling Shot [Lv 2], all stacked):** cost 18.2% (margin -0.2), win 94.9% (margin -0.6), pulls
+6.35 (margin +0.26). Still trailing Paladin's own final reference (+0.7/-0.7/+0.55) on cost and
+pulls, win margin nearly identical -- no overshoot at any step across the whole slate.
+
+**Two side candidates checked and set aside, not locked, kept for the record since they're
+real data points:** Withdrawing Hip Shot's damage (already the class's most-played card, 0%
+genuinely cut) still had real upside at dmg=4 (win margin +3.1, the single largest win-margin
+jump found anywhere in this guide) but cost margin stayed slightly negative there (-0.3) --
+a pure win%-lane candidate, not the right shape for the mandatory slot's actual job. Crippling
+Shot's Block is a near-dead lever (block 1->3 moved cost margin only -3.7 -> -3.3) since its
+evasion already covers 5 of 6 mobs; more Block only ever matters against Scout specifically.
+
+**User flagged a real, session-informed risk before locking anything further: Ranger's earlier
+macro-loop fix overshot once already (Beast Bond: Wolf's Block, +2 landed past Paladin before
+correcting to +1) and Rogue's own leveling pass overshot on its first purchased-upgrade
+attempt too.** Explicit plan going forward: check the running cumulative cost/win/pulls
+margins against Paladin's own final locked numbers (cost +0.7, win -0.7, pulls +0.55) as a
+rough ceiling reference at every step, not just at the final chart, so an overshoot gets
+caught early rather than after the whole slate is already locked.
+
+## Sixth class worked example: Wizard
+
+**Started, then paused mid-pass to correct a real factual error in the class's own docstring
+before continuing -- see `condensed_wizard.py`'s "Level 2 leveling infrastructure" note.** The
+docstring claimed "Wizard has exactly one full-block card" as the explanation for a set of
+mathematically-unavoidable deaths found during an earlier tempo fix. Checked directly and found
+this wrong: `grants_range` (Snap Freeze, Frozen Shot) also fully answers a melee round, same as
+Ice Barricade's block=10 does unconditionally -- the kit actually has three such cards. Re-ran
+the check separating genuine death (`hp_left<=0` in the best available line) from flee
+(`win=False` but `hp_left>0`, since the two were being conflated by a naive "any loss" count):
+genuine deaths clear entirely by HP=7 (50% of WIZARD_HP), and the real, much narrower mechanism
+is that a handful of specific hands draw only one of the three defensive-capable cards, letting
+the other two exposed rounds' combined damage exceed a low starting HP -- a hand-composition
+edge case, not a fixed one-card ceiling. Confirms `defense_floor_sweep`'s own documented 42.9%
+crack point was measured correctly, and that crack point is safer than Paladin's own locked
+35.3% -- not a blocker for leveling. Task #29 closed on this finding.
+
+**Diagnosis:** L1 baseline cost=21.0%, win=96.7%, pulls=5.31. Unmodified L2: cost=24.4%,
+win=92.4%, pulls=4.98 (margins -3.3/-4.3/-0.33). `unplayed_card_diagnostic_genuine` found the
+cleanest, most decisive signal of any class checked this session: **Fire Blast left out in
+77.8% of genuine comparisons (14 of 18, only 72 ties)** -- every other card at 11.1% or below.
+
+**Traced why, not just accepted the number.** Fire Blast is `weave_source=True`, same as Snap
+Freeze and Ice Barricade -- but Weave only needs one source card to arm and doesn't stack, so
+any hand holding Fire Blast alongside either other weave-source has a redundant arming option.
+In all 14 genuine cases, the solver picks Snap Freeze or Ice Barricade instead, because they
+arm Weave *and* provide real Block/evasion, while Fire Blast arms Weave and contributes nothing
+else (block=0, no grants_range). Its own raw damage (3, flat -- the "weave-boosted" second
+value doesn't even move, since Fire Blast is never itself a payoff card) is also the lowest of
+any damage card in the kit.
+
+**Swept plain damage first (dmg 3-6):** matches the established pattern -- pure damage with no
+Block backing it actually *worsens* cost/pulls margin while win margin climbs and saturates
+around dmg=5-6 (+0.5). Cost margin never gets better than -3.3 anywhere in this sweep, since
+Fire Blast starts with zero Block.
+
+**Explored `killing_blow` (Warrior's Execute pattern) as an alternative lever -- rejected,
+wildly overpowered.** Added as a new opt-in field to `condensed_wizard.py`'s `simulate()`
+(verified no-op). Win margin tracked identically to the plain-damage sweep at every value
+(killing blow doesn't touch whether the mob dies, only whether its attack lands that round --
+a pure survivability lever). But cost/pulls exploded: even at dmg=3 (unbumped), cost margin
+alone hit +1.4 and pulls +0.65 -- bigger than Ranger's entire four-card *stacked* slate. At
+dmg=6, pulls margin hit +3.53, the largest single-lever swing found anywhere this session.
+Rejected for the mandatory slot as a fundamentally different order of magnitude, not a tuning
+nuance -- landing the kill was simply too frequent an event to treat as an incremental buff.
+
+**Explored `armor_pierce` (new concept: ignores the mob's own block value entirely for that
+card's damage) -- much better-behaved.** New opt-in field added to `simulate()` (verified
+no-op). Cost/pulls margins stayed essentially identical to the plain-damage sweep (armor pierce
+doesn't touch survivability, a pure offense mechanic), but win margin improved meaningfully at
+low damage specifically: dmg=3 went from -4.3 (plain) to **-1.4** (pierced) -- a real +2.9pp
+gain from ignoring mob block at Fire Blast's own unbuffed value. The gain shrinks to nothing by
+dmg=5-6, where both sweeps converge to the same +0.5 (mob block stops mattering once raw damage
+already overkills through it).
+
+**User pushback, correctly caught a thematic mismatch:** a Block bump on "Fire Blast" -- floated
+as the next lever to pair with damage -- doesn't read as a fire-attack spell's identity. Agreed:
+kept Fire Blast purely offensive (damage + armor pierce, no Block at all), deferring the
+cost/pulls recovery to a purchased upgrade on one of the kit's actual defensive cards later
+(Ice Barricade, Snap Freeze, or Frozen Shot -- all already carry Block or evasion, on-theme for
+a bump). Mirrors Ranger's own mandatory shape in reverse: Beast's Stand ended up purely
+defensive and left all win-margin recovery to purchased upgrades; Fire Blast purely offensive
+leaves all cost/pulls recovery to purchased upgrades.
+
+**Locked: Fire Blast, damage 3->4, gains `armor_pierce`, Block stays 0.** Chosen over dmg=5
+(where win margin would already flip positive, +0.5) specifically to leave real headroom for
+the purchased-upgrade slots, matching the "don't recover the whole gap in one card" balance
+principle reinforced by the Rogue/Ranger armor-pierce tangent below. Cost margin -3.8, win
+margin -0.5, pulls margin -0.41.
+
+**First purchased-upgrade candidate, re-diagnosed against the mandatory-only baseline:** Fire
+Ball, 18.2% of a thin genuine sample (2 of 11, 79 ties -- flagged low-confidence given the
+sample size). Traced why: both genuine cases lose specifically when Arcane Volley is also in
+the hand -- Arcane Volley (dmg 6/8) strictly outdamages Fire Ball (dmg 5/7) on both its base and
+weave-boosted faces, so Fire Ball is dominated whenever they're both available. Checked how
+often Fire Ball even gets to show its boosted value when it *is* played: only 30.4% of the time
+(14 of 46) -- the other 69.6% it fires at its weaker 5-damage base, making the domination
+problem worse than the card-vs-card comparison alone suggests.
+
+**Redesigned rather than just bumped: dropped the Weave dependency entirely, flat 7 damage.**
+Swept both `payoff=True` (still consumes an armed Weave bonus for no benefit) and `payoff=False`
+(never touches Weave) at the same flat value:
+
+```
+                    variant  cost_marg  win_marg  pulls_marg
+   5/7 payoff (unmodified)       -3.8      -0.5       -0.36
+      flat 7, payoff=False       -2.6       0.2       -0.21
+       flat 7, payoff=True       -2.7       0.2       -0.21
+```
+
+`payoff=False` is marginally cleaner (avoids wasting an armed Weave bonus on a card that no
+longer needs it) and reads as the more honest design -- this card genuinely doesn't interact
+with Weave anymore, so it shouldn't still be flagged as a payoff consumer. **Locked: Fire Ball
+-> Fire Ball [Lv 2], damage flat 7 (was 5/7 weave-conditional), `payoff` flipped to False.**
+Cost margin -2.6, win margin +0.2, pulls margin -0.21. Win margin flips positive here, but this
+is a purchased (optional, paid) upgrade rather than the free mandatory slot, so the "don't close
+it in one card" bar is looser than it is for the mandatory pick -- accepted deliberately given
+how little headroom the class has left overall (mandatory + this one purchased upgrade still
+leaves cost/pulls solidly negative).
+
+**Second purchased-upgrade candidate: Ice Barricade**, re-diagnosed with the unplayed-card
+signal effectively exhausted (only 8 genuine comparisons left after the first two upgrades, all
+of them just the newly-buffed Fire Blast -- the sample is too thin to point at anything past
+this point, so the pick came from direct review of the remaining four cards instead). Confirmed
+it's actually a well-used card first, not a neglected one -- played in 81.7% of hand-mob pairs
+where drawn (49 of 60) against the current locked kit.
+
+**Block confirmed a completely dead lever, same as Evasion's own finding.** Swept 10/12/15,
+identical margins at every value -- max mob ATK anywhere in the game (including Elites) is 6,
+already fully absorbed by block=10. **Damage, by contrast, is a clean, strong lever** (same
+opportunity-cost shape as Evasion -> Evasion and Riposte -- a 0-damage card competing purely on
+opportunity cost against cards that deal damage):
+
+```
+   variant  cost_marg  win_marg  pulls_marg
+     dmg=0       -3.8      -0.5       -0.36
+     dmg=1       -2.9      -0.5       -0.20
+     dmg=2       -1.3        1.1        0.04
+     dmg=3        0.8        2.1        0.47
+```
+
+**Locked: Ice Barricade -> Ice Palisade, damage 0->1, Block unchanged at 10.** Cost margin -2.9,
+win margin -0.5, pulls margin -0.20 -- chosen over dmg=2 (win margin +1.1) specifically because
+dmg=2 was judged to overshoot, leaving dmg=1 as the more conservative pick that doesn't move win
+margin off its mandatory-only value at all.
+
+**Third purchased-upgrade candidate: Snap Freeze**, picked from direct card review rather than
+the unplayed diagnostic (effectively exhausted by this point -- see above). Swept damage and
+Block independently, both against the mandatory-only baseline (Fire Blast alone):
+
+```
+--- damage (block held at 1) ---          --- block (damage held at 1) ---
+   dmg=1 (unmodified)  -3.8  -0.5  -0.37      block=1 (unmodified)  -3.8  -0.5  -0.37
+   dmg=2               -2.4   1.1  -0.20      block=2               -3.4  -0.5  -0.28
+   dmg=3               -1.0   2.1   0.10      block=3               -3.4  -0.5  -0.25
+   dmg=4                1.3   3.3   0.59      block=4               -3.4  -0.5  -0.25
+```
+
+Damage turned out to be the much stronger lever, correcting an initial guess that Block would
+matter more here (Snap Freeze's Block only ever activates against Scout, same reason it's a
+near-dead lever for Ranger's Crippling Shot) -- Block saturates fast (identical at 3 and 4) and
+never moves win margin at all, the usual pure-Block signature. dmg=4 already reads as a likely
+overshoot (cost margin alone reaches +1.3, higher than anything else locked this pass). Checked
+the combined 2/2 pairing: cost -2.0, win +1.1, pulls -0.11 -- mildly superadditive over damage
+alone (-2.4/-0.20), same pattern seen everywhere else this session when damage and Block are
+paired; win margin matches the damage-alone result exactly, as expected.
+
+**Locked: Snap Freeze -> Deep Freeze, damage 1->2, Block 1->2.** A full rename (not a `[Lv 2]`
+tag) since both fields moved together -- a big enough combined shift to earn a new name, same
+convention used for Ranger's Beast's Stand and Bullseye. (Named Deep Chill at first lock,
+renamed to Deep Freeze immediately after.) Cost margin -2.0, win margin +1.1, pulls margin
+-0.11.
+
+**Combined total (mandatory + all 3 purchased) overshoots Paladin's own final reference on win
+margin -- left as-is, not re-tuned, by explicit user call.** Full chart:
+
+| Kit | Cost margin | Win margin | Pulls margin |
+|---|---|---|---|
+| Baseline (unmodified L1 kit) | -3.3 | -4.3 | -0.33 |
+| Mandatory only (Fire Blast) | -3.8 | -0.5 | -0.41 |
+| Mandatory + Fire Ball [Lv 2] | -2.6 | +0.2 | -0.21 |
+| Mandatory + Ice Palisade | -2.9 | -0.5 | -0.20 |
+| Mandatory + Deep Freeze | -2.0 | +1.1 | -0.11 |
+| **Mandatory + all 3 purchased** | **0.0** | **+2.1** | **+0.25** |
+
+Every individual card looked conservative in isolation against the mandatory-only baseline --
+the overshoot only appears once all three are actually stacked together, since each purchased
+upgrade in this guide's procedure only ever gets checked against mandatory-only, never against
+the running combined total as more cards get locked. Cost (0.0 vs. Paladin's +0.7) and pulls
+(+0.25 vs. +0.55) both land close to the reference; win margin (+2.1 vs. -0.7) is the one that
+runs away, more than 2.5x past it. **Explicitly not re-tuned this session** -- the user's own
+call, given how hard these small per-card swings are to keep track of cumulatively once several
+of them stack. Flagged here so a future pass doesn't mistake this for an oversight.
+
+**Side tangent this session, not Wizard-specific: a cross-class armor-pierce retrospective.**
+Prompted by Fire Blast's finding, checked which already-locked Level 2 upgrades (across Warrior,
+Cleric, Paladin, Rogue, Ranger) were flat damage bumps that could instead have kept damage flat
+and added `armor_pierce` -- purely as a "different lever, not necessarily better" exploration,
+not a re-litigation of anything already locked. Quantitatively (against the real L2 mob pool,
+63 rounds, block distribution 44@0/7@1/12@2 -- max block anywhere is 2), the lower a card's
+damage, the larger the fraction lost to block and the more pierce can recover: Warrior's
+Dominate (pre-bump dmg=1) topped the list at 30.2% of its own damage lost to block on average.
+
+One real change came out of this and was locked into Rogue (see its own worked example above,
+"Revised" paragraph added 2026-08-20): **Backstab and Dodge [Lv 2]'s damage held at 4** (not
+the first-attempt 5) **plus `armor_pierce`** -- deliberately the unbumped-damage variant over
+the numerically stronger 5+pierce combination, same "leave real margin" discipline. **Evasion
+and Riposte (Rogue's mandatory) was swept the same way but explicitly NOT changed** -- dmg=2+
+pierce was found and rejected on sight as too strong for a free mandatory slot (it alone nearly
+closed cost margin, +0.1, using nothing but the mandatory card), dmg=1+pierce was floated as the
+more balance-consistent alternative but never actually confirmed -- Evasion and Riposte stays
+at its original locked value (gains 2 DMG, no `armor_pierce`, see above). Quicker Slash was also
+tested at its original unbumped damage (3) plus `armor_pierce`, briefly locked, then explicitly
+reverted by the user in the same turn -- it stays at its original locked value too (damage
+3->4, no `armor_pierce`, see above). Flagging both non-changes explicitly here so a future
+session doesn't mistake "we explored it" for "we locked it."
+
+Ranger's own cards were swept the same way (Bullseye, Deadeye/Point Blank Shot, Withdrawing Hip
+Shot, Crippling Shot, Beast Bond: Wolf all tested with `armor_pierce`) but none were locked --
+results kept for the record: Withdrawing Hip Shot and Crippling Shot both showed large,
+well-rounded gains from pierce alone (e.g. Hip Shot: cost -1.0->+0.6, win -3.2->-0.3, pulls
++0.07->+0.59), Beast Bond: Wolf improved cost/pulls but never win margin (its one-time pounce
+damage is never the deciding factor for a kill even unblocked), and Deadeye/Point Blank Shot
+showed *zero*
+aggregate effect despite 114 real, verified per-sequence differences -- traced to `
+best_line_for_hand` already routing that card around blocked rounds whenever a better-scoring
+ordering exists, so a real, confirmed mechanic effect never surfaces in the hand-level optimum.
+Ranger's slate was left as originally locked (mandatory + Bullseye + Deadeye + Crippling Shot
+[Lv 2], no `armor_pierce` anywhere) -- "good as-is, no room for armor pierce," user's own call.
 
 ## Which metric measures what -- one was reassigned, one was rejected outright
 
@@ -182,10 +725,10 @@ pool vs. Level 2 pool):**
 | Wizard | 21.0% | 5.34 | 96.7% | 24.4% | 4.98 | 92.4% | +3.3pp | -0.36 | -4.3pp |
 | Cleric | 23.3% | 5.62 | 97.8% | 27.9% | 4.75 | 91.7% | +4.6pp | -0.87 | -6.0pp |
 | Paladin | 21.6% | 5.53 | 97.8% | 26.2% | 4.75 | 93.7% | +4.6pp | -0.79 | -4.1pp |
-| Rogue | 20.8% | 5.47 | 97.8% | 24.8% | 4.81 | 94.6% | +3.9pp | -0.66 | -3.2pp |
-| Ranger | 21.6% | 5.10 | 95.6% | 25.4% | 4.60 | 92.4% | +3.8pp | -0.50 | -3.2pp |
+| Rogue | 18.4% | 6.04 | 97.8% | 23.4% | 5.00 | 94.6% | +5.0pp | -1.04 | -3.2pp |
+| Ranger | 18.0% | 6.07 | 95.6% | 21.7% | 5.36 | 92.4% | +3.7pp | -0.70 | -3.2pp |
 | Runecaster | 23.3% | 5.40 | 97.8% | 27.2% | 4.74 | 93.0% | +3.9pp | -0.65 | -4.8pp |
-| Druid | 26.1% | 5.64 | 97.8% | 29.3% | 4.86 | 89.5% | +3.2pp | -0.78 | -8.3pp |
+| Druid | 25.0% | 5.83 | 100.0% | 28.2% | 5.00 | 91.4% | +3.3pp | -0.82 | -8.6pp |
 | Necromancer | 22.5% | 5.68 | 97.8% | 26.1% | 5.05 | 93.0% | +3.5pp | -0.62 | -4.8pp |
 
 **This is the baseline gap, not a verdict.** These deltas are what happens today, with *no*
@@ -769,6 +1312,46 @@ step:**
 Cost and pulls margins land solidly positive. Win margin does not fully close (-0.7), unlike
 Warrior and Cleric, which both closed to positive with everything stacked -- flagged, not
 resolved; accepted as this class's landing spot rather than pushed further.
+
+## Purchased-upgrade pricing, locked (2026-08-20)
+
+**Every purchased (non-mandatory) upgrade costs a flat 8 Gold, bought at the Class Trainer
+(Zone 2), not Town** -- matches `DESIGN_DOC.md`'s locked map shape and the separately-locked
+Bag Upgrade reprice (16G -> 12G). Both numbers were checked against real Gold-at-Level-2 data,
+not picked cold: at the (since-changed) 12-XP Level-2 threshold, a player had ~11.7-13.1 Gold
+on average (Warrior/Cleric/Paladin) -- enough to comfortably afford one skill (8G, leaving a
+real 3.7-5.1G cushion) or the Bag Upgrade (12G, landing right at the edge, -0.3 to +1.1
+leftover) but not both at once. That's a real, meaningful first choice, not a foregone
+conclusion either way -- re-validated after the Ranger/Rogue/Druid macro-loop fixes and again
+after the real two-zone/Border-Node map replaced the earlier flat estimate; the price held both
+times without needing adjustment.
+
+**Stale as of 2026-08-21, not yet re-checked:** the Level 2 XP threshold moved 12 -> 6 (Level 1
+quest compression) and Gold-at-Level-2 moved to ~17-18 (both that change and the new +1
+Gold-per-won-pull rule -- see `MACRO_LOOP_GUIDE.md`'s own entry). ~17-18 Gold no longer sits
+exactly at either the "one skill, real cushion" or "Bag Upgrade, right at the edge" shape this
+paragraph describes -- it's close to affording both at once (8+12=20 vs. ~17-18 available),
+which may or may not still produce a real first choice. Re-sweep before trusting this pricing
+again, don't assume it still holds.
+
+**Applied to every purchased upgrade locked so far, all at 8G each:**
+
+| Class | Purchased upgrade | Price |
+|---|---|---|
+| Warrior | Dominate | 8G |
+| Warrior | Colossal Swing | 8G |
+| Warrior | Vanguard Blade [Lv 2] | 8G |
+| Cleric | Holy Fiery Fortitude | 8G |
+| Cleric | Void Storm | 8G |
+| Cleric | Void Mark [Lv 2] | 8G |
+| Paladin | Sanctified Light | 8G |
+| Paladin | Invocation of Grace [Lv 2] | 8G |
+| Paladin | Bastion's Breaker | 8G |
+
+A player buying all 3 of a class's purchased upgrades needs 24G total, well past the ~12G a
+Level-2 player typically has on hand -- matches the "Three skills (24G)" pacing check from the
+Gold-accumulation work (~4.5-6.1 trips, ~33-40 XP by then), meaning a full purchased slate is a
+real mid-game goal, not something bought all at once the moment Level 2 unlocks.
 
 ## Explicitly open
 

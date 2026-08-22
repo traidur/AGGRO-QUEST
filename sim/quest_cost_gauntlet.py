@@ -24,15 +24,64 @@ import macro_sim as M
 CLASSES = ["warrior", "cleric", "wizard", "paladin"]
 
 
-def measure_cost(required, trials_per_class=50, chain_trips=50, seed=42, strategy="food_only"):
+def measure_cost(required, trials_per_class=50, chain_trips=50, seed=42, strategy="food_only",
+                  tier="standard", classes=None, zone=1):
     """Runs an isolated single-quest-type chain per class and returns the
     average pulls and trips actually spent per completed quest, plus flee/
-    death overhead, pooled across all four classes (design must stay
+    death overhead, pooled across the given classes (design must stay
     class-agnostic, so the number we tune the formula against is the
-    cross-class average, not any one class's number)."""
+    cross-class average, not any one class's number).
+
+    tier: the isolated test node's tier -- "standard" (default, Level 1 content) or
+    M.LEVEL2_TIER (the real 18-Standard:3-Elite pool, for deriving Zone 3/4's rewards).
+    classes: which classes to pool across -- defaults to the original 4-class CLASSES subset;
+    pass M.LEVEL2_CLASSES for Level 2 derivation (only classes with a real locked slate).
+    zone: which Zone the isolated test node belongs to -- matters because _trip_chain now
+    handles real, dynamic Level 2 leveling on its own (mandatory grants automatically at
+    Level 2 XP, purchased upgrades get bought at the Trainer as Gold allows) -- Zone 2 is a
+    Trainer zone, Zone 1 isn't, so this needs to be 2 for a Level 2 derivation to actually let
+    the hero buy anything, not just receive the free mandatory upgrade. Defaults to 1,
+    matching this tool's original behavior exactly when tier/classes/zone are all left at
+    their defaults -- verified no-op for the existing Level 1 derivation."""
+    if classes is None:
+        classes = CLASSES
     orig_quests, orig_nodes, orig_count = M.QUESTS, M.NODES, M.ACTIVE_QUEST_COUNT
-    M.QUESTS = {"Test Loot": dict(required=required, base_xp=required, gold_ladder=[0, 0, 0, 0])}
-    M.NODES = {"test_node": ("standard", "Test Loot")}
+    orig_node_zone = M.NODE_ZONE
+    orig_level2_stub, orig_threshold = M.LEVEL2_QUESTS, M.LEVEL2_XP_THRESHOLD
+    test_quest = {"Test Loot": dict(required=required, base_xp=required, gold_ladder=[0, 0, 0, 0])}
+    M.QUESTS = test_quest
+    # _trip_chain's Level 1 starter batch (2026-08-21) is deliberately non-replenishing, but
+    # this tool needs the same "Test Loot" quest redrawn every completion to gather repeated
+    # trials in one chain -- patching LEVEL2_QUESTS to an equal-content dict AND dropping
+    # LEVEL2_XP_THRESHOLD below 0 forces _trip_chain to always pick the (replenishing)
+    # LEVEL2_QUESTS branch, sidestepping the starter-batch mechanic entirely, which isn't
+    # what this isolated per-quest-size measurement is testing. Deliberately a SEPARATE dict
+    # object (dict(test_quest), not test_quest itself) -- _trip_chain's `pool is QUESTS` branch
+    # check is an identity check, and patching both names to literally the same object made it
+    # always true regardless of which pool was actually selected, silently forcing the
+    # never-replenish branch and leaving active_quests empty forever after the first completion
+    # (a real regression caught 2026-08-21 once the "zero quests -> travel toward a real Zone"
+    # fallback logic made that state actually consequential instead of silently harmless).
+    M.LEVEL2_QUESTS = dict(test_quest)
+    M.LEVEL2_XP_THRESHOLD = -1
+    # Isolation also requires the pickup/fallback-travel Zone sets to match this test's single
+    # synthetic Zone -- otherwise a hero with an empty log (a real, expected state between
+    # completions before this fix) tries to travel toward the real Zone 3/4 map chasing
+    # LEVEL2_QUEST_ZONES, burning pulls on real Border Node crossings unrelated to what this
+    # tool measures.
+    orig_l1_zones, orig_l2_zones = M.LEVEL1_QUEST_ZONES, M.LEVEL2_QUEST_ZONES
+    M.LEVEL1_QUEST_ZONES = M.LEVEL2_QUEST_ZONES = {zone}
+    # Same reasoning for TRAINER_ZONES: if a mandatory-upgrade class hasn't picked one up yet
+    # mid-test (plausible, since LEVEL2_XP_THRESHOLD is forced negative above), the empty-quest
+    # fallback would otherwise prioritize traveling toward the real Zone 2/4 Trainer instead of
+    # this test's synthetic Zone -- belt-and-suspenders, even though the fix above should mean
+    # active_quests never actually goes empty in practice.
+    orig_trainer_zones = M.TRAINER_ZONES
+    M.TRAINER_ZONES = {zone}
+    M.NODES = {"test_node": (tier, "Test Loot")}
+    M.NODE_ZONE = {"test_node": zone}  # a single Zone, no Border Node crossing possible or
+    # needed for a genuinely isolated single-node test -- pre-existing gap (not patched at all
+    # before 2026-08-20) surfaced once run_one_trip's routing started reading NODE_ZONE directly.
     M.ACTIVE_QUEST_COUNT = 1
     try:
         total_pulls = 0
@@ -41,7 +90,7 @@ def measure_cost(required, trials_per_class=50, chain_trips=50, seed=42, strateg
         total_trips = 0
         stage_counts = [0, 0, 0, 0]  # completions paid out at Gold/Silver/Bronze/nothing
         instances = []  # (trip_span, stage_at_payout) for every completed instance
-        for cls in CLASSES:
+        for cls in classes:
             for t in range(trials_per_class):
                 rng = random.Random(f"{seed}-{required}-{cls}-{t}")
                 pulls_this_chain = 0
@@ -49,7 +98,7 @@ def measure_cost(required, trials_per_class=50, chain_trips=50, seed=42, strateg
                 deaths_this_chain = 0
                 prev_decay_stage = 0
                 instance_trip_count = 0
-                for trip_num, result, gold, xp, decay_stage, corpse_node, quests_completed in M._trip_chain(
+                for trip_num, result, gold, xp, decay_stage, corpse_node, quests_completed, trainer_turn in M._trip_chain(
                         cls, strategy, rng):
                     pulls_this_chain += result["pulls"]
                     completions_this_chain += quests_completed
@@ -69,6 +118,10 @@ def measure_cost(required, trials_per_class=50, chain_trips=50, seed=42, strateg
                 total_trips += chain_trips
     finally:
         M.QUESTS, M.NODES, M.ACTIVE_QUEST_COUNT = orig_quests, orig_nodes, orig_count
+        M.NODE_ZONE = orig_node_zone
+        M.LEVEL2_QUESTS, M.LEVEL2_XP_THRESHOLD = orig_level2_stub, orig_threshold
+        M.LEVEL1_QUEST_ZONES, M.LEVEL2_QUEST_ZONES = orig_l1_zones, orig_l2_zones
+        M.TRAINER_ZONES = orig_trainer_zones
 
     instances.sort(key=lambda pair: pair[0])
     half = len(instances) // 2

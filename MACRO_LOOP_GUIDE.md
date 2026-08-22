@@ -306,6 +306,73 @@ trips and confirmed Gold-at-checkpoint numbers are unchanged (13.2 vs. the prior
 Warrior at 12 XP, within normal Monte Carlo noise) -- the fix only changes *sequencing*, not the
 underlying reward math.
 
+## Level 1 quest compression, and +1 Gold per won pull (both locked 2026-08-21)
+
+**Level 1 quest compression.** All 8 original Level 1 quests (`QUESTS`) flattened to
+`required=2, base_xp=2, gold_ladder=[4,2,1,0]` -- every original required=2/3/4 quest already
+shared this exact ladder, so flattening required down to 2 for the 3/4-required quests cost
+nothing in Gold, only removed wasted turns; the two required=5 quests (Stolen Signet, Buried
+Treasure) lose their higher `[9,5,3,0]` ladder too, a deliberate choice to flatten everything
+uniformly rather than let them keep paying more at the reduced required count. `_trip_chain`
+draws exactly 3 of the 8 at random as a hero's starter batch and does **not** refill it as
+quests are turned in -- completing all 3 always nets exactly 6 XP (3 x 2), which is
+deliberately identical to `LEVEL2_XP_THRESHOLD` (repriced 12 -> 6 in the same change): hitting
+6 XP *is* reaching Level 2, by construction, not by coincidence needing to be kept in sync by
+hand. Once the batch is exhausted, Zone 1/2 quest-giving is done for good for that hero --
+`LEVEL2_QUESTS` takes over from that point on, with normal shuffled-refill replenishment. As of
+2026-08-21 this is the real, locked Zone 3/4 quest table (8 real nodes across a real 4-Zone
+loop, real loot names, real mob difficulty tied to those Zones) -- earlier in the same session
+this reused the old pre-compression Zone 1/2 numbers/nodes as a stand-in, which was corrected
+once the real Zone 3/4 map got built (see `DESIGN_DOC.md`'s Zone 3/4 section). The Gold-ladder/
+XP numbers themselves are still a placeholder, not the real Zone 3/4 balance derivation --
+`DESIGN_DOC.md` has the current status of what's still owed there.
+
+Real, measured effect: turns to reach Level 2 dropped from 20.16 (old 12-XP threshold, mixed
+replenishing pool) to 8.30 (new system) -- a 59% reduction, directly fixing the disproportionate
+early-game slowdown found while comparing measured XP pacing against a hand-drawn target curve.
+Gold at the Level 2 checkpoint landed almost unchanged (10.95 vs. the prior ~11-13), since the
+flattened quests kept the same Gold ladders throughout.
+
+**+1 Gold per won pull**, stacked on top of quest loot if applicable. Applies to any pull that
+wins outright -- a quest-node pull, a corpse-recovery pull, or a Border Node toll crossing --
+never a flee, matching the same win-only standard across all three pull types (a flee earns
+nothing anywhere, not just at quest nodes). Applies at both Level 1 and Level 2 (the stub pool
+above), not just one or the other.
+
+Measured effect at the real, bounded Level 2 checkpoint (not an arbitrary long trip-count
+average, which was checked first and correctly rejected as meaningless -- see below): Gold at
+6 XP rose from 10.95 to 17.85 pooled across the roster, a real but modest +63%, tight and
+consistent across all 9 classes (17.13-18.43). A hero now arrives at Level 2 able to
+comfortably afford one 8G skill purchase with change left over, versus the old ~11-13 Gold
+landing right at "afford one thing or the other, not both."
+
+**Methodology note, worth keeping:** the first attempt to measure this change's effect used
+Gold-per-turn averaged over an arbitrary 20-trip chain (193-231 total turns depending on
+class) and reported swings of 110-227%. That number was correctly called out as meaningless --
+a 20-trip chain runs far longer than an entire real playthrough (the target curve this whole
+leveling pass was built against tops out around 90-150 turns for the *whole game*, Level 1
+through 6), so an average computed that far past the point of relevance doesn't describe
+anything a real player would experience. The real, decision-relevant comparison is Gold at an
+actual bounded checkpoint (Level 2 arrival) -- which is the +63% figure above, not the
+long-run rate. Default to short, real, bounded playthrough windows for economy questions, not
+long stress-test chains, unless a long-run rate is explicitly what's being asked for.
+
+## Bag Upgrade purchase, locked and wired 2026-08-21
+
+Previously priced (`BAG_UPGRADE_COST`) but never actually bought in real gameplay -- the only
+place the price was used was `run_to_bag_upgrade`, a diagnostic that measures *when it would
+become affordable*, never actually spending the Gold or growing `bag_size`. Real purchase logic
+built this session: **bought ASAP at the first Town turn with enough Gold, once Level 2 quests
+have actually started** -- not merely reached Level 2 XP, the real quest-pickup event (see
+`OPEN_QUESTIONS.md`'s quest-pickup entry). A general Town amenity like Food/Potion restocking,
+not location-gated the way the Trainer or quest pickup are. Checked *before* the Trainer's
+purchased-skill spending each Town turn, since "as soon as possible" takes priority over a
+competing purchase rather than waiting its turn. `bag`/`locked` grow by one slot in place
+(`.append`) the moment it fires; every bag-capacity helper (`_bag_has_room`, `_add_loot`, etc.)
+already reads `len(bag)` directly, so this needed no other code changes to take effect
+correctly. Verified directly: a hero's `bag_len` grows from 2 to 3 exactly once, tied to
+`started_level2_quests` flipping True and Gold clearing `BAG_UPGRADE_COST`.
+
 ## Not yet done
 
 - **Player-chosen quest pool.** `active_quests` is now a no-repeat-until-cycled shuffled bag

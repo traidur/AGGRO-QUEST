@@ -90,8 +90,20 @@ a good identity signal, not just a numeric coincidence -- both finishers
 now carry "the target doesn't get to hit back if you finish it first"
 instead of generic durability, which reads more like an assassin than
 stacking Block ever did.
+
+**Level 2 leveling infrastructure (2026-08-20):** `simulate()` gained an opt-in `armor_pierce`
+field -- a card with this set ignores the mob's own block value entirely for its damage this
+round, instead of the usual `max(0, dmg - mob_block)`. Absent on every base card, so the base
+Level 1 kit is untouched (verified no-op). Used on the locked Level 2 Backstab and Dodge [Lv 2]
+(damage held at 4, gains armor_pierce, rather than the flat +1 damage first considered) -- see
+LEVELING_GUIDE.md's "Fourth class worked example: Rogue" for the full derivation. Leveled kits
+themselves live in LEVELING_GUIDE.md as documented `leveled_kit` swaps, not baked into this
+module's own CARDS, matching every other class.
 """
 import itertools
+from dataclasses import replace
+
+from combat_round import RoundState, RoundOutcome
 
 ROGUE_HP = 15
 
@@ -114,46 +126,57 @@ def orderings(hand):
     return list(itertools.permutations(hand, 3))
 
 
-def simulate(seq_cards, mob_pattern, mob_hp, starting_hp=ROGUE_HP):
-    hp = starting_hp
-    remaining_mob_hp = mob_hp
-    strikes_played = 0
+def resolve_round(state, card_name, stance, round_num, mob_pattern, mob_hp_total,
+                   mob_hp_remaining, hero_hp, hero_max_hp):
+    """The one place Rogue's card-effect logic lives. Faithful port of the real, current
+    simulate() below. stance is unused (Rogue has none). hero_max_hp threaded through
+    unchanged (no Rogue card raises it)."""
+    card = CARDS[card_name]
+    kind = card["kind"]
+    new_strikes_played = state.strikes_played_rogue
 
-    for rnd in range(3):
-        card_name = seq_cards[rnd]
-        card = CARDS[card_name]
-        kind = card["kind"]
+    if kind == "finisher":
+        dmg = card["curve"][min(state.strikes_played_rogue, 2)]
+        new_strikes_played = 0  # Rule B: a finisher spends the count, doesn't just read it
+    elif kind == "opener":
+        dmg = card["round1_dmg"] if round_num in card.get("bonus_rounds", (0,)) else card["dmg"]
+    else:
+        dmg = card["dmg"]
+    block = card["block"]
 
-        if kind == "finisher":
-            dmg = card["curve"][min(strikes_played, 2)]
-            strikes_played = 0  # Rule B: a finisher spends the count, doesn't just read it
-        elif kind == "opener":
-            dmg = card["round1_dmg"] if rnd == 0 else card["dmg"]
-        else:
-            dmg = card["dmg"]
-        block = card["block"]
+    if card["strike"]:
+        new_strikes_played = state.strikes_played_rogue + 1
 
-        if card["strike"]:
-            strikes_played += 1
-
-        mob_atk, mob_block, mob_type = mob_pattern[rnd]
+    mob_atk, mob_block, mob_type = mob_pattern[round_num]
+    if card.get("armor_pierce"):
+        dmg_dealt = dmg
+    else:
         dmg_dealt = max(0.0, dmg - mob_block)
-        remaining_mob_hp -= dmg_dealt
+    new_remaining = mob_hp_remaining - dmg_dealt
 
-        # Killing-blow rider, same as Warrior's Execute: if a finisher with
-        # the rider lands the kill this round, the mob's own attack is
-        # prevented entirely -- a clean finish, not a trade. Cutthroat only
-        # as of v8 (see module docstring); every other card, including
-        # Envenom, still follows the normal "mob still acts" rule.
-        if kind == "finisher" and card.get("killing_blow") and remaining_mob_hp <= 0:
-            dmg_taken = 0.0
-        else:
-            dmg_taken = max(0.0, mob_atk - block)
-        hp -= dmg_taken
+    if kind == "finisher" and card.get("killing_blow") and new_remaining <= 0:
+        dmg_taken = 0.0
+    else:
+        dmg_taken = max(0.0, mob_atk - block)
+    new_hp = hero_hp - dmg_taken
 
+    new_state = replace(state, strikes_played_rogue=new_strikes_played)
+    return RoundOutcome(new_hp=new_hp, new_mob_hp_remaining=new_remaining, new_hero_max_hp=hero_max_hp,
+                         new_state=new_state, dmg_dealt=dmg_dealt, dmg_taken=dmg_taken,
+                         raw_dmg=dmg, block=block, heal=0.0)
+
+
+def simulate(seq_cards, mob_pattern, mob_hp, starting_hp=ROGUE_HP):
+    state = RoundState()
+    hp, remaining, max_hp = starting_hp, mob_hp, starting_hp
+    for rnd in range(3):
+        outcome = resolve_round(state, seq_cards[rnd], None, rnd, mob_pattern, mob_hp,
+                                 remaining, hp, max_hp)
+        hp, remaining, max_hp, state = (outcome.new_hp, outcome.new_mob_hp_remaining,
+                                         outcome.new_hero_max_hp, outcome.new_state)
         if hp <= 0:
             return False, hp, rnd + 1
-        if remaining_mob_hp <= 0:
+        if remaining <= 0:
             return True, hp, rnd + 1
     return False, hp, 3
 

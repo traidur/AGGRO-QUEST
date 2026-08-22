@@ -129,6 +129,9 @@ was actually driving Gold; the separate, still-open defense-floor gap was delibe
 for a future pass rather than papered over with an unrelated lever.
 """
 import itertools
+from dataclasses import replace
+
+from combat_round import RoundState, RoundOutcome
 
 DRUID_HP = 15
 
@@ -154,47 +157,60 @@ def orderings(hand):
     return list(itertools.permutations(hand, 3))
 
 
+def resolve_round(state, card_name, stance, round_num, mob_pattern, mob_hp_total,
+                   mob_hp_remaining, hero_hp, hero_max_hp):
+    """The one place Druid's card-effect logic lives. Faithful port of the real, current
+    simulate() below -- note the two mutually-exclusive payoff branches (shapeshift bonus
+    only while Grizzly has been played, eclipse bonus only while it HASN'T), flagged in this
+    project's own plan as easy to invert by mistake; ported by direct copy of the real
+    condition, not re-derived from memory. stance is unused (Druid has none). hero_max_hp
+    threaded unchanged (healing caps at the class's own DRUID_HP constant, same pattern as
+    Paladin/Runecaster, not Cleric's dynamic ceiling)."""
+    card = CARDS[card_name]
+    dmg, heal, block = card["dmg"], card["heal"], card["block"]
+    tag = card["tag"]
+
+    if tag == "shapeshift" and card_name != "Shapeshift: Grizzly" and state.grizzly_played_before:
+        dmg += state.shapeshift_played_before
+        block += state.shapeshift_played_before
+    elif tag == "eclipse" and not state.grizzly_played_before:
+        if card.get("heal_scales_with_eclipse"):
+            heal += state.eclipse_played_before
+        else:
+            dmg += state.eclipse_played_before
+
+    new_hp = min(hero_max_hp, hero_hp + heal)
+
+    mob_atk, mob_block = mob_pattern[round_num]
+    dmg_dealt = max(0.0, dmg - mob_block)
+    new_remaining = mob_hp_remaining - dmg_dealt
+
+    dmg_taken = max(0.0, mob_atk - block)
+    new_hp -= dmg_taken
+
+    new_shapeshift_played = state.shapeshift_played_before + (1 if tag == "shapeshift" else 0)
+    new_eclipse_played = state.eclipse_played_before + (1 if tag == "eclipse" else 0)
+    new_grizzly_played = state.grizzly_played_before or (card_name == "Shapeshift: Grizzly")
+
+    new_state = replace(state, shapeshift_played_before=new_shapeshift_played,
+                         eclipse_played_before=new_eclipse_played,
+                         grizzly_played_before=new_grizzly_played)
+    return RoundOutcome(new_hp=new_hp, new_mob_hp_remaining=new_remaining, new_hero_max_hp=hero_max_hp,
+                         new_state=new_state, dmg_dealt=dmg_dealt, dmg_taken=dmg_taken,
+                         raw_dmg=dmg, block=block, heal=heal)
+
+
 def simulate(seq_cards, mob_pattern, mob_hp, starting_hp=DRUID_HP):
-    hp = starting_hp
-    remaining_mob_hp = mob_hp
-    grizzly_played_before = False
-    shapeshift_played_before = 0
-    eclipse_played_before = 0
-
+    state = RoundState()
+    hp, remaining, max_hp = starting_hp, mob_hp, DRUID_HP
     for rnd in range(3):
-        card_name = seq_cards[rnd]
-        card = CARDS[card_name]
-        dmg, heal, block = card["dmg"], card["heal"], card["block"]
-        tag = card["tag"]
-
-        if tag == "shapeshift" and card_name != "Shapeshift: Grizzly" and grizzly_played_before:
-            dmg += shapeshift_played_before
-            block += shapeshift_played_before
-        elif tag == "eclipse" and not grizzly_played_before:
-            if card.get("heal_scales_with_eclipse"):
-                heal += eclipse_played_before
-            else:
-                dmg += eclipse_played_before
-
-        hp = min(DRUID_HP, hp + heal)
-
-        mob_atk, mob_block = mob_pattern[rnd]
-        dmg_dealt = max(0.0, dmg - mob_block)
-        remaining_mob_hp -= dmg_dealt
-
-        dmg_taken = max(0.0, mob_atk - block)
-        hp -= dmg_taken
-
-        if tag == "shapeshift":
-            shapeshift_played_before += 1
-        if tag == "eclipse":
-            eclipse_played_before += 1
-        if card_name == "Shapeshift: Grizzly":
-            grizzly_played_before = True
-
+        outcome = resolve_round(state, seq_cards[rnd], None, rnd, mob_pattern, mob_hp,
+                                 remaining, hp, max_hp)
+        hp, remaining, max_hp, state = (outcome.new_hp, outcome.new_mob_hp_remaining,
+                                         outcome.new_hero_max_hp, outcome.new_state)
         if hp <= 0:
             return False, hp, rnd + 1
-        if remaining_mob_hp <= 0:
+        if remaining <= 0:
             return True, hp, rnd + 1
     return False, hp, 3
 

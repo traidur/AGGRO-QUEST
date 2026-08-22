@@ -107,8 +107,26 @@ CLASS_BALANCE_GUIDE.md's "Sixth Standard-tier mob" section for the full
 trace.
 
 RANGER_HP = 15.
+
+**Level 2 leveling infrastructure (2026-08-20):** `simulate()` gained an opt-in
+`beast_block_value_decayed` field on Beast Bond: Wolf, read only if present -- lets a leveled
+kit's persistent Block bonus step down starting two rounds after Wolf is played instead of
+staying flat forever. Defaults to `beast_block_value` itself when absent, so the base Level 1
+card (which has no such field) is untouched -- verified no-op (L1 win rate unchanged at
+95.6%). Also gained an opt-in `armor_pierce` field (ignores the mob's own block value entirely
+for that card's damage), added during a cross-class exploration prompted by Wizard's Fire Blast
+finding -- swept against every card in this kit (Bullseye, Deadeye/Point Blank Shot, Withdrawing
+Hip Shot, Crippling Shot, Beast Bond: Wolf) but none were locked; kept in the solver as validated
+data points, not removed. See LEVELING_GUIDE.md's "Fifth class worked example: Ranger" and
+"Sixth class worked example: Wizard" (the armor-pierce retrospective) for the full leveling
+derivation and locked Level 2 upgrades (kept out of this module's own CARDS,
+matching every other class -- leveled kits live in LEVELING_GUIDE.md as documented `leveled_kit`
+swaps, not baked into the base file).
 """
 import itertools
+from dataclasses import replace
+
+from combat_round import RoundState, RoundOutcome
 
 RANGER_HP = 15
 
@@ -134,42 +152,73 @@ def orderings(hand):
     return list(itertools.permutations(hand, 3))
 
 
-def simulate(seq_cards, mob_pattern, mob_hp, starting_hp=RANGER_HP):
-    hp = starting_hp
-    remaining_mob_hp = mob_hp
-    beast_active = False
-    prev_grants_range = False
+def resolve_round(state, card_name, stance, round_num, mob_pattern, mob_hp_total,
+                   mob_hp_remaining, hero_hp, hero_max_hp):
+    """The one place Ranger's card-effect logic lives. Faithful port of the real, current
+    simulate() below. stance is unused (Ranger has none). hero_max_hp threaded through
+    unchanged (no Ranger card raises it)."""
+    card = CARDS[card_name]
 
-    for rnd in range(3):
-        card_name = seq_cards[rnd]
-        card = CARDS[card_name]
+    if card["payoff_prev_range"]:
+        dmg = card["dmg_if_prev_range"] if state.prev_grants_range else card["dmg_else"]
+    elif card.get("payoff_wolf"):
+        dmg = card["dmg_if_wolf"] if state.beast_active else card["dmg_else"]
+    else:
+        dmg = card["dmg"]
 
-        if card["payoff_prev_range"]:
-            dmg = card["dmg_if_prev_range"] if prev_grants_range else card["dmg_else"]
-        elif card.get("payoff_wolf"):
-            dmg = card["dmg_if_wolf"] if beast_active else card["dmg_else"]
+    new_beast_active = state.beast_active
+    new_rounds_since_beast = state.rounds_since_beast
+    if card["beast_bond"]:
+        new_beast_active = True  # activates starting this same round
+        new_rounds_since_beast = 0
+    elif state.rounds_since_beast is not None:
+        new_rounds_since_beast = state.rounds_since_beast + 1
+
+    if new_beast_active:
+        wolf_card = CARDS["Beast Bond: Wolf"]
+        # beast_block_value_decayed: optional -- lets the persistent bonus step down
+        # starting two rounds after Wolf is played. Defaults to beast_block_value
+        # itself when absent, so the original flat-forever card is untouched.
+        if new_rounds_since_beast >= 2:
+            beast_bonus = wolf_card.get("beast_block_value_decayed", wolf_card["beast_block_value"])
         else:
-            dmg = card["dmg"]
+            beast_bonus = wolf_card["beast_block_value"]
+    else:
+        beast_bonus = 0
+    block = card["block"] + beast_bonus
 
-        if card["beast_bond"]:
-            beast_active = True  # activates starting this same round
-        block = card["block"] + (CARDS["Beast Bond: Wolf"]["beast_block_value"] if beast_active else 0)
-
-        mob_atk, mob_block, mob_type = mob_pattern[rnd]
+    mob_atk, mob_block, mob_type = mob_pattern[round_num]
+    if card.get("armor_pierce"):
+        dmg_dealt = dmg
+    else:
         dmg_dealt = max(0.0, dmg - mob_block)
-        remaining_mob_hp -= dmg_dealt
+    new_remaining = mob_hp_remaining - dmg_dealt
 
-        if card["grants_range"] and mob_type == "melee":
-            dmg_taken = 0.0
-        else:
-            dmg_taken = max(0.0, mob_atk - block)
-        hp -= dmg_taken
+    if card["grants_range"] and mob_type == "melee":
+        dmg_taken = 0.0
+    else:
+        dmg_taken = max(0.0, mob_atk - block)
+    new_hp = hero_hp - dmg_taken
 
-        prev_grants_range = card["grants_range"]
+    new_state = replace(state, beast_active=new_beast_active,
+                         rounds_since_beast=new_rounds_since_beast,
+                         prev_grants_range=card["grants_range"])
+    return RoundOutcome(new_hp=new_hp, new_mob_hp_remaining=new_remaining, new_hero_max_hp=hero_max_hp,
+                         new_state=new_state, dmg_dealt=dmg_dealt, dmg_taken=dmg_taken,
+                         raw_dmg=dmg, block=block, heal=0.0)
 
+
+def simulate(seq_cards, mob_pattern, mob_hp, starting_hp=RANGER_HP):
+    state = RoundState()
+    hp, remaining, max_hp = starting_hp, mob_hp, starting_hp
+    for rnd in range(3):
+        outcome = resolve_round(state, seq_cards[rnd], None, rnd, mob_pattern, mob_hp,
+                                 remaining, hp, max_hp)
+        hp, remaining, max_hp, state = (outcome.new_hp, outcome.new_mob_hp_remaining,
+                                         outcome.new_hero_max_hp, outcome.new_state)
         if hp <= 0:
             return False, hp, rnd + 1
-        if remaining_mob_hp <= 0:
+        if remaining <= 0:
             return True, hp, rnd + 1
     return False, hp, 3
 

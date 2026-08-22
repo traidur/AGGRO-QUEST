@@ -30,6 +30,9 @@ damage sub-mechanic to a flat dmg+block card for this first pass.
 No stance system -- has_stance=False, same category as Wizard/Cleric.
 """
 import itertools
+from dataclasses import replace
+
+from combat_round import RoundState, RoundOutcome
 
 PALADIN_HP = 17  # locked: settled at Warrior-1 after the Sacred Light/HP dial-back pass
 
@@ -62,54 +65,73 @@ def orderings(hand):
     return list(itertools.permutations(hand, 3))
 
 
-def simulate(seq_cards, mob_pattern, mob_hp, starting_hp=PALADIN_HP):
-    hp = starting_hp
-    remaining_mob_hp = mob_hp
-    strikes_played = 0  # count of STRIKE cards played so far this pull
-    invocation_played = False  # True once EITHER Invocation card has been played
-    active_invocation = None  # "sanctuary" / "grace" / None -- only ever set by the FIRST Invocation played; drives the forward-looking bonus on later STRIKE cards
-    active_grants_aura_block = False  # set from the active Invocation's own card entry; see grants_aura_block note above CARDS
+def resolve_round(state, card_name, stance, round_num, mob_pattern, mob_hp_total,
+                   mob_hp_remaining, hero_hp, hero_max_hp):
+    """The one place Paladin's card-effect logic lives. Faithful port of the real, current
+    simulate() below (NOT playtest_engine.py's older _resolve_paladin_round, which predates
+    the grants_aura_block leveled-card field added to CARDS since -- verified by direct
+    comparison before porting). stance is unused (Paladin has none). hero_max_hp is threaded
+    through unchanged every round (no Paladin card raises it, unlike Cleric)."""
+    card = CARDS[card_name]
+    dmg, heal, block = card["dmg"], card["heal"], card["block"]
 
-    for rnd in range(3):
-        card_name = seq_cards[rnd]
-        card = CARDS[card_name]
-        dmg, heal, block = card["dmg"], card["heal"], card["block"]
+    new_strikes_played = state.strikes_played
+    new_invocation_played = state.invocation_played
+    new_active_invocation = state.active_invocation
+    new_active_grants_aura_block = state.active_grants_aura_block
 
-        if card["invocation"] is not None:
-            if invocation_played:
-                pass  # second Invocation played this pull: flat base dmg only, no retroactive bonus, does not become Active
+    if card["invocation"] is not None:
+        if state.invocation_played:
+            pass  # second Invocation played this pull: flat base dmg only, no retroactive bonus, does not become Active
+        else:
+            new_invocation_played = True
+            new_active_invocation = card["invocation"]
+            new_active_grants_aura_block = card["grants_aura_block"]
+            if new_active_invocation == "sanctuary":
+                dmg += state.strikes_played
+                if new_active_grants_aura_block:
+                    block += state.strikes_played
             else:
-                invocation_played = True
-                active_invocation = card["invocation"]
-                active_grants_aura_block = card["grants_aura_block"]
-                if active_invocation == "sanctuary":
-                    dmg += strikes_played  # +1 dmg per STRIKE already played -- only for the first Invocation played
-                    if active_grants_aura_block:
-                        block += strikes_played  # +1 block per STRIKE already played, mirrors the dmg bonus
-                else:
-                    heal += strikes_played  # +1 heal per STRIKE already played -- only for the first Invocation played
+                heal += state.strikes_played
 
-        if card["strike"]:
-            strikes_played += 1
-            if active_invocation == "sanctuary":
-                dmg += 1  # forward-looking bonus from an already-active Invocation of Sanctuary
-                if active_grants_aura_block:
-                    block += 1  # forward-looking block bonus, mirrors the dmg bonus -- applies even if this STRIKE card has no Block of its own
-            elif active_invocation == "grace":
-                heal += 1  # forward-looking bonus from an already-active Invocation of Grace
+    if card["strike"]:
+        new_strikes_played = state.strikes_played + 1
+        if state.active_invocation == "sanctuary":
+            dmg += 1
+            if state.active_grants_aura_block:
+                block += 1
+        elif state.active_invocation == "grace":
+            heal += 1
 
-        hp = min(PALADIN_HP, hp + heal)  # heal resolves first, capped at max HP
+    healed_hp = min(hero_max_hp, hero_hp + heal)
 
-        mob_atk, mob_block = mob_pattern[rnd]
-        dmg_dealt = max(0.0, dmg - mob_block)
-        remaining_mob_hp -= dmg_dealt
+    mob_atk, mob_block = mob_pattern[round_num]
+    dmg_dealt = max(0.0, dmg - mob_block)
+    new_remaining = mob_hp_remaining - dmg_dealt
 
-        dmg_taken = max(0.0, mob_atk - block)
-        hp -= dmg_taken
+    dmg_taken = max(0.0, mob_atk - block)
+    new_hp = healed_hp - dmg_taken
 
+    new_state = replace(state, strikes_played=new_strikes_played,
+                         invocation_played=new_invocation_played,
+                         active_invocation=new_active_invocation,
+                         active_grants_aura_block=new_active_grants_aura_block)
+    return RoundOutcome(new_hp=new_hp, new_mob_hp_remaining=new_remaining, new_hero_max_hp=hero_max_hp,
+                         new_state=new_state, dmg_dealt=dmg_dealt, dmg_taken=dmg_taken,
+                         raw_dmg=dmg, block=block, heal=heal)
+
+
+def simulate(seq_cards, mob_pattern, mob_hp, starting_hp=PALADIN_HP):
+    state = RoundState()
+    hp, remaining, max_hp = starting_hp, mob_hp, PALADIN_HP
+    for rnd in range(3):
+        outcome = resolve_round(state, seq_cards[rnd], None, rnd, mob_pattern, mob_hp,
+                                 remaining, hp, max_hp)
+        hp, remaining, max_hp, state = (outcome.new_hp, outcome.new_mob_hp_remaining,
+                                         outcome.new_hero_max_hp, outcome.new_state)
         if hp <= 0:
             return False, hp, rnd + 1
-        if remaining_mob_hp <= 0:
+        if remaining <= 0:
             return True, hp, rnd + 1
     return False, hp, 3
 

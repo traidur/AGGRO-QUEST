@@ -17,6 +17,9 @@ system, and dmg>0 is exactly equivalent to AGGRO's own Attack tag for
 every card in this kit.
 """
 import itertools
+from dataclasses import replace
+
+from combat_round import RoundState, RoundOutcome
 
 WARRIOR_HP = 18
 
@@ -88,20 +91,22 @@ def stance_sequences():
 STANCE_SEQS = stance_sequences()
 
 
-def _sim_from(rnd, seq_cards, stance_seq, mob_pattern, mob_hp_total,
-              hp, remaining_mob_hp, sunder_stacks, prev_card_name):
-    if rnd == 3:
-        return (remaining_mob_hp <= 0, hp, rnd), (seq_cards, stance_seq)
-
-    card_name = seq_cards[rnd]
+def resolve_round(state, card_name, stance, round_num, mob_pattern, mob_hp_total,
+                   mob_hp_remaining, hero_hp, hero_max_hp):
+    """The one place Warrior's card-effect logic lives -- simulate() below and any future
+    turn-by-turn caller (combat_engine.py) both call ONLY this, never duplicate it. Faithful
+    port of the old _sim_from's per-round branch (verified byte-for-byte against it via
+    sim/verify_combat_engine.py), just restructured to resolve one round at a time instead of
+    recursing through all 3. Returns None if the play is illegal this round (Execute above
+    50% mob HP) -- matches _sim_from's old (False, -inf, rnd) sentinel via simulate()'s own
+    handling below, not by returning a fake outcome here."""
     card = CARDS[card_name]
-    stance = stance_seq[rnd]
 
     if card["execute_finisher"]:
-        if remaining_mob_hp <= mob_hp_total * 0.5:
+        if mob_hp_remaining <= mob_hp_total * 0.5:
             dmg, block = 6, 0
         else:
-            return (False, float("-inf"), rnd), (seq_cards, stance_seq)  # illegal
+            return None  # illegal
     else:
         dmg, block = card[stance]
 
@@ -109,18 +114,18 @@ def _sim_from(rnd, seq_cards, stance_seq, mob_pattern, mob_hp_total,
     # requirement there), but the PAYOFF card must be played in its own
     # designated stance, and the previous round's card must be the specific
     # named partner card -- not just "anything that dealt damage."
-    if (card["chain_stance"] == stance and prev_card_name == card["chain_requires"]):
+    if card["chain_stance"] == stance and state.prev_card_name == card["chain_requires"]:
         if card["chain_target"] == "block":
             block += card["chain_bonus"]
         else:
             dmg += card["chain_bonus"]
 
-    eff_dmg = dmg + (SUNDER_BONUS * sunder_stacks if dmg > 0 else 0)
-    new_sunder = sunder_stacks + (1 if card["sunder"] else 0)
+    eff_dmg = dmg + (SUNDER_BONUS * state.sunder_stacks if dmg > 0 else 0)
+    new_sunder = state.sunder_stacks + (1 if card["sunder"] else 0)
 
-    mob_atk, mob_block = mob_pattern[rnd]
+    mob_atk, mob_block = mob_pattern[round_num]
     dmg_dealt = max(0.0, eff_dmg - mob_block)  # mob's own Block still reduces damage dealt, unchanged
-    new_remaining = remaining_mob_hp - dmg_dealt
+    new_remaining = mob_hp_remaining - dmg_dealt
 
     # Killing-blow rider: if a killing_blow-tagged card lands the kill this
     # round, the mob's attack is prevented entirely -- narrower than the
@@ -132,20 +137,29 @@ def _sim_from(rnd, seq_cards, stance_seq, mob_pattern, mob_hp_total,
         dmg_taken = 0.0
     else:
         dmg_taken = max(0.0, mob_atk - block)
-    new_hp = hp - dmg_taken
+    new_hp = hero_hp - dmg_taken
 
-    if new_hp <= 0:
-        return (False, new_hp, rnd + 1), (seq_cards, stance_seq)
-    if new_remaining <= 0:
-        return (True, new_hp, rnd + 1), (seq_cards, stance_seq)
-    return _sim_from(rnd + 1, seq_cards, stance_seq, mob_pattern, mob_hp_total,
-                      new_hp, new_remaining, new_sunder, card_name)
+    new_state = replace(state, stance=stance, sunder_stacks=new_sunder, prev_card_name=card_name)
+    return RoundOutcome(new_hp=new_hp, new_mob_hp_remaining=new_remaining, new_hero_max_hp=hero_max_hp,
+                         new_state=new_state, dmg_dealt=dmg_dealt, dmg_taken=dmg_taken,
+                         raw_dmg=eff_dmg, block=block, heal=0.0)
 
 
 def simulate(seq_cards, stance_seq, mob_pattern, mob_hp, starting_hp=WARRIOR_HP):
-    (win, hp_left, rounds), _ = _sim_from(0, seq_cards, stance_seq, mob_pattern, mob_hp,
-                                           starting_hp, mob_hp, 0, None)
-    return win, hp_left, rounds
+    state = RoundState()
+    hp, remaining, max_hp = starting_hp, mob_hp, starting_hp
+    for rnd in range(3):
+        outcome = resolve_round(state, seq_cards[rnd], stance_seq[rnd], rnd, mob_pattern,
+                                 mob_hp, remaining, hp, max_hp)
+        if outcome is None:
+            return False, float("-inf"), rnd  # illegal -- matches the old _sim_from sentinel
+        hp, remaining, max_hp, state = (outcome.new_hp, outcome.new_mob_hp_remaining,
+                                         outcome.new_hero_max_hp, outcome.new_state)
+        if hp <= 0:
+            return False, hp, rnd + 1
+        if remaining <= 0:
+            return True, hp, rnd + 1
+    return False, hp, 3
 
 
 def best_line_for_hand(hand, mob_pattern, mob_hp, starting_hp=WARRIOR_HP):

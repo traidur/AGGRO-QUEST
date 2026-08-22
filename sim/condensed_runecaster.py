@@ -71,6 +71,9 @@ values the way Ranger's HP got negotiated across three passes -- it landed in ra
 first try and was kept, not re-litigated once it worked.
 """
 import itertools
+from dataclasses import replace
+
+from combat_round import RoundState, RoundOutcome
 
 RUNECASTER_HP = 16
 
@@ -110,49 +113,63 @@ def orderings(hand):
     return list(itertools.permutations(hand, 3))
 
 
+def resolve_round(state, card_name, stance, round_num, mob_pattern, mob_hp_total,
+                   mob_hp_remaining, hero_hp, hero_max_hp):
+    """The one place Runecaster's card-effect logic lives. Faithful port of the real,
+    current simulate() below -- flagged as the hardest port in this project's own plan
+    (unified-sprouting-aurora.md): Echo resolves at the START of this round, from whatever
+    the PREVIOUS round's card set in state.pending_echo_dmg/heal, before this round's own
+    card's own effects apply. Get this ordering exactly right -- verified byte-for-byte
+    against the old recursive/loop version across all hands x mobs, not just spot-checked.
+    stance is unused (Runecaster has none). hero_max_hp threaded unchanged (healing caps at
+    the class's own RUNECASTER_HP constant here, same pattern as Paladin, not Cleric's
+    dynamic ceiling)."""
+    card = CARDS[card_name]
+    mob_atk, mob_block, mob_type = mob_pattern[round_num]
+
+    # Echo from an Earth Strike Rune played LAST round -- resolves before THIS round's own
+    # card, stacks with it, no card slot consumed. Reads state.pending_echo_* (set by the
+    # previous call), not this round's own card.
+    hp = hero_hp
+    new_remaining = mob_hp_remaining
+    if state.pending_echo_heal:
+        hp = min(hero_max_hp, hp + state.pending_echo_heal)
+    if state.pending_echo_dmg:
+        new_remaining -= max(0.0, state.pending_echo_dmg - mob_block)
+
+    dmg, heal, block = card["dmg"], card["heal"], card["block"]
+    if card["chain_bonus_if_prev"] == state.rc_prev_card_name:
+        dmg += card["chain_bonus_dmg"]
+
+    hp = min(hero_max_hp, hp + heal)
+
+    dmg_dealt = max(0.0, dmg - mob_block)
+    new_remaining -= dmg_dealt
+
+    if card["grants_range"] and mob_type == "melee":
+        dmg_taken = 0.0
+    else:
+        dmg_taken = max(0.0, mob_atk - block)
+    new_hp = hp - dmg_taken
+
+    new_state = replace(state, pending_echo_dmg=card["echo_dmg"], pending_echo_heal=card["echo_heal"],
+                         rc_prev_card_name=card_name)
+    return RoundOutcome(new_hp=new_hp, new_mob_hp_remaining=new_remaining, new_hero_max_hp=hero_max_hp,
+                         new_state=new_state, dmg_dealt=dmg_dealt, dmg_taken=dmg_taken,
+                         raw_dmg=dmg, block=block, heal=heal)
+
+
 def simulate(seq_cards, mob_pattern, mob_hp, starting_hp=RUNECASTER_HP):
-    hp = starting_hp
-    remaining_mob_hp = mob_hp
-    prev_card_name = None
-    pending_echo_dmg = 0
-    pending_echo_heal = 0
-
+    state = RoundState()
+    hp, remaining, max_hp = starting_hp, mob_hp, RUNECASTER_HP
     for rnd in range(3):
-        card_name = seq_cards[rnd]
-        card = CARDS[card_name]
-        mob_atk, mob_block, mob_type = mob_pattern[rnd]
-
-        # Echo from an Earth Strike Rune played last round -- resolves before this
-        # round's own card, stacks with it, no card slot consumed.
-        if pending_echo_heal:
-            hp = min(RUNECASTER_HP, hp + pending_echo_heal)
-        if pending_echo_dmg:
-            remaining_mob_hp -= max(0.0, pending_echo_dmg - mob_block)
-        pending_echo_dmg = 0
-        pending_echo_heal = 0
-
-        dmg, heal, block = card["dmg"], card["heal"], card["block"]
-        if card["chain_bonus_if_prev"] == prev_card_name:
-            dmg += card["chain_bonus_dmg"]
-
-        hp = min(RUNECASTER_HP, hp + heal)
-
-        dmg_dealt = max(0.0, dmg - mob_block)
-        remaining_mob_hp -= dmg_dealt
-
-        if card["grants_range"] and mob_type == "melee":
-            dmg_taken = 0.0
-        else:
-            dmg_taken = max(0.0, mob_atk - block)
-        hp -= dmg_taken
-
-        pending_echo_dmg = card["echo_dmg"]
-        pending_echo_heal = card["echo_heal"]
-        prev_card_name = card_name
-
+        outcome = resolve_round(state, seq_cards[rnd], None, rnd, mob_pattern, mob_hp,
+                                 remaining, hp, max_hp)
+        hp, remaining, max_hp, state = (outcome.new_hp, outcome.new_mob_hp_remaining,
+                                         outcome.new_hero_max_hp, outcome.new_state)
         if hp <= 0:
             return False, hp, rnd + 1
-        if remaining_mob_hp <= 0:
+        if remaining <= 0:
             return True, hp, rnd + 1
     return False, hp, 3
 

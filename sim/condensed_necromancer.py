@@ -153,6 +153,9 @@ macro_sim.py compatibility confirmed via `run_one_trip`.
 project's standard build order, not before.
 """
 import itertools
+from dataclasses import replace
+
+from combat_round import RoundState, RoundOutcome
 
 NECROMANCER_HP = 14
 
@@ -214,47 +217,57 @@ def orderings(hand):
     return base + boosted
 
 
+def resolve_round(state, card_name, stance, round_num, mob_pattern, mob_hp_total,
+                   mob_hp_remaining, hero_hp, hero_max_hp):
+    """The one place Necromancer's card-effect logic lives. Faithful port of the real,
+    current simulate() below -- Blight's echo resolves at the START of this round (from
+    state.nc_pending_echo_dmg, set by the PREVIOUS round's card), before this round's own
+    card's effects apply, same ordering Runecaster's echo already established. stance is
+    unused (Necromancer has none). hero_max_hp threaded unchanged (healing caps at the
+    class's own NECROMANCER_HP constant, same pattern as Paladin/Runecaster/Druid)."""
+    card = CARDS[card_name]
+    mob_atk, mob_block, mob_type = mob_pattern[round_num]
+
+    new_remaining = mob_hp_remaining
+    if state.nc_pending_echo_dmg:
+        new_remaining -= max(0.0, state.nc_pending_echo_dmg - mob_block)
+
+    dmg, heal, block = card["dmg"], card["heal"], card["block"]
+    if card["dot_payoff"]:
+        dmg += state.dot_played_before
+
+    new_hp = min(hero_max_hp, hero_hp + heal)
+
+    dmg_dealt = max(0.0, dmg - mob_block)
+    new_remaining -= dmg_dealt
+
+    if card["killing_blow"] and new_remaining <= 0:
+        dmg_taken = 0.0
+    elif card["grants_range"] and mob_type == "melee":
+        dmg_taken = 0.0
+    else:
+        dmg_taken = max(0.0, mob_atk - block)
+    new_hp -= dmg_taken
+
+    new_dot_played = state.dot_played_before + (1 if card["dot"] else 0)
+    new_state = replace(state, dot_played_before=new_dot_played,
+                         nc_pending_echo_dmg=card["echo_dmg"])
+    return RoundOutcome(new_hp=new_hp, new_mob_hp_remaining=new_remaining, new_hero_max_hp=hero_max_hp,
+                         new_state=new_state, dmg_dealt=dmg_dealt, dmg_taken=dmg_taken,
+                         raw_dmg=dmg, block=block, heal=heal)
+
+
 def simulate(seq_cards, mob_pattern, mob_hp, starting_hp=NECROMANCER_HP):
-    hp = starting_hp
-    remaining_mob_hp = mob_hp
-    dot_played_before = 0
-    pending_echo_dmg = 0
-
+    state = RoundState()
+    hp, remaining, max_hp = starting_hp, mob_hp, NECROMANCER_HP
     for rnd in range(3):
-        card_name = seq_cards[rnd]
-        card = CARDS[card_name]
-        mob_atk, mob_block, mob_type = mob_pattern[rnd]
-
-        # Blight's echo from last round -- resolves before this round's own card, reduced
-        # by this round's mob Block same as any other damage source.
-        if pending_echo_dmg:
-            remaining_mob_hp -= max(0.0, pending_echo_dmg - mob_block)
-        pending_echo_dmg = 0
-
-        dmg, heal, block = card["dmg"], card["heal"], card["block"]
-        if card["dot_payoff"]:
-            dmg += dot_played_before
-
-        hp = min(NECROMANCER_HP, hp + heal)
-
-        dmg_dealt = max(0.0, dmg - mob_block)
-        remaining_mob_hp -= dmg_dealt
-
-        if card["killing_blow"] and remaining_mob_hp <= 0:
-            dmg_taken = 0.0
-        elif card["grants_range"] and mob_type == "melee":
-            dmg_taken = 0.0
-        else:
-            dmg_taken = max(0.0, mob_atk - block)
-        hp -= dmg_taken
-
-        if card["dot"]:
-            dot_played_before += 1
-        pending_echo_dmg = card["echo_dmg"]
-
+        outcome = resolve_round(state, seq_cards[rnd], None, rnd, mob_pattern, mob_hp,
+                                 remaining, hp, max_hp)
+        hp, remaining, max_hp, state = (outcome.new_hp, outcome.new_mob_hp_remaining,
+                                         outcome.new_hero_max_hp, outcome.new_state)
         if hp <= 0:
             return False, hp, rnd + 1
-        if remaining_mob_hp <= 0:
+        if remaining <= 0:
             return True, hp, rnd + 1
     return False, hp, 3
 

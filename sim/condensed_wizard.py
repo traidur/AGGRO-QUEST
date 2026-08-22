@@ -6,8 +6,52 @@ instead: Positioning (At Range this round, evades a melee mob's attack,
 does nothing vs ranged) and Weave (a single-use trigger: playing a Weave
 card arms a bonus that the *next* eligible payoff card consumes -- it does
 not stack or apply to a second payoff card).
+
+**Level 2 leveling infrastructure (2026-08-20):** `simulate()` gained two opt-in fields, both
+absent on every base card (verified no-op). `killing_blow` (Warrior's Execute pattern): if the
+card's damage lands the kill this round, the mob's attack is prevented. Explored for Fire Blast
+and rejected -- wildly overpowered for a mandatory slot (cost/pulls swings far exceeding entire
+other classes' whole four-card stacked slates), kept in the solver as a validated dead end, not
+removed. `armor_pierce` (new concept): the card's damage ignores the mob's own block value
+entirely instead of `max(0, dmg - mob_block)`. Locked into Fire Blast's Level 2 upgrade (see
+below). Leveled kits themselves live in LEVELING_GUIDE.md as documented `leveled_kit` swaps,
+not baked into this module's own CARDS, matching every other class.
+
+**Locked: Fire Blast, damage 3->4, gains `armor_pierce`, Block stays 0** (mandatory upgrade).
+Kept purely offensive by explicit user call -- a Block bump doesn't fit a "blast" spell's
+identity -- deferring cost/pulls recovery to a purchased upgrade on one of the kit's genuinely
+defensive cards (Ice Barricade, Snap Freeze, Frozen Shot) instead.
+
+**Locked: Fire Ball -> Fire Ball [Lv 2], damage flat 7 (was 5/7, weave-conditional), `payoff`
+flipped to False** (first purchased upgrade). Was strictly dominated by Arcane Volley whenever
+both were in hand (6/8 beats 5/7 on both faces), and only landed its own boosted value 30.4% of
+the times it was actually played -- redesigned rather than bumped, dropping the Weave
+dependency entirely instead of just raising its numbers. `payoff=False` (not True) specifically
+so it no longer wastes an armed Weave bonus it doesn't need.
+
+**Locked: Ice Barricade -> Ice Palisade, damage 0->1, Block unchanged at 10** (second purchased
+upgrade). Block itself is a confirmed dead lever (max mob ATK anywhere is 6, already fully
+absorbed by block=10, same finding as Rogue's Evasion) -- damage was the real lever, same
+opportunity-cost shape as Evasion -> Evasion and Riposte. Chosen conservatively at dmg=1 over
+dmg=2 (which flips win margin positive) to leave real headroom.
+
+**Locked: Snap Freeze -> Deep Freeze, damage 1->2, Block 1->2** (third purchased upgrade). Block
+alone turned out to be a weak, fast-saturating lever (only ever activates against Scout, same
+reason it's near-dead on Ranger's Crippling Shot); damage was the real lever. Full rename since
+both fields moved together, matching Ranger's Beast's Stand/Bullseye convention.
+
+**Combined total (mandatory + all 3 purchased) overshoots Paladin's own final win-margin
+reference (+2.1 vs. -0.7) -- left as-is by explicit user call, not re-tuned.** Every individual
+card was conservative in isolation; the overshoot only appears once fully stacked. See
+LEVELING_GUIDE.md's "Sixth class worked example: Wizard" for the full combined chart.
+
+See LEVELING_GUIDE.md's "Sixth class worked example: Wizard" for the full diagnosis, mechanism
+trace, and sweep data.
 """
 import itertools
+from dataclasses import replace
+
+from combat_round import RoundState, RoundOutcome
 
 WIZARD_HP = 14
 
@@ -24,10 +68,20 @@ WIZARD_HP = 14
 # for whatever payoff card follows, partially recovering the tempo spent on
 # defense instead of just eating it. Confirmed: reduced flee counts against
 # Bruiser (7/15 -> 5/15) and Ambusher (2/15 -> 1/15) at low starting HP,
-# left death counts completely unchanged (those were mathematically
-# unavoidable regardless of ordering -- Wizard has exactly one full-block
-# card, and some mobs deal enough damage across the other two rounds alone
-# to kill from a low starting HP no matter which round gets blocked). At
+# left death counts completely unchanged. NOT because Wizard has only one
+# way to fully answer a round -- grants_range (Snap Freeze, Frozen Shot)
+# also zeroes a melee round entirely, same as Ice Barricade's block=10 does
+# unconditionally, so the kit actually has three such cards. Re-checked
+# directly (2026-08-20, separating genuine death (hp_left<=0 in the best
+# available line) from flee (win=False but hp_left>0), since the two were
+# being conflated): the real, much narrower mechanism is that a handful of
+# specific hands draw only one of the three defensive-capable cards, and at
+# very low starting HP (<=6, i.e. <=42.9% of WIZARD_HP) the other two
+# exposed rounds' combined damage can still exceed it -- a hand-composition
+# edge case, not a fixed one-card ceiling. Clears entirely by HP=7 (50%).
+# Matches defense_floor_sweep's own documented 42.9% crack point exactly
+# (CLASS_BALANCE_GUIDE.md), and that crack point is safer than Paladin's own
+# locked 35.3% -- not a blocker for leveling or anything else. At
 # the macro-loop level: Wizard's food_only Nothing-tier decay dropped from
 # 32.6% to 28.2% and death rate from 0.39 to 0.31 per 20-trip run, landing
 # it next to Cleric instead of standing alone as the clear worst class.
@@ -59,37 +113,57 @@ def orderings(hand):
     return list(itertools.permutations(hand, 3))
 
 
-def simulate(seq_cards, mob_pattern, mob_hp, starting_hp=WIZARD_HP):
-    hp = starting_hp
-    remaining_mob_hp = mob_hp
-    weave_armed = False
+def resolve_round(state, card_name, stance, round_num, mob_pattern, mob_hp_total,
+                   mob_hp_remaining, hero_hp, hero_max_hp):
+    """The one place Wizard's card-effect logic lives. Faithful port of the real, current
+    simulate() below (NOT playtest_engine.py's older _resolve_wizard_round, which predates the
+    armor_pierce/killing_blow leveling fields added to CARDS since -- verified by direct
+    comparison before porting, not assumed in sync). stance is unused (Wizard has none),
+    kept for a uniform call signature across all 9 classes."""
+    card = CARDS[card_name]
 
-    for rnd in range(3):
-        card_name = seq_cards[rnd]
-        card = CARDS[card_name]
+    use_boost = card["payoff"] and state.weave_armed
+    dmg = card["dmg"][1] if use_boost else card["dmg"][0]
+    block = card["block"]
 
-        use_boost = card["payoff"] and weave_armed
-        dmg = card["dmg"][1] if use_boost else card["dmg"][0]
-        block = card["block"]
+    new_weave_armed = state.weave_armed
+    if card["weave_source"]:
+        new_weave_armed = True
+    elif use_boost:
+        new_weave_armed = False  # consumed
 
-        if card["weave_source"]:
-            weave_armed = True
-        elif use_boost:
-            weave_armed = False  # consumed
-
-        mob_atk, mob_block, mob_type = mob_pattern[rnd]
+    mob_atk, mob_block, mob_type = mob_pattern[round_num]
+    if card.get("armor_pierce"):
+        dmg_dealt = dmg
+    else:
         dmg_dealt = max(0.0, dmg - mob_block)
-        remaining_mob_hp -= dmg_dealt
+    new_remaining = mob_hp_remaining - dmg_dealt
 
-        if card["grants_range"] and mob_type == "melee":
-            dmg_taken = 0.0
-        else:
-            dmg_taken = max(0.0, mob_atk - block)
-        hp -= dmg_taken
+    if card.get("killing_blow") and new_remaining <= 0:
+        dmg_taken = 0.0
+    elif card["grants_range"] and mob_type == "melee":
+        dmg_taken = 0.0
+    else:
+        dmg_taken = max(0.0, mob_atk - block)
+    new_hp = hero_hp - dmg_taken
 
+    new_state = replace(state, weave_armed=new_weave_armed)
+    return RoundOutcome(new_hp=new_hp, new_mob_hp_remaining=new_remaining, new_hero_max_hp=hero_max_hp,
+                         new_state=new_state, dmg_dealt=dmg_dealt, dmg_taken=dmg_taken,
+                         raw_dmg=dmg, block=block, heal=0.0)
+
+
+def simulate(seq_cards, mob_pattern, mob_hp, starting_hp=WIZARD_HP):
+    state = RoundState()
+    hp, remaining, max_hp = starting_hp, mob_hp, starting_hp
+    for rnd in range(3):
+        outcome = resolve_round(state, seq_cards[rnd], None, rnd, mob_pattern, mob_hp,
+                                 remaining, hp, max_hp)
+        hp, remaining, max_hp, state = (outcome.new_hp, outcome.new_mob_hp_remaining,
+                                         outcome.new_hero_max_hp, outcome.new_state)
         if hp <= 0:
             return False, hp, rnd + 1
-        if remaining_mob_hp <= 0:
+        if remaining <= 0:
             return True, hp, rnd + 1
     return False, hp, 3
 

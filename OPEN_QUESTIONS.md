@@ -4,6 +4,29 @@ Design tensions and undefined interactions flagged before prototyping starts. Mo
 
 ## Unresolved
 
+### When does a hero deliberately travel to buy a purchased upgrade?
+
+Raised 2026-08-21, right after building deliberate fallback travel for the *free* mandatory
+upgrade and real quest pickup (both now require a real Trainer/quest-giver visit, not an
+automatic grant on crossing an XP threshold — see `sim/macro_sim.py`'s `_trip_chain`). The
+mandatory upgrade and quest pickup both got a real "travel there on purpose" rule;
+**purchased (non-mandatory) upgrades did not** — buying one is still purely opportunistic: it
+only happens if the hero already happens to be standing in a Trainer Zone (2 or 4) for some
+other reason, with enough Gold and an unbought upgrade next in `LEVEL2_PURCHASED_ORDER`. There
+is no mechanism making a hero deliberately travel to a Trainer Zone just to spend Gold on one.
+
+Given Level 2 quests are now split across Zone 3 *and* Zone 4 while the Trainer only exists in
+Zone 2 and 4, a hero whose quest log happens to route them through Zone 3 repeatedly could sit
+on affordable Gold for a long stretch without a purchase happening, purely from quest-routing
+luck, not because buying wasn't worth it.
+
+**Decided for now: leave it opportunistic, do not build deliberate travel-to-buy logic yet.**
+Explicitly flagged to revisit once Level 2 quests are fully wired in with real balance
+numbers (not the current placeholder `LEVEL2_QUESTS` reward table) — test what the
+opportunistic strategy actually produces first (how long Gold sits idle, how much later
+purchases land compared to the mandatory-upgrade-driven travel), and only build a more
+deliberate rule if that turns out to be a real problem, not preemptively.
+
 ### "Deterministic Spice" — node-variety ideas for task #28, not evaluated or decided
 
 Raw brainstormed ideas, not discussed or checkpointed yet — recorded here so they aren't lost,
@@ -339,15 +362,40 @@ survival-rate validation (blocked on task #20). No task tracked for the build ye
 ### Border Nodes and Scouted Pull
 
 Resolves `DESIGN_DOC.md`'s previously-open "Inter-Zone travel via Border Nodes" note and
-`sim/macro_sim.py`'s "Border Toll travel isn't modeled at all" scope gap. A Border Node sits
-between two adjacent Zones and is the only way to move between them — movement is free
-everywhere *within* a Zone, crossing *between* Zones is not.
+`sim/macro_sim.py`'s "Border Toll travel isn't modeled at all" scope gap. A Border Node is its
+own physical position on the board, adjacent to (but not part of) each of the Zones it
+connects — currently just one, between Zone 1 and Zone 2, but the model is built to support
+more than one as the map grows (see "Registered as a named entity" below). Movement is free
+everywhere *within* a Zone, and free *from* a Border Node into any Zone it connects, but moving
+*onto* a Border Node from a Zone (or from a different Border Node) costs its toll.
 
-**Turn structure, decided:** moving onto a Border Node is a hero's entire turn, and the toll
-(Scouted Pull, below) resolves immediately as part of that same turn. The following turn, the
-hero standing on the border decides to either continue into the new Zone or retreat back to
-the one they came from — a pure decision, no second toll. The toll is paid once, on arrival,
-never repeated just for lingering at the border.
+**Turn structure, corrected twice now (2026-08-20) — the toll pull is the whole turn, and
+it does not complete a crossing into the destination Zone.** Two earlier versions of this
+entry were both wrong in the same direction (assuming the hero ends up "in" the new Zone once
+the toll is paid): the first described crossing as two turns (toll, then a separate
+continue-or-retreat turn); the correction after that collapsed it to one turn but still said
+the crossing itself completed within it. Neither is right. **A Border Node is a destination
+like any other node — surviving its toll pull just means the hero is now standing on the
+Border Node itself, exactly the way winning a pull at a Standard node means the hero is
+standing at that Standard node.** The following turn, the hero (still on the Border Node) can
+freely choose any node in *either* Zone it connects — no second toll, since they never left
+it — or, just as easily, immediately go back to a node in the Zone they came from. Nothing
+forces the "obvious" continuation into the new Zone; it's simply the nearest option, same as
+every other node choice. The toll is paid once, to occupy the Border Node itself, never
+repeated just for lingering there.
+
+**Registered as a named entity, not hardcoded as "the" crossing** (`sim/macro_sim.py`'s
+`BORDER_NODES` dict, added 2026-08-20): each Border Node has a name and the set of Zones it
+connects (currently `{"border_1_2": frozenset({1, 2})}`), so adding a second Border Node later
+(e.g. connecting Zone 2 and a future Zone 3) is a data addition, not a rewrite of the crossing
+logic.
+
+**Flagged for later, not yet relevant since nothing targets a Zone yet:** any future card or
+effect that says "targets a Zone" (an area effect, a Zone-wide bonus, whatever) will need to be
+explicit about whether it includes the Border Node(s) attached to that Zone or not, since a
+Border Node is its own position, not part of either Zone it connects. No such effect exists
+yet, so this doesn't need resolving now — just flagged so it's not forgotten when one is
+designed.
 
 **Scouted Pull, the toll mechanic, decided — deliberately named and defined as the opposite
 of the existing Blind Refill rule at contested nodes, not a variant of it.** Blind Refill
@@ -402,16 +450,64 @@ refresh for the destination Zone's side, not an addition on top of it.** Traced 
 against a solo-play sequence before landing here: if a hero alone crosses toward an
 untouched Zone, and Scouted Pull's 2 cards were treated as separate from also fully
 populating that Zone's real 4-node set, the destination Zone would get dealt a full 4 cards
-on arrival (discarded at end of turn under the full-refresh rule), then dealt 4 more the
-following turn just for lingering at the border before a decision is even made — up to 8
-cards dealt and mostly discarded to support one crossing. Scouted Pull is the entire
+immediately (discarded under the full-refresh rule) on top of Scouted Pull's own 2 -- up to 6
+cards dealt and mostly discarded to support one crossing, all within the single turn the
+crossing now costs (see the turn-structure correction above). Scouted Pull is the entire
 mechanism for representing an unoccupied destination Zone while a hero is merely at the
 border, not yet inside it — its real 4-node set doesn't get separately populated until the
 hero actually commits to entering. Confirmed directly: this reconciliation is correct, not
 just a plausible-sounding synthesis.
 
-Not yet built. Flight Path's Gold cost (the way to skip a Border Node's toll entirely,
-purchased in Town) remains undecided.
+**Built and locked 2026-08-21.** Flight Path is a dedicated node present in Zone 2 and Zone 4
+specifically (not a Town purchase) -- 2 Gold, no turn cost of its own (same as ordinary
+intra-Zone movement), letting a hero standing in one commute straight to the other, bypassing
+the Border Node toll and its combat risk entirely. Doesn't shortcut any other journey (e.g.
+Zone 1 -> Zone 4 still needs a real Border Node crossing to reach Zone 2 or 4 first). Since it
+costs no turn, a hero can use it and then immediately pull at a node in the destination Zone
+within that same turn -- verified directly (real trip traces show `flight_paths_used=1`
+alongside a normal, non-inflated pull count, not an extra turn). A rational hero always takes
+it over the 2-hop Border Node route when it applies and is affordable, since it strictly
+dominates (fewer turns, zero combat risk, for a small Gold cost).
+
+### What a turn is (locked 2026-08-20)
+
+Never stated as one canonical rule before this — the pieces existed scattered across the
+Border Node entry and the simulator's own trip-chain logic, but nothing pulled them together
+across every node type. A turn is a hero selecting a travel-appropriate node reachable from
+where they currently stand, and executing that node's action — travel itself is free and
+costs no separate turn (Golden Rule 1), so a turn is defined by the action, not the movement.
+Per node type:
+
+- **Quest node:** one pull is one turn. Matches the simulator's own `pulls` counter directly.
+- **Town:** a hero may do as much business as they want in one visit — turn in any number of
+  complete quests, sell loot, buy any number of consumables/Bag Upgrades — and declares their
+  turn ended when they're done. One turn total per Town visit, no matter how much gets done
+  there.
+- **Border Node:** one turn, same as any other node — the Scouted Pull toll pull is the
+  action taken there. Surviving it lands the hero *on* the Border Node itself, not across it
+  into the destination Zone (see the Border Nodes entry above for why this was wrong twice
+  before landing here) — the next turn is an ordinary, free node choice from that position,
+  same as any other node-to-node move.
+- **Class Trainer:** same structure as Town — buy as many upgrade cards as affordable in one
+  visit, declare the turn ended when done. One turn total per visit.
+- **Corpse recovery:** the forced first pull back at the death node (see "Death and corpse
+  recovery" in DESIGN_DOC.md) is just an ordinary quest-node pull under this rule — one turn,
+  nothing special about it turn-wise. Travel from the respawn Town to the death node is free,
+  same as any other movement.
+- **Elite node, Market Row:** neither is a distinct node type, so neither has its own turn
+  structure. Elites don't have a real map node at all yet (see the "Co-op multi-hero vs.
+  Elite/multi-mob nodes" entry below for where they actually live — inside a node's dealt mob
+  pool, not a separate location); Market Row is superseded by Town and would fold into a
+  Town-visit turn like everything else there, if it's ever built.
+
+**Why this matters beyond bookkeeping:** the simulator's existing "Gold after a fixed number
+of trips" metric is not a fair unit for comparing classes, since a trip's real length (pulls,
+Town visits, crossings) varies a lot per class and per run. Turns (as defined here) are the
+actual comparable unit of play — a metric like Gold-per-turn is what should be used going
+forward for any cross-class or cross-level comparison, not Gold-per-trip or Gold-per-fixed-
+trip-count. Not yet built into `macro_sim.py`'s reporting -- currently only `pulls` is tracked
+per trip; Town/Trainer/Border-crossing turns aren't counted as their own units anywhere in the
+simulator yet.
 
 ### Co-op multi-hero vs. Elite/multi-mob nodes (a "Hogger battle")
 

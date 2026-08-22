@@ -276,13 +276,17 @@ required combat toll — a **Scouted Pull** (draw 2 cards from the destination Z
 deck, both revealed, choose one to fight) rather than being free like internal movement.
 Deliberately not a blind draw — see `OPEN_QUESTIONS.md`'s "Border Nodes and Scouted Pull"
 entry for the full resolved mechanic (turn structure, why the destination deck and not the
-zone being left, and how this reconciles with the zone-refresh rule). **Flight Paths** let a
-player spend Gold in Town to bypass a Border Node's toll entirely, commuting straight to
-another Zone instead — the Gold cost itself is still undecided and Flight Path itself isn't
-built. Border Toll travel *is* now built and tested (`sim/macro_sim.py`, 2026-08-20) — see the
-"Starting map, locked" note below for the two-Town map shape this was validated against and
-why an earlier single-Town version got replaced. Not to be confused with the free intra-Zone
-movement above.
+zone being left, and how this reconciles with the zone-refresh rule). **Flight Path, locked and
+built 2026-08-21**: a dedicated node present in Zone 2 and Zone 4 (not a Town purchase) that
+lets a hero standing in one commute straight to the other for 2 Gold, bypassing the Border
+Node toll (and its combat risk) entirely — only connects those two specific Zones, doesn't
+shortcut any other journey. Costs no turn of its own, the same way ordinary intra-Zone movement
+is free; a hero can fly and then immediately pull at a node in the destination Zone within that
+same turn. A rational hero always takes it over the 2-hop Border Node route when it applies and
+is affordable, since it strictly dominates (fewer turns, zero risk, small Gold cost). Border
+Toll travel *is* also built and tested (`sim/macro_sim.py`, 2026-08-20) — see the "Starting map,
+locked" note below for the two-Town map shape this was validated against and why an earlier
+single-Town version got replaced. Not to be confused with the free intra-Zone movement above.
 
 **Starting map, locked (revised 2026-08-20): two Zones, one Border Node, a Town in each.**
 Zone 1 (the starting zone) holds Town — Bag/Food/Potion purchases, quest turn-in, the Bag
@@ -308,9 +312,9 @@ entirely, which is what actually explains the difference -- not smarter play, a 
 Re-tested with two Towns and a fully discretionary crossing in both directions: trips dropped
 to 2.33-2.71 and deaths to 0.000-0.020, both matching the original zone-less baseline almost
 exactly, while the hero still genuinely works both Zones (roughly even Zone1/Zone2 pull splits
-in testing, not "avoid Zone 2 entirely"). This 2-zone, 2-Town/1-Trainer shape is explicitly a
-starting-slice artifact, not a pattern meant to generalize to N zones once the map expands
-further (later zones' hub content is undecided).
+in testing, not "avoid Zone 2 entirely"). This 2-zone, 2-Town/1-Trainer shape was a
+starting-slice artifact at the time it was written -- superseded below now that Zones 3/4's
+hub shape is actually decided.
 
 **Zone 2's nodes and quests, locked** — mirrors Zone 1's structure exactly (4 nodes, required
 2/3/4/5, same coastal/pirate-plunder naming thread as Zone 1's waystation/cove/ridge/marsh and
@@ -326,9 +330,80 @@ Pilfered Goods/Syndicate Ledger/Contraband Crates/Stolen Signet):
 **Built in `sim/macro_sim.py`** (2026-08-20) — `NODES`/`NODE_ZONE`/`QUESTS` carry all 8 entries
 across both Zones; Border Node crossing is a real Scouted Pull toll (`_scouted_pull_mob`/
 `_cross_to`/`_best_case_mob` in `run_one_trip`), fully discretionary in both directions now
-that both Zones have Town. Flight Path (paying Gold to skip the toll) is still not built.
+that both Zones have Town. Flight Path (Zone 2 <-> Zone 4, 2 Gold, no turn cost) is now also
+built -- see the Flight Path entry above.
 
 **Starting loadout:** 2-slot Bag, 1 Food occupying slot 1, 0 Gold, 0 XP.
+
+**Zones 3 and 4, naming locked (2026-08-20), wired into real gameplay (2026-08-21).**
+Map shape: Zone 1 (SW, starting Zone) -> Zone 2 (SE) -> Zone 3 (north of Zone 2) -> Zone 4
+(west of Zone 3) -> back to Zone 1 (south of Zone 4), a 4-Zone loop connected by 4 Border
+Nodes, all built (`border_1_2`, `border_2_3`, `border_3_4`, `border_4_1`, all in
+`sim/macro_sim.py`'s `BORDER_NODES`). Zone 2 and Zone 4 mirror each other -- both get a full
+Town **and** the Class Trainer, connected by a Flight Path (2 Gold, no turn cost, also built)
+between them specifically, since they're diagonal on the loop rather than adjacent. Zone 3,
+like Zone 1, is Town-only, no
+Trainer.
+
+Theme: **The Pale Wastes**, home to **The Sunsworn** -- a militant order that arose to purge
+the corruption Zones 1/2's smuggler economy represents, and has curdled into something just as
+bad: paranoid zealot-knights, "relics" that are really just looted goods laundered through
+religious authority, confessions burned instead of heard. Deliberately an original setting, not
+a reskin of any existing copyrighted property -- see `OPEN_QUESTIONS.md` if this note needs
+revisiting later for why that mattered here.
+
+**Node/quest table, locked (2026-08-20):**
+
+| Zone | Node | Quest (loot) | Required |
+|---|---|---|---|
+| 3 | Mud Trenches | Royal Signets | 2 |
+| 3 | Ruined Abbey | Consecrated Ash | 3 |
+| 3 | Pyre Fields | Ashen Vestments | 4 |
+| 3 | Broken Bridge | Shattered Broadswords | 5 |
+| 4 | Charred Village | Rusted Mail | 2 |
+| 4 | Armory Gates | Tarnished Crests | 3 |
+| 4 | Gleaming Citadel | Blessed Lamp Oil | 4 |
+| 4 | Sunward Throne | Gilded Penance | 5 |
+
+Ordering logic: each Zone escalates from an exposed outer position to the most defended/
+innermost one -- Zone 3's Broken Bridge is the crossing that leads toward Zone 4, so it lands
+last; Zone 4's Sunward Throne sits *inside* the Gleaming Citadel, so it's the final, hardest
+node by construction, not just by assignment.
+
+Town node (both Zones' Town is the same amenity, per "a town is a town is a town" above; The
+Vanguard Camp is Zone 3/4's flavor name for it): **The Vanguard Camp** -- a fortified staging
+ground outside the warzone where mercenaries and disgraced knights trade supplies.
+
+Unused candidate loot names from the same brainstorm, kept for the record in case any fit
+better once quest reward tuning starts: Sanctified Reliquary, Martyr's Toll, Zealot's Bounty,
+Consecrated Ledger, Purged Confession.
+
+**Built, 2026-08-21 (`sim/macro_sim.py`):** the full 4-Zone loop is real and playable end to
+end, not just designed on paper.
+- `BORDER_NODES` now has all 4 crossings (`border_1_2`, `border_2_3`, `border_3_4`,
+  `border_4_1`), and multi-hop routing (`_next_border_toward`/`_hop_distance`, built earlier
+  this session) needed zero changes to handle them -- a pure data addition, as anticipated.
+- `NODES`/`NODE_ZONE` carry all 8 real Zone 3/4 nodes, using the exact locked names/loot above.
+  Each one's mob-difficulty tier (`LEVEL2_TIER`, the real 18-Standard+3-Elite pool) is set
+  **natively on the node itself**, the same way Zone 1/2's nodes say `"standard"` -- mob
+  difficulty is a property of the place, never the hero's XP or level. A same-session attempt
+  to instead gate difficulty on `LEVEL2_XP_THRESHOLD` was caught and reverted before it shipped
+  (would have made a Level 1 hero suddenly fight Elites the instant their quest log flipped
+  over, still standing in the old Zone 1/2 nodes, and never come back down if they returned
+  there later -- wrong on both counts). Verified directly: Level 1 heroes never wander into
+  Zone 3/4 (0 violations across 300 trials), and all 3 real Elites (Bulwark, Berserker,
+  Warlord) do turn up once a hero actually travels there.
+- `TRAINER_ZONES` now includes Zone 4, matching the locked "Zone 2 and Zone 4 both get Town and
+  the Class Trainer" rule.
+- `LEVEL2_QUESTS` (the pool `_trip_chain` switches to once a hero passes `LEVEL2_XP_THRESHOLD`)
+  now uses the real, locked loot names and `required` counts above, not a stand-in.
+
+**Still explicitly not done, real engineering work, not just data entry:**
+- **XP/Gold-ladder values for all 8 new quests still need their own real balance derivation**
+  (matching how `quest_cost_gauntlet.py` derived Zone 1/2's originally), not the placeholder
+  numbers currently in `LEVEL2_QUESTS` -- those reuse the pre-compression Zone 1/2 formula
+  wholesale (flat `[4,2,1,0]` for required 2-4, `[9,5,3,0]` at required 5) purely so the
+  mechanic has *some* real numbers to run, explicitly flagged in-code as not the real derivation.
 
 **Loot chain, revised — colored quest tokens, any mix per slot, capped at 3.** Each active
 quest is assigned a color (printed on the quest card, or marked with a colored token on it).
@@ -373,18 +448,22 @@ available in the Bag. Roughly halves average deaths per trip-chain versus the ol
 whenever a quest completes this turn" default, with no corresponding rise in worst-case decay.
 
 **Death and corpse recovery (locked rule, not yet in this doc before now).** If a pull kills
-the hero, a corpse marker is left at that node and the hero **respawns in Town at full Max
-HP**; every Bag slot holding anything (loot or an unused consumable) **locks** — its contents
-stop counting toward quests and can't be added to — and **every quest currently in the active
-log takes an immediate 2-stage decay hit, with no exception for a quest that's already fully
-collected and ready to turn in** (versus 1 stage for a normal incomplete return), still capped
-at "nothing." The trip *after* a death is forced to spend its first pull back at the death node
-(a fresh random mob from that node's tier, no loot either way) before any normal questing
-resumes; the hero only needs to **survive** that pull — win or flee both count, killing the mob
-is not required — to unlock every previously locked slot. Dying on the recovery pull triggers
-the exact same handling again — a real spiral risk, not special-cased away. If the hero can't
-safely attempt it (no consumable available to make the risk acceptable), the trip ends with the
-corpse still unrecovered.
+the hero, a corpse marker is left at that node and the hero **respawns at full Max HP in
+whichever Town is closest** — clarified 2026-08-20 now that both Zones have Town: this means
+the Town in the same Zone as the death node, not necessarily "Zone 1's Town" the way it would
+have under the old single-Town map. Every Bag slot holding anything (loot or an unused
+consumable) **locks** — its contents stop counting toward quests and can't be added to — and
+**every quest currently in the active log takes an immediate 2-stage decay hit, with no
+exception for a quest that's already fully collected and ready to turn in** (versus 1 stage for
+a normal incomplete return), still capped at "nothing." Travel from the respawn Town back to
+the death node is free (Golden Rule 1, same as any other intra-Zone movement) and costs no turn
+on its own — the trip *after* a death is forced to spend its first pull back at the death node
+(a fresh random mob from that node's tier, no loot either way) before any normal questing or
+looting resumes; the hero only needs to **survive** that pull — win or flee both count, killing
+the mob is not required — to unlock every previously locked slot. Dying on the recovery pull
+triggers the exact same handling again — a real spiral risk, not special-cased away. If the hero
+can't safely attempt it (no consumable available to make the risk acceptable), the trip ends
+with the corpse still unrecovered.
 
 **Decaying Bounties, and the "days passing" flavor now attached to it.** Players hold exactly
 3 Quests at all times. Decay is assessed at the **end of each trip**, not on departure: any
@@ -405,15 +484,39 @@ finishing any quest at full Gold would be structurally impossible, not just unli
 flat and doesn't decay (`base_xp = required`, 1 XP per loot item the quest asks for) — only the
 Gold bonus erodes, so pushing your luck risks the bonus, never the guaranteed baseline progress.
 
-**Quest table** (`sim/macro_sim.py`'s `QUESTS`), Gold ladder priced from measured trip cost, not
-a hand-picked curve — see Designer's Notes for the derivation:
+**Level 1 quest table (`sim/macro_sim.py`'s `QUESTS`), compressed and non-replenishing
+(revised 2026-08-21).** All 8 Level 1 quests flattened to the same shape — every original
+required=2/3/4 quest already shared the same Gold ladder, so this costs nothing in Gold, only
+removes wasted turns; the two former required=5 quests lose their higher ladder too, a
+deliberate choice to flatten everything uniformly:
 
 | Quest | Loot required | XP | Gold ladder (Gold/Silver/Bronze/nothing) |
 |---|---|---|---|
 | Pilfered Goods | 2 | 2 | 4 / 2 / 1 / 0 |
-| Syndicate Ledger | 3 | 3 | 4 / 2 / 1 / 0 |
-| Contraband Crates | 4 | 4 | 4 / 2 / 1 / 0 |
-| Stolen Signet | 5 | 5 | 9 / 5 / 3 / 0 |
+| Syndicate Ledger | 2 | 2 | 4 / 2 / 1 / 0 |
+| Contraband Crates | 2 | 2 | 4 / 2 / 1 / 0 |
+| Stolen Signet | 2 | 2 | 4 / 2 / 1 / 0 |
+| Smuggled Cargo | 2 | 2 | 4 / 2 / 1 / 0 |
+| Forged Ledger | 2 | 2 | 4 / 2 / 1 / 0 |
+| Plundered Chest | 2 | 2 | 4 / 2 / 1 / 0 |
+| Buried Treasure | 2 | 2 | 4 / 2 / 1 / 0 |
+
+A hero draws exactly 3 of these 8 at random as a starter batch and does **not** get a
+replacement as each is turned in — "Players hold exactly 3 Quests at all times" (above) only
+holds during this starter batch's own first quest-giving; the log shrinks toward 0 as quests
+complete, unlike the old always-refilled system. Completing all 3 always nets exactly 6 XP
+(3 x 2), which is deliberately identical to the Level 2 XP threshold (see below) — reaching 6
+XP *is* reaching Level 2, by construction. Once exhausted, Zone 1/2 stops offering quests
+permanently for that hero; Level 2 quests (Zone 3/4, still a placeholder pool pending real
+balance — see the Zone 3/4 section) take over from that point on, with normal replenishment.
+
+**+1 Gold per won pull, on top of quest loot if applicable (locked 2026-08-21).** Applies to
+any pull that wins outright — a quest-node pull, a corpse-recovery pull, or a Border Node toll
+crossing — never a flee, the same win-only standard across all three. Applies at both Level 1
+and Level 2. Measured effect at the Level 2 checkpoint: Gold there rose from ~11-13 to ~17-18,
+pooled and consistent across the roster — see `MACRO_LOOP_GUIDE.md`'s own entry for the full
+derivation and the methodology note on why this was checked at a real, bounded checkpoint
+rather than an arbitrary long trip-count average.
 
 **Bag Upgrade:** 16 Gold, +1 Bag slot, back-solved (not guessed) by sweeping candidate prices
 until the measured cost landed at ~4.5 trips / ~27 pulls / ~25 XP on average against the real

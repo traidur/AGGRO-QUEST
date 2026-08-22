@@ -53,7 +53,24 @@ def leveled_kit(mod, swaps):
     Usage: with leveled_kit(W, {"Shield Block": ("Shield Bash", dict(G=(2, 5), C=(3, 2), ...))}):
                ceiling, floor = T.damage_floor_ceiling(W, True, "warrior", W.WARRIOR_HP)
            # W.CARDS is back to the real, locked Level 1 kit here
-    """
+
+    DECK is rebuilt by substituting old_name -> new_name *in the original deck's own order and
+    membership*, not by taking every key currently in mod.CARDS. Two real bugs this fixes,
+    found together 2026-08-21 while building the Class Trainer:
+    (1) Some classes' CARDS dict legitimately holds more entries than DECK (Necromancer's
+        "Boneguard's Offering (Boosted)", an alternate-play variant its own custom orderings()
+        reads directly, never a real 7th deck card). Rebuilding from list(mod.CARDS.keys())
+        wholesale silently pulled that extra entry into DECK/ALL_HANDS even with an empty
+        swaps dict -- caught on a real, first-ever call of leveled_kit on Necromancer (one of
+        the 3 classes with no Level 2 slate yet, so never swept during any earlier leveling
+        pass) -- gold dropped from a real ~92 to 3 and produced a genuine death, on an
+        intended no-op.
+    (2) `del mod.CARDS[old_name]; mod.CARDS[new_name] = new_card` always inserts new_name at
+        the *end* of dict order (Python dict semantics), regardless of where old_name used to
+        sit -- so list(mod.CARDS.keys()) silently moved every swapped card to the back of
+        DECK/ALL_HANDS' combination order, for every class, on every real (non-empty) swap
+        this whole project has ever run. Substituting in place instead keeps a swapped card
+        exactly where it always sat."""
     old_cards = dict(mod.CARDS)
     old_deck = list(mod.DECK)
     old_hands = list(mod.ALL_HANDS)
@@ -61,7 +78,8 @@ def leveled_kit(mod, swaps):
         for old_name, (new_name, new_card) in swaps.items():
             del mod.CARDS[old_name]
             mod.CARDS[new_name] = new_card
-        mod.DECK[:] = list(mod.CARDS.keys())
+        rename = {old_name: new_name for old_name, (new_name, _) in swaps.items()}
+        mod.DECK[:] = [rename.get(name, name) for name in old_deck]
         mod.ALL_HANDS[:] = list(itertools.combinations(mod.DECK, 4))
         yield mod
     finally:
@@ -69,6 +87,58 @@ def leveled_kit(mod, swaps):
         mod.CARDS.update(old_cards)
         mod.DECK[:] = old_deck
         mod.ALL_HANDS[:] = old_hands
+
+def sweep_purchased_candidate(mod, has_stance, mob_key, max_hp, mandatory_swap,
+                               candidate_old_name, candidate_variants,
+                               L1_cost, L1_win, L1_pulls, level=2, trials=1500):
+    """The one correct way to sweep a purchased-upgrade candidate's numbers, per
+    LEVELING_GUIDE.md's Step 3 -- structurally enforces the mandatory-only baseline that's
+    been violated four separate times already despite being written down in prose twice
+    (Warrior's Dominate-vs-Heavy-Swing, Cleric's Void Storm/Void Mark, Rogue's Relentless
+    Ambush AND Backstab and Dodge, all in this same project). Prose alone did not stop this
+    from recurring -- this function exists to make the mistake structurally harder, not just
+    better-explained.
+
+    mandatory_swap must be EXACTLY the single already-locked mandatory upgrade's swap entry
+    ({old_name: (new_name, new_card)}, len == 1). Raises ValueError otherwise -- so a swap
+    dict that's grown to include a previously-locked *purchased* upgrade (the exact shape of
+    every past incident: copy-pasting the last candidate's swap dict and adding the new one
+    to it, instead of starting fresh from mandatory-only each time) fails loudly instead of
+    silently producing contaminated numbers. Never build mandatory_swap by extending a
+    previous candidate's swap dict -- always construct it fresh, containing only the
+    mandatory upgrade, no matter how many purchased upgrades are already locked.
+
+    candidate_variants: list of (label, card_dict) pairs to sweep for candidate_old_name
+    (label is just a display string, e.g. "3/5" or "dmg=4"; card_dict's own "name" isn't
+    read here -- pass the candidate's own new display name via candidate_old_name's paired
+    swap if you want it renamed, same as any other leveled_kit swap).
+
+    Prints a cost/win/pulls-margin table, one row per variant, and returns the raw numbers as
+    a list of (label, cost_margin, win_margin, pulls_margin) tuples."""
+    if len(mandatory_swap) != 1:
+        raise ValueError(
+            f"mandatory_swap must contain exactly the one locked mandatory upgrade, got "
+            f"{len(mandatory_swap)} entries: {list(mandatory_swap.keys())}. This is exactly "
+            f"the contamination bug LEVELING_GUIDE.md's Step 3 warns about -- every "
+            f"purchased-upgrade candidate must be swept against mandatory-only, never a kit "
+            f"that already includes another purchased upgrade, even one that's already "
+            f"locked. Build mandatory_swap fresh, don't extend a previous candidate's dict.")
+    results = []
+    print(f"{'variant':>10s}{'cost_marg':>11s}{'win_marg':>10s}{'pulls_marg':>12s}")
+    for label, card_dict in candidate_variants:
+        swaps = dict(mandatory_swap)
+        swaps[candidate_old_name] = (candidate_old_name, card_dict)
+        with leveled_kit(mod, swaps) as leveled:
+            cost = cost_pct_for_level(leveled, has_stance, max_hp, mob_key, level)
+            win = win_rate_for_level(leveled, has_stance, max_hp, mob_key, level)
+            pulls = pulls_before_death(leveled, has_stance, max_hp, mob_key, level, trials=trials)
+        cost_m = L1_cost - cost
+        win_m = win - L1_win
+        pulls_m = pulls - L1_pulls
+        results.append((label, cost_m, win_m, pulls_m))
+        print(f"{label:>10s}{cost_m:11.1f}{win_m:10.1f}{pulls_m:12.2f}")
+    return results
+
 
 ELITE_MELEE = {
     "Bulwark":   [(3, 1), (4, 0), (6, 0)],

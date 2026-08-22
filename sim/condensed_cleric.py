@@ -16,6 +16,9 @@ from Warrior (Stance/Sunder) and Wizard (Positioning/Spellweave), both of which 
 card-to-card dependencies independent of the mob.
 """
 import itertools
+from dataclasses import replace
+
+from combat_round import RoundState, RoundOutcome
 
 CLERIC_HP = 14
 SACRED_BALANCE_HEAL = 1  # automatic heal on playing Smite
@@ -52,42 +55,55 @@ def orderings(hand):
     return list(itertools.permutations(hand, 3))
 
 
+def resolve_round(state, card_name, stance, round_num, mob_pattern, mob_hp_total,
+                   mob_hp_remaining, hero_hp, hero_max_hp):
+    """The one place Cleric's card-effect logic lives. Faithful port of the real, current
+    simulate() below (NOT playtest_engine.py's older _resolve_cleric_round, which predates the
+    echo_dmg/pending_echo_dmg DOT-carryover field added to CARDS since -- verified by direct
+    comparison before porting). stance is unused (Cleric has none). hero_max_hp here is the
+    per-pull HP ceiling (starts at CLERIC_HP, not necessarily starting_hp -- see simulate()'s
+    own seeding below), raised by max_hp_buff cards; state.pending_echo_dmg carries the DOT
+    tick from the previous round's card, resolved before this round's own card, shared field
+    shape with Runecaster/Necromancer's own echo mechanics."""
+    card = CARDS[card_name]
+    mob_atk, mob_block = mob_pattern[round_num]
+
+    new_remaining = mob_hp_remaining
+    if state.pending_echo_dmg:
+        new_remaining -= max(0.0, state.pending_echo_dmg - mob_block)
+
+    dmg, heal, block = card["dmg"], card["heal"], card["block"]
+    if card["sacred_balance"]:
+        heal += SACRED_BALANCE_HEAL
+
+    new_max_hp = hero_max_hp + card["max_hp_buff"]
+    healed_hp = min(new_max_hp, hero_hp + heal)
+
+    dmg_dealt = max(0.0, dmg - mob_block)
+    new_remaining -= dmg_dealt
+
+    dmg_taken = max(0.0, mob_atk - block)
+    new_hp = healed_hp - dmg_taken
+
+    new_state = replace(state, pending_echo_dmg=card["echo_dmg"])
+    return RoundOutcome(new_hp=new_hp, new_mob_hp_remaining=new_remaining, new_hero_max_hp=new_max_hp,
+                         new_state=new_state, dmg_dealt=dmg_dealt, dmg_taken=dmg_taken,
+                         raw_dmg=dmg, block=block, heal=heal)
+
+
 def simulate(seq_cards, mob_pattern, mob_hp, starting_hp=CLERIC_HP):
-    hp = starting_hp
-    hp_cap = CLERIC_HP
-    remaining_mob_hp = mob_hp
-    pending_echo_dmg = 0
-
+    state = RoundState()
+    hp, remaining, max_hp = starting_hp, mob_hp, CLERIC_HP  # hp_cap starts at the class's
+    # base HP constant, NOT starting_hp -- matches the original loop's `hp_cap = CLERIC_HP`
+    # seeding exactly (a hero starting a pull at reduced HP still has the full class ceiling).
     for rnd in range(3):
-        card = CARDS[seq_cards[rnd]]
-        mob_atk, mob_block = mob_pattern[rnd]
-
-        # A DOT card's echo from last round -- resolves before this round's own card,
-        # reduced by this round's mob Block same as any other damage source. Ported
-        # directly from condensed_necromancer.py's Blight/condensed_runecaster.py's Earth
-        # Strike Rune -- same field, same resolution order, not a new mechanic shape.
-        if pending_echo_dmg:
-            remaining_mob_hp -= max(0.0, pending_echo_dmg - mob_block)
-        pending_echo_dmg = 0
-
-        dmg, heal, block = card["dmg"], card["heal"], card["block"]
-        if card["sacred_balance"]:
-            heal += SACRED_BALANCE_HEAL
-
-        hp_cap += card["max_hp_buff"]  # raises the ceiling only -- does not add its own separate HP on top of heal
-        hp = min(hp_cap, hp + heal)  # heal resolves first, now capped at the (possibly raised) max HP
-
-        dmg_dealt = max(0.0, dmg - mob_block)
-        remaining_mob_hp -= dmg_dealt
-
-        dmg_taken = max(0.0, mob_atk - block)
-        hp -= dmg_taken
-
-        pending_echo_dmg = card["echo_dmg"]
-
+        outcome = resolve_round(state, seq_cards[rnd], None, rnd, mob_pattern, mob_hp,
+                                 remaining, hp, max_hp)
+        hp, remaining, max_hp, state = (outcome.new_hp, outcome.new_mob_hp_remaining,
+                                         outcome.new_hero_max_hp, outcome.new_state)
         if hp <= 0:
             return False, hp, rnd + 1
-        if remaining_mob_hp <= 0:
+        if remaining <= 0:
             return True, hp, rnd + 1
     return False, hp, 3
 

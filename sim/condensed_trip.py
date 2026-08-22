@@ -407,6 +407,64 @@ def unplayed_card_diagnostic(mod, has_stance, mob_key, max_hp):
     return left_out, total
 
 
+def unplayed_card_diagnostic_genuine(mod, has_stance, mob_key, max_hp):
+    """The tie-aware version of unplayed_card_diagnostic, same shape as
+    pairwise_genuine_difference is to a naive pairwise comparison. Caught as a real gap
+    (2026-08-20): a card that gets a strict, no-downside buff (e.g. Rogue's Quick Slash
+    gaining +1 Block, never worse in any hand) can still show its raw unplayed% *increase*
+    after the buff -- traced a real case down to an exact tie (Quick Slash and Ambush both
+    landing at the identical (win, hp_left) in the same hand), where a card-deck reordering
+    side effect of leveled_kit swapping a card under its own name flipped which of two
+    equally-good options the exact solver's first-found tie-break happened to report. Every
+    one of that class's flipped cases (15/15) turned out to be exactly this -- zero genuine
+    changes. The raw stat isn't wrong, but it isn't the number that answers "is this card
+    actually weak" either -- ties are real noise on top of real signal, not a rounding error.
+
+    Only tallies a card as unplayed when EVERY set of 3 cards achieving the best (win,
+    hp_left) for that hand excludes it -- i.e. there's no tied alternative that would have
+    kept it in. Returns (left_out, total, tie_count) -- tie_count is hand x mob pairs
+    skipped entirely because multiple *different* 3-card sets tied for best, so no single
+    card can honestly be blamed as "the" unplayed one."""
+    from collections import Counter
+    left_out = Counter()
+    total = 0
+    tie_count = 0
+    for hand in mod.ALL_HANDS:
+        for mob_name in MOB_NAMES:
+            pattern, mob_hp = MOBS[mob_name][mob_key]
+            best_key = None
+            played_sets = []
+            if has_stance:
+                for seq in mod.orderings(hand):
+                    for stance in mod.STANCE_SEQS:
+                        win, hp_left, rounds = mod.simulate(seq, stance, pattern, mob_hp, starting_hp=max_hp)
+                        key = (win, hp_left)
+                        if best_key is None or key > best_key:
+                            best_key = key
+                            played_sets = [frozenset(seq)]
+                        elif key == best_key:
+                            played_sets.append(frozenset(seq))
+            else:
+                for seq in mod.orderings(hand):
+                    win, hp_left, rounds = mod.simulate(seq, pattern, mob_hp, starting_hp=max_hp)
+                    key = (win, hp_left)
+                    if best_key is None or key > best_key:
+                        best_key = key
+                        played_sets = [frozenset(seq)]
+                    elif key == best_key:
+                        played_sets.append(frozenset(seq))
+            distinct_played_sets = set(played_sets)
+            if len(distinct_played_sets) > 1:
+                tie_count += 1
+                continue  # genuinely ambiguous which card is "the" unplayed one -- skip, don't guess
+            played = next(iter(distinct_played_sets))
+            unplayed = [c for c in hand if c not in played]
+            if unplayed:
+                left_out[unplayed[0]] += 1
+                total += 1
+    return left_out, total, tie_count
+
+
 # ---------------------------------------------------------------------------
 # Standardized diagnostic suite. All of these are black-box: they only use
 # each class's public ALL_HANDS/DECK/best_line_for_hand/simulate interface,
