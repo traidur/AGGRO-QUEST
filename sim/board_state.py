@@ -156,13 +156,29 @@ def deal_zone(state, zone_id, level, node_names, rng):
     unconditionally" (verbatim). The single primitive both real invocation contexts share:
     the top-of-turn refresh for a Zone a hero already occupied last turn, and the reactive
     "deal-on-entry" deal for a Zone a hero is moving into for the first time this turn (the
-    turn-loop layer, not built here, decides which Zones to call this for and when)."""
+    turn-loop layer, not built here, decides which Zones to call this for and when).
+
+    A Spice draw is immediately redrawn (discarded, draw again) rather than left sitting on
+    the Node -- matches the "reserve empty slots... each slot deals a generic 'nothing here,
+    redeal' placeholder" decision this project checkpointed for Spice's placeholder era, and
+    keeps this consistent with scouted_pull_from_deck's own identical draw-until-real loop
+    (board_engine.py) -- an earlier version of this function left Spice sitting inert on the
+    board instead of redealing it, missed until a live gold-per-turn discrepancy traced back
+    to it. **NOTE for whoever designs real Spice mechanics:** this redraw-until-real behavior
+    is a placeholder-era shortcut, not the intended final rule -- once Spice cards (Rare
+    Spawn, Gathering Node, etc., see OPEN_QUESTIONS.md's "Deterministic Spice" entry) have
+    real mechanics, they should actually surface face-up like any other dealt card instead of
+    being silently redealt away here."""
     if zone_id not in state.zones:
         state.zones[zone_id] = ZoneBoardState()
     deck = state.level_decks[level]
     zone_board = state.zones[zone_id]
     for node_name in node_names:
-        zone_board.dealt[node_name] = deck.draw(rng)
+        card = deck.draw(rng)
+        while is_spice(card):
+            deck.discard(card)
+            card = deck.draw(rng)
+        zone_board.dealt[node_name] = card
 
 
 def discard_zone(state, zone_id, level):
