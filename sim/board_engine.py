@@ -98,7 +98,7 @@ def choose_node_to_declare(hero, zone_board, quest_pool):
 
 def resolve_node_pull(hero, class_name, node_name, mob_name, quest_pool, rng,
                        risk_tolerance, risk_tolerance_base, risk_only_as_last_resort,
-                       suppress_loot=False):
+                       suppress_loot=False, decide_fn=None):
     """Resolves one declared Node pull for a single hero -- faithful port of run_one_trip's own
     per-pull block: fluid risk-tolerance gate (higher tolerance only when this pull, if won,
     would complete the quest being pursued), consumable use if the gate trips, the actual pull
@@ -112,7 +112,12 @@ def resolve_node_pull(hero, class_name, node_name, mob_name, quest_pool, rng,
     effects: no loot is granted on a win, AND the fluid risk-tolerance bonus never applies
     (old code's own guard is `one_pull_from_done = loot_name is not None and ...` -- a
     recovery pull can never be "one pull from completing a quest" since it isn't pursuing one
-    at all)."""
+    at all).
+
+    decide_fn (checkpointed 2026-08-23): passed straight through to _pull_and_resolve --
+    None (every existing caller) keeps the pull solver-automatic; a human-facing driver
+    supplies its own terminal-input callback instead. Purely additive, see _pull_and_resolve's
+    own docstring."""
     mod = M.CARD_SOURCE[class_name]
     has_stance = M.HAS_STANCE[class_name]
     tier, loot_name = M.NODES[node_name]
@@ -169,10 +174,11 @@ def resolve_node_pull(hero, class_name, node_name, mob_name, quest_pool, rng,
             else:
                 return {"outcome": "declined", "mob_name": mob_name}
 
-        return _pull_and_resolve(hero, class_name, mod, mob_name, loot_name, rng, suppress_loot)
+        return _pull_and_resolve(hero, class_name, mod, mob_name, loot_name, rng, suppress_loot,
+                                  decide_fn=decide_fn)
 
 
-def _pull_and_resolve(hero, class_name, mod, mob_name, loot_name, rng, suppress_loot):
+def _pull_and_resolve(hero, class_name, mod, mob_name, loot_name, rng, suppress_loot, decide_fn=None):
     """Shared tail of resolve_node_pull and commit_node_pull -- draws a hand, runs the actual
     combat_engine pull, and resolves win/loss/loot bookkeeping. Must be called from inside an
     already-open LV.leveled_kit(...) scope (both callers open one for their own risk-gate/
@@ -180,10 +186,18 @@ def _pull_and_resolve(hero, class_name, mod, mob_name, loot_name, rng, suppress_
     human-facing unconditional-commit path can't drift apart on the one piece they genuinely
     share -- only what happens BEFORE the pull differs between them.
 
+    decide_fn (checkpointed 2026-08-23): forwarded to macro_sim._engine_pull unchanged --
+    None keeps the pull itself solver-automatic (QuestIntelligence), matching every existing
+    caller exactly; a human-facing driver's own (state, actions) -> action callback plays the
+    hand instead. Nothing else about this function's bookkeeping (turn count, HP, Gold, loot,
+    death) changes either way -- decide_fn only ever affects WHICH cards get played, never
+    what happens as a result of the outcome.
+
     Mutates hero in place. Returns {"outcome": "win"/"flee"/"died"/"no_room", "mob_name": ...}."""
     pattern, mob_hp = M._pattern_hp_for_mob(class_name, mob_name)
     hand = rng.choice(mod.ALL_HANDS)
-    win, final_hp, final_rounds = M._engine_pull(class_name, mob_name, hand, pattern, mob_hp, hero.hp)
+    win, final_hp, final_rounds = M._engine_pull(class_name, mob_name, hand, pattern, mob_hp, hero.hp,
+                                                  decide_fn=decide_fn)
     hero.hp = final_hp
     # One turn -- OPEN_QUESTIONS.md's "What a turn is" (locked): "Quest node: one pull is
     # one turn." A "declined" pull (returned above, before reaching here, resolve_node_pull
@@ -211,7 +225,7 @@ def _pull_and_resolve(hero, class_name, mod, mob_name, loot_name, rng, suppress_
     return {"outcome": "flee", "mob_name": mob_name}
 
 
-def commit_node_pull(hero, class_name, node_name, mob_name, rng, suppress_loot=False):
+def commit_node_pull(hero, class_name, node_name, mob_name, rng, suppress_loot=False, decide_fn=None):
     """Human-facing equivalent of resolve_node_pull, used by apply_travel_action's declare_node
     handling -- checkpointed 2026-08-22 after confirming the shape directly: get_travel_actions
     already shows every dealt Node's mob up front (OPEN_QUESTIONS.md: "what's currently at each
@@ -227,11 +241,15 @@ def commit_node_pull(hero, class_name, node_name, mob_name, rng, suppress_loot=F
     The AI-automatic path (decide_travel + resolve_node_pull, used by run_solo_trip/
     run_solo_chain) is completely untouched -- this is an additive sibling, not a replacement.
 
+    decide_fn (checkpointed 2026-08-23): forwarded to _pull_and_resolve unchanged -- None
+    keeps this pull solver-automatic; a human-facing driver's own callback plays the hand.
+
     Mutates hero in place. Returns {"outcome": "win"/"flee"/"died"/"no_room", "mob_name": ...}."""
     mod = M.CARD_SOURCE[class_name]
     _tier, loot_name = M.NODES[node_name]
     with LV.leveled_kit(mod, _level2_swaps_for(class_name, hero.acquired)):
-        return _pull_and_resolve(hero, class_name, mod, mob_name, loot_name, rng, suppress_loot)
+        return _pull_and_resolve(hero, class_name, mod, mob_name, loot_name, rng, suppress_loot,
+                                  decide_fn=decide_fn)
 
 
 def commit_scroll_vanquish(hero, node_name, mob_name):
@@ -466,10 +484,19 @@ def apply_town_action(hero, action, purchase_queue):
     verify_board_engine_travel_actions.py's end-to-end smoke drive, which got stuck re-entering
     Town every iteration with zero declares or crossings ever happening. decide_travel/
     resolve_node_pull/resolve_border_crossing never read this marker (only zone_or_border, the
-    first element) so nothing in the AI-automatic path was ever affected by its absence."""
+    first element) so nothing in the AI-automatic path was ever affected by its absence.
+
+    leave_town also resets hero.hp to hero.max_hp (checkpointed 2026-08-23) -- mirrors
+    run_solo_trip's own unconditional first line ("HP does NOT carry across trips... implicit
+    'resting' at Town between excursions"). run_solo_trip enforces this itself for the
+    AI-automatic path; a human-facing driver has no equivalent "start of trip" hook other than
+    this action, since get_travel_actions/apply_travel_action have no trip concept of their
+    own (see this module's docstring on why BoardState only tracks turns, not trips) -- so it
+    belongs here, the one place every human trip actually begins."""
     if action["type"] == "leave_town":
         zone_id, _node = hero.position
         hero.position = (zone_id, None)
+        hero.hp = hero.max_hp
         return False
 
     if action["type"] == "buy_consumable":
@@ -586,7 +613,8 @@ def get_travel_actions(hero, board, rng):
 
 
 def apply_travel_action(hero, action, class_name, board, rng,
-                         risk_tolerance_base, risk_only_as_last_resort, defer_zone_discard=False):
+                         risk_tolerance_base, risk_only_as_last_resort, defer_zone_discard=False,
+                         decide_fn=None):
     """Resolves one Travel action from get_travel_actions. declare_node now commits
     unconditionally via commit_node_pull -- no automatic risk-gate or consumable substitution
     (checkpointed 2026-08-22, the Risk-gate slice: see commit_node_pull's own docstring for
@@ -629,11 +657,20 @@ def apply_travel_action(hero, action, class_name, board, rng,
     round would otherwise get wiped out from under them by the first hero's own per-action
     discard. The caller (advance_board) is responsible for discarding every touched Zone once,
     after every hero's declaration this round has resolved. Solo mode never sets this, so its
-    behavior is completely unchanged."""
+    behavior is completely unchanged.
+
+    decide_fn (checkpointed 2026-08-23): forwarded to commit_node_pull for declare_node only
+    (the one action type here that actually plays combat cards) -- None keeps the pull
+    solver-automatic, matching every existing caller (including advance_board's competitive
+    driver) exactly; a human-facing driver's own callback plays the hand instead. cross_border
+    never reaches combat here at all (see the outcome-shape docstring above), so decide_fn is
+    unused for it -- the caller passes it to resolve_border_crossing separately, after picking
+    a candidate from the reveal."""
     if action["type"] == "declare_node":
         zone_id, _node = hero.position
         level = TIER_TO_LEVEL[M.ZONE_TIER[zone_id]]
-        result = commit_node_pull(hero, class_name, action["node_name"], action["mob_name"], rng)
+        result = commit_node_pull(hero, class_name, action["node_name"], action["mob_name"], rng,
+                                   decide_fn=decide_fn)
         if not defer_zone_discard:
             B.discard_zone(board, zone_id, level)
         return result
@@ -746,7 +783,8 @@ def _blind_redraw(board, zone_id, level, rng):
     return card
 
 
-def advance_board(board, class_names, rng, risk_tolerance_base, risk_only_as_last_resort):
+def advance_board(board, class_names, rng, risk_tolerance_base, risk_only_as_last_resort,
+                   decide_fns=None):
     """The Move-and-declare barrier's second half -- resolves contested Nodes and every hero's
     declared action once everyone has one (checkpointed 2026-08-23, task #64). Returns None
     if any hero in board.heroes hasn't declared yet ("still waiting," matching the tabletop
@@ -775,9 +813,17 @@ def advance_board(board, class_names, rng, risk_tolerance_base, risk_only_as_las
     handled one hero (and so one class) at a time; this is the first one where different heroes
     can be different classes within the same call.
 
+    decide_fns (checkpointed 2026-08-23): optional {hero_idx: decide_fn} dict, forwarded to
+    each hero's own apply_travel_action call. None/missing entries default to None (solver-
+    automatic), matching every existing caller exactly -- a human-facing multiplayer driver
+    supplies a real decide_fn only for its human-controlled hero_idx(es), leaving every
+    AI-controlled hero (including every hero in the existing AI-only run_competitive_chain,
+    which never passes this parameter at all) untouched.
+
     Mutates every declared hero and board in place. Returns {hero_idx: result_dict} (same
     per-action-type shapes apply_travel_action's own docstring already documents), or None if
     still waiting on at least one hero's declaration."""
+    decide_fns = decide_fns or {}
     if len(board.pending_declarations) < len(board.heroes):
         return None
 
@@ -808,7 +854,8 @@ def advance_board(board, class_names, rng, risk_tolerance_base, risk_only_as_las
             touched_zone_levels.add((zone_or_border, TIER_TO_LEVEL[M.ZONE_TIER[zone_or_border]]))
         results[hero_idx] = apply_travel_action(hero, action, class_names[hero_idx], board, rng,
                                                   risk_tolerance_base, risk_only_as_last_resort,
-                                                  defer_zone_discard=True)
+                                                  defer_zone_discard=True,
+                                                  decide_fn=decide_fns.get(hero_idx))
 
     for zone_id, level in touched_zone_levels:
         B.discard_zone(board, zone_id, level)
@@ -819,7 +866,7 @@ def advance_board(board, class_names, rng, risk_tolerance_base, risk_only_as_las
 
 
 def resolve_border_crossing(hero, class_name, border_name, target_zone, mob_name, rng,
-                             risk_tolerance_base, risk_only_as_last_resort):
+                             risk_tolerance_base, risk_only_as_last_resort, decide_fn=None):
     """Resolves one Scouted Pull toll crossing -- faithful port of run_one_trip's own
     _cross_to. mob_name is supplied by the caller, not sourced internally (mirrors
     resolve_node_pull's own shape) -- today's real caller uses macro_sim._scouted_pull_mob
@@ -842,6 +889,12 @@ def resolve_border_crossing(hero, class_name, border_name, target_zone, mob_name
     carries a death_marker string in the same "border:{border_name}:{origin_zone}:
     {target_zone}" shape run_one_trip's own death_node encoding uses, so a later corpse-
     recovery chunk can parse it identically.
+
+    decide_fn (checkpointed 2026-08-23): forwarded to macro_sim._engine_pull unchanged -- None
+    keeps the crossing's pull solver-automatic; a human-facing driver's own callback plays the
+    hand instead. The consumable-substitution/risk-gate logic above this stays automatic
+    either way (matches this function's own "no decline path once committed" rule) -- decide_fn
+    only ever governs which cards get played, never whether the crossing is attempted.
 
     Mutates hero in place. Returns a dict: {"outcome": "win"/"flee"/"died", "mob_name": ...,
     "death_marker": ... (died only)}."""
@@ -879,7 +932,8 @@ def resolve_border_crossing(hero, class_name, border_name, target_zone, mob_name
                     break
 
         hand = rng.choice(mod.ALL_HANDS)
-        win, final_hp, final_rounds = M._engine_pull(class_name, mob_name, hand, pattern, mob_hp, hero.hp)
+        win, final_hp, final_rounds = M._engine_pull(class_name, mob_name, hand, pattern, mob_hp, hero.hp,
+                                                       decide_fn=decide_fn)
         hero.hp = final_hp
         # One turn -- "Border Node: one turn, same as any other node -- the Scouted Pull toll
         # pull is the action taken there" (OPEN_QUESTIONS.md, locked). Unlike resolve_node_pull,
@@ -1065,7 +1119,8 @@ def _nodes_in_zone(zone_id):
 
 
 def _resolve_forced_recovery(hero, class_name, quest_pool, board, rng,
-                              risk_tolerance, risk_tolerance_base, risk_only_as_last_resort):
+                              risk_tolerance, risk_tolerance_base, risk_only_as_last_resort,
+                              decide_fn=None):
     """The trip's forced first action when hero.corpse_node is set -- faithful port of
     run_one_trip's own pending_recovery branches. Two shapes, matching the two ways a corpse
     can form:
@@ -1082,7 +1137,12 @@ def _resolve_forced_recovery(hero, class_name, quest_pool, board, rng,
 
     Returns None if recovery succeeded (hero.corpse_node already cleared, caller proceeds to
     normal routing), or a result dict ({"alive": False, "recovered": False, "death_node":
-    ...}) if the hero died again attempting it."""
+    ...}) if the hero died again attempting it.
+
+    decide_fn (checkpointed 2026-08-23): forwarded to resolve_border_crossing/resolve_node_pull
+    unchanged -- None keeps the forced recovery pull solver-automatic, matching run_solo_trip's
+    own call exactly; a human-facing driver's own callback plays the recovery hand too (WHICH
+    Node/crossing is attempted stays forced either way -- decide_fn never affects that)."""
     corpse = hero.corpse_node
     if isinstance(corpse, str) and corpse.startswith("border:"):
         _, border_name, _origin_zone, target_zone_s = corpse.split(":")
@@ -1091,7 +1151,8 @@ def _resolve_forced_recovery(hero, class_name, quest_pool, board, rng,
         level_deck = board.level_decks[TIER_TO_LEVEL[tier]]
         mob_name = scouted_pull_from_deck(class_name, level_deck, rng)
         outcome = resolve_border_crossing(hero, class_name, border_name, target_zone, mob_name, rng,
-                                           risk_tolerance_base, risk_only_as_last_resort)
+                                           risk_tolerance_base, risk_only_as_last_resort,
+                                           decide_fn=decide_fn)
         if outcome["outcome"] == "died":
             return {"alive": False, "recovered": False, "death_node": outcome["death_marker"]}
         hero.corpse_node = None
@@ -1106,12 +1167,72 @@ def _resolve_forced_recovery(hero, class_name, quest_pool, board, rng,
     mob_name = zone_board.dealt[node_name]  # forced -- the corpse's own Node, not a quest choice
     outcome = resolve_node_pull(hero, class_name, node_name, mob_name, quest_pool, rng,
                                  risk_tolerance, risk_tolerance_base, risk_only_as_last_resort,
-                                 suppress_loot=True)
+                                 suppress_loot=True, decide_fn=decide_fn)
     B.discard_zone(board, zone_id, level)
     if outcome["outcome"] == "died":
         return {"alive": False, "recovered": False, "death_node": node_name}
     hero.corpse_node = None
     return None
+
+
+def apply_recovery_post_processing(hero):
+    """Unlocks every Bag slot after a successful corpse recovery -- extracted 2026-08-23 from
+    run_solo_chain's own inline block (task #67-adjacent human-CLI work) so a human-facing
+    driver replaying the same trip/death/recovery cycle by hand doesn't reimplement this
+    itself. Trivial, but kept as a named function rather than inlined twice for the same
+    reason every other shared-tail piece in this module is factored out: a future change to
+    the unlock rule (e.g. gating it on WHERE the corpse was recovered) would otherwise have to
+    be remembered and applied in two places by hand.
+
+    Mutates hero in place. No return value."""
+    hero.locked = [False] * len(hero.locked)
+
+
+def apply_death_post_processing(hero, quest_pool, death_node):
+    """Locks the Bag, bumps decay, sets the new corpse_node, and respawns the hero at the
+    nearest Town -- extracted 2026-08-23 from run_solo_chain's own inline death block (see
+    that function's own docstring for the full reasoning behind each piece: why bag-lock,
+    why +1 decay here specifically rather than +2, why respawn position reads the ORIGIN zone
+    for a mid-crossing death). Factored out so a human-facing driver reproducing the same
+    solo death/recovery cycle calls the identical code run_solo_chain already uses, rather
+    than a second, hand-written copy that could quietly drift from it.
+
+    Mutates hero in place. No return value."""
+    for i, slot in enumerate(hero.bag):
+        if slot is not None:
+            hero.locked[i] = True
+    for loot in hero.active_quests:
+        q = quest_pool[loot]
+        hero.decay_stage[loot] = min(hero.decay_stage.get(loot, 0) + 1, len(q["gold_ladder"]) - 1)
+    hero.corpse_node = death_node
+    if death_node.startswith("border:"):
+        _, _, origin_zone_s, _ = death_node.split(":")
+        hero.position = (int(origin_zone_s), "town")
+    else:
+        hero.position = (M.NODE_ZONE[death_node], "town")
+
+
+def apply_competitive_death_post_processing(hero, quest_pool):
+    """Competitive mode's own death rule -- deliberately NOT apply_death_post_processing (solo's
+    version): no Bag lock, no corpse_node, immediate full-HP respawn, hero.alive reset True
+    right away. Extracted 2026-08-23 from run_competitive_chain's own inline block (see that
+    function's own docstring for the full reasoning: locking with no recovery mechanic to ever
+    undo it would be a one-way, permanent loss of already-collected loot, worse than not
+    locking at all -- caught live from a real run where a hero re-ground the same already-
+    complete quest forever because its loot had gone permanently uncountable).
+
+    Extracted so a human-facing multiplayer driver shares this exact rule for its human-
+    controlled hero(es) too, rather than a second hand-written copy that could quietly drift
+    from run_competitive_chain's own (e.g. by accidentally applying solo's bag-lock instead).
+
+    Mutates hero in place. No return value."""
+    for loot in hero.active_quests:
+        q = quest_pool[loot]
+        hero.decay_stage[loot] = min(hero.decay_stage.get(loot, 0) + 1, len(q["gold_ladder"]) - 1)
+    hero.alive = True
+    hero.hp = hero.max_hp
+    zone_id = hero.position[0] if isinstance(hero.position[0], int) else 1
+    hero.position = (zone_id, "town")
 
 
 def run_solo_trip(hero, class_name, quest_pool, fallback_target_zones, board, rng,
@@ -1302,22 +1423,10 @@ def run_solo_chain(class_name, strategy, rng, max_turns, risk_tolerance=M.RISK_T
                                      risk_tolerance, risk_tolerance_base, risk_only_as_last_resort)
 
         if trip_result["recovered"]:
-            hero.locked = [False] * len(hero.locked)
+            apply_recovery_post_processing(hero)
 
         if not trip_result["alive"]:
-            for i, slot in enumerate(hero.bag):
-                if slot is not None:
-                    hero.locked[i] = True
-            for loot in hero.active_quests:
-                q = quest_pool[loot]
-                hero.decay_stage[loot] = min(hero.decay_stage.get(loot, 0) + 1, len(q["gold_ladder"]) - 1)
-            death_node = trip_result["death_node"]
-            hero.corpse_node = death_node
-            if death_node.startswith("border:"):
-                _, _, origin_zone_s, _ = death_node.split(":")
-                hero.position = (int(origin_zone_s), "town")
-            else:
-                hero.position = (M.NODE_ZONE[death_node], "town")
+            apply_death_post_processing(hero, quest_pool, trip_result["death_node"])
 
         town_result = resolve_town_turn(hero, class_name, strategy, purchase_queue, purchase_policy, rng)
         yield (trip_result["alive"], town_result["gold_after_turnin"], hero.xp,
@@ -1554,16 +1663,6 @@ def run_competitive_chain(class_names_list, strategy, rng, max_rounds,
                                                   risk_tolerance_base, risk_only_as_last_resort)
                 results[hero_idx] = result
             if result.get("outcome") == "died":
-                # No Bag lock here -- see this function's own docstring for why (no recovery
-                # mechanic exists yet to ever undo it, so locking would be a one-way, permanent
-                # loss of already-collected loot, worse than not locking at all).
-                quest_pool = quest_pools[hero_idx]
-                for loot in hero.active_quests:
-                    q = quest_pool[loot]
-                    hero.decay_stage[loot] = min(hero.decay_stage.get(loot, 0) + 1, len(q["gold_ladder"]) - 1)
-                hero.alive = True
-                hero.hp = hero.max_hp
-                zone_id = hero.position[0] if isinstance(hero.position[0], int) else 1
-                hero.position = (zone_id, "town")
+                apply_competitive_death_post_processing(hero, quest_pools[hero_idx])
 
         yield {i: (h.alive, h.gold, h.xp, h.position, h.turns) for i, h in enumerate(board.heroes)}

@@ -702,7 +702,7 @@ def _remove_item(bag, locked, item_name, amount):
 _remove_loot = _remove_item  # Quest Loot is just one more item type sharing the same mechanism
 
 
-def _engine_pull(class_name, mob_name, hand, pattern, mob_hp, starting_hp):
+def _engine_pull(class_name, mob_name, hand, pattern, mob_hp, starting_hp, decide_fn=None):
     """Runs one pull through the new turn-by-turn combat_engine (get_legal_actions/
     apply_action/QuestIntelligence.decide_combat) instead of condensed_trip.py's batch
     T._best_line/T._simulate call -- the macro-loop rewiring named in
@@ -712,12 +712,20 @@ def _engine_pull(class_name, mob_name, hand, pattern, mob_hp, starting_hp):
     cache-and-replay wrapper around the same best_line_for_hand this file used to call
     directly (see combat_engine.py's own docstring), so this is not a second search --
     verified bit-for-bit identical to the old T._best_line/T._simulate path via
-    sim/verify_combat_engine.py before this function's two call sites were rewired."""
+    sim/verify_combat_engine.py before this function's two call sites were rewired.
+
+    decide_fn (checkpointed 2026-08-23, human-playable-combat slice): optional
+    (state, actions) -> action callable, same signature as QuestIntelligence.decide_combat.
+    None (every existing caller) preserves the exact AI-automatic behavior above --
+    a fresh QuestIntelligence per call, same as before this parameter existed. A human-facing
+    driver passes its own terminal-input decide_fn instead, so the identical round-by-round
+    get_legal_actions/apply_action loop plays out a real human's choices rather than the
+    solver's, without a second, parallel pull-loop implementation."""
     state = E.new_pull_with_hp(class_name, mob_name, hand, pattern, mob_hp, starting_hp)
-    ai = E.QuestIntelligence()
+    decide = decide_fn if decide_fn is not None else E.QuestIntelligence().decide_combat
     while state.outcome is None:
         actions = E.get_legal_actions(state)
-        action = ai.decide_combat(state, actions)
+        action = decide(state, actions)
         state = E.apply_action(state, action)
     return state.outcome == "win", state.hero_hp, state.round_num
 
