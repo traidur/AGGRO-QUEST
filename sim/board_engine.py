@@ -553,7 +553,14 @@ def get_travel_actions(hero, board, rng):
         for target_zone in M.BORDER_NODES[border_name]:
             actions.append({"type": "enter_zone", "target_zone": target_zone})
 
-    if hero.hp < hero.max_hp:
+    # Offered whenever hurt OR bag-deadlocked (checkpointed 2026-08-23, task #65) -- eating
+    # Food/drinking a Potion serves two real purposes, not just healing: Food occupies its own
+    # whole slot, so eating it also frees that slot when the Bag has no room, independent of
+    # current HP. The original hp-only gate meant a full-HP, bag-deadlocked hero (Food in one
+    # slot, loot filled to cap in the other) had no way to ever free space at all -- caught
+    # live via a real competitive-mode stall where a hero cycled Town<->field forever, never
+    # able to eat the Food that was the ONLY thing blocking their own progress.
+    if hero.hp < hero.max_hp or not M._bag_has_room(hero.bag, hero.locked):
         if any(not hero.locked[i] and hero.bag[i] == "food" for i in range(len(hero.bag))):
             actions.append({"type": "use_food"})
         if any(not hero.locked[i] and M._is_potion_slot(hero.bag[i]) for i in range(len(hero.bag))):
@@ -1298,3 +1305,243 @@ def run_solo_chain(class_name, strategy, rng, max_turns, risk_tolerance=M.RISK_T
         yield (trip_result["alive"], town_result["gold_after_turnin"], hero.xp,
                town_result["quests_completed"], prev_trainer_turn, hero.turns)
         prev_trainer_turn = town_result["trainer_turn"]
+
+
+def _route_toward_zone(actions, zone_or_border, target_zone):
+    """Shared movement-toward-a-target-Zone logic for _choose_field_action -- factored out
+    2026-08-23 after the SAME class of routing bug was found and fixed twice in two separate,
+    parallel copies of this logic (once for "no active quests, navigate to any valid-tier
+    zone," once for "have an incomplete quest, but its Node isn't in my current zone") --
+    keeping one shared implementation instead of two drifting copies.
+
+    Real bugs this closes, both caught live tracing stuck multi-hundred-round runs, neither
+    hypothetical: (1) a Zone can have more than one Border crossing (e.g. Zone 2 has both
+    border_1_2 and border_2_3) -- grabbing "the first one returned" picks whichever border_name
+    happens to sort first in M.BORDER_NODES, not necessarily the one actually closer to
+    target_zone, which produced a hero stuck permanently crossing the WRONG border every round.
+    (2) Standing on a Border Node, neither connected Zone is necessarily target_zone itself
+    (e.g. on border_1_2 trying to reach Zone 3) -- grabbing "the first enter_zone option" was a
+    coin flip that could send a hero backward into the Zone it just left, producing an infinite
+    Zone<->Border oscillation that never made net progress.
+
+    Fixed by always picking whichever crossing/entry minimizes REMAINING hop-distance to
+    target_zone, never just "the first option" or "an exact match only." Returns an action
+    dict, or None if zone_or_border already equals target_zone (nothing to route toward)."""
+    if zone_or_border == target_zone:
+        return None
+    if isinstance(zone_or_border, int):
+        crossings = [a for a in actions if a["type"] == "cross_border"]
+        if crossings:
+            return min(crossings, key=lambda a: M._hop_distance(a["target_zone"], target_zone))
+    else:
+        enters = [a for a in actions if a["type"] == "enter_zone"]
+        if enters:
+            return min(enters, key=lambda a: M._hop_distance(a["target_zone"], target_zone))
+    return None
+
+
+def _choose_field_action(hero_idx, board, class_names, quest_pools, rng, claimed_this_round):
+    """AI decision for one hero's Move-and-declare choice this round (task #65) -- a
+    deliberately simple MVP router, not a port of decide_travel's own fuller logic (that
+    function's output format predates the Travel-seam's action-dict vocabulary and mutates
+    hero state as a side effect of "deciding," which doesn't compose cleanly with a barrier
+    where other heroes' choices matter). Priority, matching OPEN_QUESTIONS.md's now-resolved
+    "Competitive AI" entry: heal/bag-deadlock relief first (private, doesn't need contention
+    awareness); then an uncontested declare_node serving an incomplete quest (checking
+    claimed_this_round -- what higher-priority heroes have ALREADY declared this same round,
+    since advance_board doesn't care how pending_declarations got filled, only that it's
+    complete before resolving); then a contested one anyway if that's all there is; then Flight
+    Path if it reaches a quest-relevant Zone directly; then routing via _route_toward_zone
+    toward whichever Zone actually gets the hero closer to their quest (or, with no active
+    quests, toward the nearest zone that hands out quests at their XP tier); then
+    return_to_town as the last resort."""
+    hero = board.heroes[hero_idx]
+    quest_pool = quest_pools[hero_idx]
+    actions = get_travel_actions(hero, board, rng)
+    zone_or_border, _node = hero.position
+
+    if hero.hp < hero.max_hp * 0.5:
+        heal = next((a for a in actions if a["type"] in ("use_food", "use_potion")), None)
+        if heal:
+            return heal
+
+    if not M._bag_has_room(hero.bag, hero.locked):
+        # Real bug caught live tracing a 300-round run where gold kept growing but XP froze at
+        # exactly the Level 2 threshold forever: both Bag slots were completely full (2 of 3
+        # active quests already loot-complete, sitting uncollected), but nothing in this
+        # function ever routed toward Town to actually turn them in -- decide_travel's own
+        # unconditional bag-deadlock handling never got ported here at all. Mirrors it: use any
+        # available consumable to free a slot, else force a trip back to Town regardless of
+        # whether any quest looks "incomplete" (a full bag with complete-but-unturned quests
+        # can't make forward progress any other way).
+        heal = next((a for a in actions if a["type"] in ("use_food", "use_potion")), None)
+        if heal:
+            return heal
+        return next(a for a in actions if a["type"] == "return_to_town")
+
+    incomplete = [loot for loot in hero.active_quests
+                  if M._accessible_count(hero.bag, hero.locked, loot) < quest_pool[loot]["required"]]
+    # remaining_needed backs the node-priority sort below -- fixes a real deadlock caught live:
+    # round-robining between whichever incomplete quest's Node happened to be dealt (no
+    # preference) can fragment the Bag across 3 different partial quests at once, eventually
+    # filling every slot with none of them complete and no Food/Potion left to free space --
+    # a genuine dead end (nothing to turn in, nothing to consume, nowhere to go). Preferring
+    # whichever quest needs the LEAST additional loot finishes quests one at a time instead.
+    remaining_needed = {loot: quest_pool[loot]["required"] - M._accessible_count(hero.bag, hero.locked, loot)
+                         for loot in incomplete}
+    quest_node_names = {n for n, (_tier, loot) in M.NODES.items() if loot in incomplete}
+    node_priority = {n: remaining_needed[loot] for n, (_tier, loot) in M.NODES.items() if loot in incomplete}
+
+    if not incomplete:
+        # No active quests to route toward -- either the Level 1 starter batch is exhausted, or
+        # the hero just crossed the Level 2 XP threshold and hasn't picked up Level 2 quests yet
+        # (Town's own Phase 1 pickup only fires while standing IN a valid quest zone -- Zone
+        # 1/2 for Level 1, Zone 3/4 for Level 2). Without this fallback a hero with an empty log
+        # just bounces off return_to_town forever, since pickup never triggers from the wrong
+        # zone -- a real bug caught live tracing a stuck 150-round run, not a hypothetical.
+        valid_quest_zones = M.LEVEL2_QUEST_ZONES if hero.xp >= M.LEVEL2_XP_THRESHOLD else M.LEVEL1_QUEST_ZONES
+        if isinstance(zone_or_border, int) and zone_or_border in valid_quest_zones:
+            return next(a for a in actions if a["type"] == "return_to_town")
+        target_zone = min(valid_quest_zones, key=lambda z: M._hop_distance(zone_or_border, z))
+        if isinstance(zone_or_border, int):
+            flight = next((a for a in actions if a["type"] == "flight_path"), None)
+            if flight and flight["target_zone"] == target_zone:
+                return flight
+        routed = _route_toward_zone(actions, zone_or_border, target_zone)
+        if routed:
+            return routed
+        return next(a for a in actions if a["type"] == "return_to_town")
+
+    declares = [a for a in actions if a["type"] == "declare_node"]
+    quest_declares = sorted([a for a in declares if a["node_name"] in quest_node_names],
+                             key=lambda a: node_priority[a["node_name"]])
+    uncontested = [a for a in quest_declares if a["node_name"] not in claimed_this_round]
+    if uncontested:
+        return uncontested[0]
+    if quest_declares:
+        return quest_declares[0]
+
+    # None of this round's incomplete quests have their Node in the current Zone -- route
+    # toward whichever quest-serving Zone is actually closest (the exact bug _route_toward_zone
+    # itself documents: this branch used to just grab "the first" crossing/entry available,
+    # regardless of whether it moved toward or away from any quest).
+    quest_zones = {M.NODE_ZONE[n] for n in quest_node_names}
+    if isinstance(zone_or_border, int):
+        flight = next((a for a in actions if a["type"] == "flight_path"), None)
+        if flight and flight["target_zone"] in quest_zones:
+            return flight
+        target_zone = min(quest_zones, key=lambda z: M._hop_distance(zone_or_border, z))
+    else:
+        target_zone = min(quest_zones, key=lambda z: M._hop_distance(zone_or_border, z))
+    routed = _route_toward_zone(actions, zone_or_border, target_zone)
+    if routed:
+        return routed
+
+    return next(a for a in actions if a["type"] == "return_to_town")
+
+
+def run_competitive_chain(class_names_list, strategy, rng, max_rounds,
+                           risk_tolerance_base=M.RISK_TOLERANCE_BASE, risk_only_as_last_resort=True):
+    """First driver that actually plays a competitive N=2-4 game through declare_for_hero/
+    advance_board in a loop (task #65) -- proves the Move-and-declare barrier (task #64) works
+    end to end, not just in isolation. class_names_list is a plain list, 2-4 entries (any class
+    mix); every hero starts in Zone 1's Town, matching run_solo_chain's own starting loadout.
+
+    Round structure, matching OPEN_QUESTIONS.md's locked turn-phase order: each outer round
+    first resolves a full Town visit (independently, no barrier -- Town "is never contested,"
+    board_state.py's own docstring) for any hero currently standing there, THEN runs one
+    Move-and-declare cycle for whoever's now out in the field. advance_board requires an entry
+    in pending_declarations for EVERY hero in board.heroes, not just field-active ones (that
+    contract was already built and verified in task #64, not changed here) -- so a hero who
+    just resolved their Town visit, or who's dead-and-respawning, submits a harmless
+    return_to_town no-op this round instead (their position is already Town, so it changes
+    nothing; matches the barrier's own existing shape rather than requiring a change to it).
+
+    AI declaration order follows the priority token each round (see _choose_field_action's own
+    docstring for the resolved contested-Node logic this enables) -- computed BEFORE calling
+    advance_board, since advance_board only ever reads the final dict, not how it was filled.
+
+    Death handling, deliberately simplified versus run_solo_chain's own -- and simplified
+    FURTHER than task #64's original note (which said "locks the Bag... skips the forced-
+    recovery-pull mechanic"): the Bag does NOT get locked on death here at all, unlike solo.
+    Locking without any way to ever unlock it (no recovery mechanic exists for this driver) is
+    strictly worse than not locking -- caught live tracing a real run: once a hero died once,
+    every non-empty slot locked permanently, silently making already-collected complete-quest
+    loot uncountable forever, so the hero kept re-grinding toward a "still incomplete" quest it
+    had actually already finished, dying at the same lethal crossing every single round with no
+    way out. On death: applies +1 decay to active quests (matching the real penalty for losing
+    a trip to a mistake) and respawns at full HP in the nearest Town, bag untouched. Real
+    multi-hero corpse recovery (lock + forced recovery pull, matching solo's actual fidelity)
+    is still genuinely unbuilt follow-up work, not silently dropped -- just no longer paired
+    with a lock that has nothing to unlock it.
+
+    Yields one dict per round: {hero_idx: (alive, gold, xp, position)} for every hero, letting
+    a caller track the whole party's progress round by round."""
+    n = len(class_names_list)
+    class_names = dict(enumerate(class_names_list))
+    heroes = []
+    for class_name in class_names_list:
+        mod = M.CARD_SOURCE[class_name]
+        max_hp = float(getattr(mod, M.HP_ATTR[class_name]))
+        hero = HeroBoardState(class_name=class_name, hp=max_hp, max_hp=max_hp, position=(1, "town"),
+                               bag=[None] * M.BAG_SIZE, locked=[False] * M.BAG_SIZE)
+        hero.bag[0] = "food"
+        heroes.append(hero)
+    purchase_queues = {i: M._build_purchase_queue(class_names_list[i], 0) for i in range(n)}
+    level_decks = {1: B.LevelDeck.new(1, rng), 2: B.LevelDeck.new(2, rng)}
+    board = B.BoardState(mode="competitive", heroes=heroes, zones={}, level_decks=level_decks)
+
+    for _round_num in range(max_rounds):
+        for hero_idx, hero in enumerate(board.heroes):
+            if hero.position[1] == "town":
+                enter_town(hero, class_names[hero_idx], strategy, rng)
+                while True:
+                    town_actions = get_town_actions(hero, purchase_queues[hero_idx])
+                    buyable = next((a for a in town_actions if a["type"] == "buy"), None)
+                    chosen = buyable if buyable else next(a for a in town_actions if a["type"] == "leave_town")
+                    still_in_town = apply_town_action(hero, chosen, purchase_queues[hero_idx])
+                    if not still_in_town:
+                        break
+
+        field_idxs = [i for i, h in enumerate(board.heroes) if h.position[1] != "town"]
+        quest_pools = {i: (M.LEVEL2_QUESTS if board.heroes[i].xp >= M.LEVEL2_XP_THRESHOLD else M.QUESTS)
+                       for i in field_idxs}
+        claimed_this_round = set()
+        for hero_idx in [i for i in _priority_order(board) if i in field_idxs]:
+            action = _choose_field_action(hero_idx, board, class_names, quest_pools, rng, claimed_this_round)
+            if action["type"] == "declare_node":
+                claimed_this_round.add(action["node_name"])
+            declare_for_hero(board, hero_idx, action)
+        for hero_idx in range(n):
+            if hero_idx not in field_idxs:
+                declare_for_hero(board, hero_idx, {"type": "return_to_town"})
+
+        results = advance_board(board, class_names, rng, risk_tolerance_base, risk_only_as_last_resort)
+
+        for hero_idx in field_idxs:
+            hero = board.heroes[hero_idx]
+            result = results[hero_idx]
+            if result.get("outcome") == "scouted_pull_reveal":
+                # cross_border only reveals candidates (task #63) -- it doesn't resolve the
+                # crossing. Pick one immediately and actually attempt it, same as any
+                # human-facing driver of this seam has to (see verify_board_engine_travel_
+                # actions.py's own smoke-test driver for the identical pattern).
+                picked_mob = rng.choice(result["candidates"])
+                result = resolve_border_crossing(hero, class_names[hero_idx], result["border_name"],
+                                                  result["target_zone"], picked_mob, rng,
+                                                  risk_tolerance_base, risk_only_as_last_resort)
+                results[hero_idx] = result
+            if result.get("outcome") == "died":
+                # No Bag lock here -- see this function's own docstring for why (no recovery
+                # mechanic exists yet to ever undo it, so locking would be a one-way, permanent
+                # loss of already-collected loot, worse than not locking at all).
+                quest_pool = quest_pools[hero_idx]
+                for loot in hero.active_quests:
+                    q = quest_pool[loot]
+                    hero.decay_stage[loot] = min(hero.decay_stage.get(loot, 0) + 1, len(q["gold_ladder"]) - 1)
+                hero.alive = True
+                hero.hp = hero.max_hp
+                zone_id = hero.position[0] if isinstance(hero.position[0], int) else 1
+                hero.position = (zone_id, "town")
+
+        yield {i: (h.alive, h.gold, h.xp, h.position) for i, h in enumerate(board.heroes)}
