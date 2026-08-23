@@ -7,11 +7,13 @@ this is the equivalent process doc for leveling a class *up* once it already exi
 
 ## Status
 
-**Not yet built.** `DESIGN_DOC.md`'s Section VII ("Progression") has stated intent (XP,
-Leveling, Cull, Market Row) but is explicitly marked not implemented, and that original vision
+**Not yet built.** `DESIGN_DOC.md`'s Section VII ("Progression") has stated intent (XP, Leveling,
+Cull, Final Boss) but is explicitly marked not implemented past Level 2, and that original vision
 predates the now-locked "always exactly 6 unique cards" rule -- see that section for why any
 real progression system has to work as a **1-for-1 card swap or in-place numeric bump**, never
-additive deck growth. This guide is the methodology for whenever leveling actually gets built,
+additive deck growth. ("Market Row" was on this list until 2026-08-22 -- retired as a separate
+system once it became clear the Class Trainer, already built, is Market Row under a different
+name; see Section VII.) This guide is the methodology for whenever leveling actually gets built,
 derived directly from working through the Necromancer Death Pact rework and the resulting
 hero-power-curve discussion -- not yet applied to real card numbers for any class.
 

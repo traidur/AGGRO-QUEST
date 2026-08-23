@@ -22,21 +22,22 @@ is now persistent state across a whole chain of trips, not reset each
 call, because Town only does specific, limited things to it (see below) --
 everything else about the bag carries forward exactly as the hero left it.
 
-**Known divergence from the locked design, not yet built here:** DESIGN_DOC.md now describes
-loot as colored quest tokens (one Bag slot per quest color, up to 3 same-colored tokens per
-slot, Food no longer closes anything) -- see MACRO_LOOP_GUIDE.md's "Bag Tetris revision" entry.
-This file's actual loot tracking (_add_loot/_open_loot_slot_index/_close_active_loot_slot,
-below) still implements the *previous* any-mix-one-open-slot model, since only the Food/Potion
-pricing and stacking half of that revision was actually validated here -- the loot-token half
-is locked as a design decision but not yet ported into this simulator. Re-running decay_report
-after that port lands is the thing to do before trusting today's numbers past the Food/Potion
-question specifically.
+**Fixed 2026-08-22** -- this used to describe a real divergence: DESIGN_DOC.md claimed the
+capped/no-closing loot model was already locked while this file still ran the old
+uncapped/closable one. Measured directly before fixing it (`_bag_model_baseline.py`): under the
+old model, bag-deadlock (`_bag_has_room` returning False) never fired once in 3000+ turn-samples
+per class, and a single loot slot was observed holding up to 11 items. `_add_loot`/
+`_accessible_count`/`_remove_loot` now share one unified mechanism (`_add_item`/`_remove_item`,
+see below) with Potions and every other non-Food consumable: any unlocked slot holds up to
+`ITEM_STACK_CAP` (3) items total, any mix, Food never stacks and no longer closes anything.
+Bag Upgrade price and Potion price were both tuned against the OLD model and have not yet been
+re-swept against this corrected one -- treat both as unlocked/unvalidated until that happens.
 
 What actually happens at Town (confirmed directly, not assumed):
 - HP restores to full. Always, automatically.
-- Every non-locked slot's "closed" flag clears (Food's mid-trip lock lifts) -- current-code
-  behavior; per the divergence note above, the locked design no longer has Food do this at all.
-  LOCKED slots (see Death, below) do NOT unlock just by visiting Town.
+- Nothing needs "reopening" anymore -- there's no closed-slot state left to clear (see the
+  2026-08-22 fix note above). LOCKED slots (see Death, below) still do NOT unlock just by
+  visiting Town; that's a separate mechanism (corpse recovery), untouched by this.
 - Whatever's still incomplete in the quest log decays one stage. This is
   triggered by *leaving* Town (heading back out), not by the visit itself.
 - Everything else is the player's choice: turn in whatever's complete,
@@ -337,7 +338,39 @@ LEVEL2_QUESTS = {
 FOOD_COST = 4
 POTION_COST = 3
 POTION_HEAL = 8
-POTION_STACK_SIZE = 2  # up to this many Potions can share a single Bag slot -- Food does not stack
+ITEM_STACK_CAP = 3  # a non-Food Bag slot (Potions, Quest Loot tokens, and any future
+# Town-purchasable consumable) holds up to this many total items, any mix -- one unified rule
+# instead of a separate cap per item type (locked 2026-08-22, replacing the old Potion-only
+# POTION_STACK_SIZE=2 and the old uncapped/closable loot-slot model at the same time -- both
+# shared the same real Bag-slot mechanism and needed the same fix together, not one now and one
+# later. See DESIGN_DOC.md Section VI and MACRO_LOOP_GUIDE.md for the real-metrics finding that
+# forced this: under the old model, `no_room` (bag-deadlock) never fired once in 3000+
+# turn-samples per class, and a single loot slot was observed holding up to 11 items despite the
+# design doc already claiming a cap of 3 was in effect.
+
+# New Bag-slot consumables (DESIGN_DOC.md Section VI, checkpointed 2026-08-22 -- Scroll of
+# Vanquishing/Smoke Bomb/Preserving Charm wired here; Whetstone deferred, see task #61, since
+# its "+1 damage/+1 Block for one pull" effect needs a class-agnostic way to modify all 9
+# classes' differently-shaped CARDS dicts, not just a Bag/Gold mechanism). Item keys share the
+# same _add_item/_remove_item/_accessible_count multiset mechanism as Potions and Quest Loot.
+SCROLL_COST = 5   # "scroll_of_vanquishing" -- guaranteed win, no combat played, Standard-tier
+# mobs only (never Elite/Boss -- a flat, printed restriction that keeps Elite/Boss fights
+# meaningful rather than buyable-around). Priced low relative to an early draft (was 9G) after
+# checking real per-pull outcome rates directly: death is under 1% per pull and flee only
+# 1.5-8.7% across the roster, so most pulls a Scroll gets used on would have been won anyway.
+SMOKE_BOMB_COST = 3   # "smoke_bomb" -- guaranteed flee, no reward. Real value is backing out
+# of a Border crossing after committing to the toll (resolve_border_crossing otherwise has no
+# decline path at all), though it works on an ordinary declared Node too.
+PRESERVING_CHARM_COST = 5   # "preserving_charm" -- Town-only, resets one active quest's
+# decay_stage back to 0 without needing to have collected its loot.
+
+CONSUMABLE_ITEMS = {
+    "scroll_of_vanquishing": SCROLL_COST,
+    "smoke_bomb": SMOKE_BOMB_COST,
+    "preserving_charm": PRESERVING_CHARM_COST,
+}  # Gold-purchasable at Town, repeatable (unlike the Purchase Queue's one-time acquired-tracked
+# items) -- Bag-slot-gated, same as Food/Potion restock. Whetstone isn't listed yet (task #61).
+
 BAG_UPGRADE_COST = 12  # repriced 16 -> 12 (LEVELING_GUIDE.md's "Purchased-upgrade pricing,
 # locked" section, 2026-08-20) -- checked against real Gold-at-Level-2 data: a player has
 # ~11.7-13.1 Gold on average at 12 XP, enough to comfortably afford one 8G skill (leaving a
@@ -574,85 +607,89 @@ def _best_case_mob(class_name, tier):
     return best_mob
 
 
+def _slot_total(slot):
+    """Total item count in an item-holding slot ({"items": {name: count, ...}}), 0 for
+    anything else (None, "food")."""
+    return sum(slot["items"].values()) if isinstance(slot, dict) else 0
+
+
 def _is_potion_slot(slot):
-    """A Potion-holding slot is ('potion', count), count in 1..POTION_STACK_SIZE -- Food stays
-    a bare 'food' string since it never stacks."""
-    return isinstance(slot, tuple) and slot[0] == "potion"
+    """True if this slot currently holds at least one Potion -- may also hold other
+    non-Food items mixed in, per the unified stacking rule (ITEM_STACK_CAP)."""
+    return isinstance(slot, dict) and slot["items"].get("potion", 0) > 0
 
 
-def _open_loot_slot_index(bag, locked):
-    """Index of the currently open (unclosed, unlocked) loot-holding slot, if any."""
+def _open_item_slot_index(bag, locked):
+    """Index of an unlocked item slot with room (< ITEM_STACK_CAP total items), if any."""
     for i, slot in enumerate(bag):
-        if not locked[i] and isinstance(slot, dict) and not slot["closed"]:
+        if not locked[i] and isinstance(slot, dict) and _slot_total(slot) < ITEM_STACK_CAP:
             return i
     return None
 
 
 def _bag_has_room(bag, locked):
-    """Is there an open loot slot, or an empty unlocked slot to open one?"""
-    if _open_loot_slot_index(bag, locked) is not None:
+    """Is there an item slot with room, or an empty unlocked slot to open one?"""
+    if _open_item_slot_index(bag, locked) is not None:
         return True
     return any(not locked[i] and bag[i] is None for i in range(len(bag)))
 
 
-def _add_loot(bag, locked, loot_name):
-    """Add one unit of loot_name to the open loot slot -- any mix of loot
-    types shares one slot while it's open. Opens a fresh (unlocked, empty)
-    slot if there's no open one right now. Returns False only if there's
-    truly no room (every slot closed, locked, or held by an unused
-    consumable) -- callers should check _bag_has_room before relying on
-    this to always succeed."""
-    i = _open_loot_slot_index(bag, locked)
+def _add_item(bag, locked, item_name):
+    """Add one unit of item_name (a Quest Loot name, 'potion', or any other Town-purchasable
+    consumable's key) to any unlocked slot with room (< ITEM_STACK_CAP total items, any mix),
+    opening a fresh (unlocked, empty) slot if none has room. Returns False only if there's
+    truly no room (every slot locked or full) -- callers should check _bag_has_room before
+    relying on this to always succeed. Quest Loot and every other non-Food item share this
+    same mechanism -- one unified stacking rule, not one cap per item type (locked 2026-08-22,
+    see ITEM_STACK_CAP)."""
+    i = _open_item_slot_index(bag, locked)
     if i is not None:
-        bag[i]["loot"][loot_name] = bag[i]["loot"].get(loot_name, 0) + 1
+        bag[i]["items"][item_name] = bag[i]["items"].get(item_name, 0) + 1
         return True
     for j, slot in enumerate(bag):
         if not locked[j] and slot is None:
-            bag[j] = {"loot": {loot_name: 1}, "closed": False}
+            bag[j] = {"items": {item_name: 1}}
             return True
     return False
 
 
-def _close_active_loot_slot(bag, locked):
-    """Locks (closes) whatever's in the currently-open loot slot, if any.
-    A no-op if there's no open slot right now."""
-    i = _open_loot_slot_index(bag, locked)
-    if i is not None:
-        bag[i]["closed"] = True
+_add_loot = _add_item  # Quest Loot is just one more item type sharing the same slot mechanism
 
 
-def _accessible_count(bag, locked, loot_name):
-    """Total loot_name sitting in non-locked slots -- what the hero can
-    actually use toward quest completion right now. Locked (post-death)
-    contents don't count until recovered."""
+def _accessible_count(bag, locked, item_name):
+    """Total item_name sitting in non-locked slots -- what the hero can actually use toward
+    quest completion (for a loot name) or consume (for 'potion' etc.) right now. Locked
+    (post-death) contents don't count until recovered."""
     return sum(
-        slot["loot"].get(loot_name, 0)
+        slot["items"].get(item_name, 0)
         for i, slot in enumerate(bag)
         if not locked[i] and isinstance(slot, dict)
     )
 
 
-def _remove_loot(bag, locked, loot_name, amount):
-    """Removes up to `amount` of loot_name from accessible (non-locked)
-    slots -- used when a quest is turned in and its loot is handed over.
-    A slot that ends up holding nothing of any type goes back to None
-    (reopens), even if it was previously closed."""
+def _remove_item(bag, locked, item_name, amount):
+    """Removes up to `amount` of item_name from accessible (non-locked) slots -- used when a
+    quest is turned in and its loot is handed over, or when a stackable consumable (Potion,
+    etc.) is used. A slot that ends up holding nothing of any type goes back to None (reopens)."""
     remaining = amount
     for i, slot in enumerate(bag):
         if remaining <= 0:
             break
         if locked[i] or not isinstance(slot, dict):
             continue
-        have = slot["loot"].get(loot_name, 0)
+        have = slot["items"].get(item_name, 0)
         if have <= 0:
             continue
         take = min(have, remaining)
-        slot["loot"][loot_name] -= take
-        if slot["loot"][loot_name] <= 0:
-            del slot["loot"][loot_name]
+        slot["items"][item_name] -= take
+        if slot["items"][item_name] <= 0:
+            del slot["items"][item_name]
         remaining -= take
-        if not slot["loot"]:
+        if not slot["items"]:
             bag[i] = None
+
+
+_remove_loot = _remove_item  # Quest Loot is just one more item type sharing the same mechanism
 
 
 def _engine_pull(class_name, mob_name, hand, pattern, mob_hp, starting_hp):
@@ -840,13 +877,11 @@ def run_one_trip(class_name, strategy, rng, bag=None, locked=None, active_quests
                 if slot == "food":
                     hp = max_hp
                     bag[i] = None
-                    _close_active_loot_slot(bag, locked)
                     consumables_used["food"] += 1
                     break
                 if _is_potion_slot(slot):
                     hp = min(max_hp, hp + POTION_HEAL)
-                    remaining = slot[1] - 1
-                    bag[i] = ("potion", remaining) if remaining > 0 else None
+                    _remove_item(bag, locked, "potion", 1)
                     consumables_used["potion"] += 1
                     break
         hand = rng.choice(mod.ALL_HANDS)
@@ -927,8 +962,7 @@ def run_one_trip(class_name, strategy, rng, bag=None, locked=None, active_quests
                     if potion_index is None:
                         return _make_result(completed=False, died=False, recovered=recovered, hp=hp)
                     hp = min(max_hp, hp + POTION_HEAL)
-                    remaining = bag[potion_index][1] - 1
-                    bag[potion_index] = ("potion", remaining) if remaining > 0 else None
+                    _remove_item(bag, locked, "potion", 1)
                     consumables_used["potion"] += 1
 
             # Route to whichever still-incomplete quest's node to visit next -- a rational
@@ -1077,13 +1111,11 @@ def run_one_trip(class_name, strategy, rng, bag=None, locked=None, active_quests
                 if slot == "food":
                     hp = max_hp
                     bag[i] = None  # Food itself frees its own slot on use
-                    _close_active_loot_slot(bag, locked)
                     consumed = "food"
                     break
                 if _is_potion_slot(slot):
                     hp = min(max_hp, hp + POTION_HEAL)
-                    remaining = slot[1] - 1
-                    bag[i] = ("potion", remaining) if remaining > 0 else None
+                    _remove_item(bag, locked, "potion", 1)
                     consumed = "potion"
                     break
             if consumed:
@@ -1123,14 +1155,11 @@ def run_one_trip(class_name, strategy, rng, bag=None, locked=None, active_quests
 
 
 def _leaving_town_setup(strategy, bag, locked, gold):
-    """Everything automatic that happens before heading back out: closed
-    (not locked) slots reopen, and the strategy's one consumable gets
-    restocked into an open empty slot if the hero doesn't already have
-    one and can afford it. Returns the (possibly reduced) gold."""
-    for i, slot in enumerate(bag):
-        if not locked[i] and isinstance(slot, dict):
-            slot["closed"] = False
-
+    """Everything automatic that happens before heading back out: the strategy's one consumable
+    gets restocked into an open item slot (or a fresh empty slot) if the hero doesn't already
+    have one and can afford it. No "closed" slot state exists anymore -- every non-Food slot is
+    just an item multiset capped at ITEM_STACK_CAP, nothing to reopen. Returns the (possibly
+    reduced) gold."""
     if strategy == "food_only":
         already_have = any(not locked[i] and bag[i] == "food" for i in range(len(bag)))
         if not already_have and gold >= FOOD_COST:
@@ -1159,19 +1188,21 @@ def _leaving_town_setup(strategy, bag, locked, gold):
             gold -= FOOD_COST
             food_count += 1
     elif strategy == "potion_only":
-        # Tops off exactly one potion-stack slot to POTION_STACK_SIZE, never opens a second one --
-        # mirrors food_only's "only ever holds one consumable slot," always leaving the other slot
-        # free for loot. A player with a second free slot may well choose to open another Potion
-        # stack there instead of chasing loot, but that's a real, separate strategy to test on its
-        # own footing, not the default "restock like food_only does" comparison this one represents.
+        # Tops off exactly one item slot with Potions up to ITEM_STACK_CAP, never opens a second
+        # one -- mirrors food_only's "only ever holds one consumable slot," always leaving the
+        # other slot free for loot. A player with a second free slot may well choose to open
+        # another Potion stack there instead of chasing loot, but that's a real, separate
+        # strategy to test on its own footing, not the default "restock like food_only does"
+        # comparison this one represents.
         stack_index = next((i for i in range(len(bag)) if not locked[i] and _is_potion_slot(bag[i])), None)
         if stack_index is None and gold >= POTION_COST:
             stack_index = next((i for i in range(len(bag)) if not locked[i] and bag[i] is None), None)
-            if stack_index is not None:
-                bag[stack_index] = ("potion", 0)
         if stack_index is not None:
-            while gold >= POTION_COST and bag[stack_index][1] < POTION_STACK_SIZE:
-                bag[stack_index] = ("potion", bag[stack_index][1] + 1)
+            while gold >= POTION_COST and _slot_total(bag[stack_index]) < ITEM_STACK_CAP:
+                if bag[stack_index] is None:
+                    bag[stack_index] = {"items": {"potion": 1}}
+                else:
+                    bag[stack_index]["items"]["potion"] = bag[stack_index]["items"].get("potion", 0) + 1
                 gold -= POTION_COST
     return gold
 

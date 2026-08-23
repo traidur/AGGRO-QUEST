@@ -431,13 +431,58 @@ they end up sharing space in.
 **Consumables — the price gap and the stacking exception are what create the real trade-off:**
 - **Food (4 Gold):** heals to full HP. One uncapped, complete reset per slot — never stacks,
   one Food per slot maximum.
-- **Potion (3 Gold):** heals a flat **8 HP**, cheaper than Food, and **up to 2 can share a
-  single Bag slot**. For the same one slot, a player is choosing between one big guaranteed
-  reset (Food) or two smaller heals at a lower total Gold-per-slot (Potion) — a real choice
+- **Potion (3 Gold):** heals a flat **8 HP**, cheaper than Food. For the same one slot, a
+  player is choosing between one big guaranteed reset (Food) or a stack of smaller effects at a
+  lower total Gold-per-slot (Potion and the other non-Food consumables below) — a real choice
   either way, not one strictly better than the other. (Food previously closed the active loot
   slot as its own separate trade-off; that clause is cut — traced through mechanically and
   found not to actually motivate anything a low HP/Food count wasn't already forcing on its
   own, see `MACRO_LOOP_GUIDE.md`'s Bag Tetris revision entry for the full reasoning.)
+
+**Unified non-Food stacking rule (locked 2026-08-22): everything except Food stacks 3-to-a-slot,
+any mix.** One rule instead of a separate cap per item type — the same rule Quest Loot tokens
+already use ("a slot holds up to 3 tokens total, any mix," above), now extended to every
+consumable so there's only one number to remember at the table, not one per item. This replaces
+the old Potion-specific `POTION_STACK_SIZE = 2` cap with 3, and a single slot can hold any mix
+of Potions, the new consumables below, and even Quest Loot tokens together. Deliberately not a
+balance concern at the starting 2-slot Bag: a fresh hero doesn't have the Gold to buy enough of
+this stuff to feel the crowding before their first Bag Upgrade anyway.
+
+**New Bag-slot consumables (design intent, checkpointed 2026-08-22 — not yet built in the
+simulator or wired into the Purchase Queue/Town seam).** Four Gold-purchasable items, stacking
+3-to-a-slot under the rule above, none stackable with Food:
+
+- **Scroll of Vanquishing (5 Gold):** used instead of pulling — the declared mob is defeated
+  automatically, no cards played, hero takes 0 damage. Still grants the normal +1 Gold and the
+  Node's loot (reuses the ordinary win path, not a separate one) and still costs the pull's one
+  turn. **Standard-tier mobs only, never Elite/Boss** — a flat, printed restriction, not a
+  hidden conditional, that keeps the exact-solver Elite/Boss fights meaningful rather than
+  buyable-around. Priced low relative to an earlier draft (was 9 Gold) after checking real
+  per-pull outcome rates directly: across all 9 classes, death is under 1% per attempted pull
+  and flee is only 1.5-8.7% (measured via `board_engine._pull_and_resolve`, 120-turn runs, 8
+  seeds/class) — most pulls a Scroll gets used on would have been won anyway, so it isn't the
+  run-defining purchase a higher price implied.
+- **Smoke Bomb (3 Gold):** used once a mob is revealed to guarantee a flee instead of resolving
+  combat — 0 damage, 0 Gold, 0 loot, the pull/crossing just ends, still costs the turn. Its real
+  value is on **Border crossings specifically**: unlike an ordinary Node (already free to just
+  not declare), `resolve_border_crossing` has no decline path once the toll is committed to —
+  this is a genuinely new lever there, not a reskin of something already free elsewhere.
+- **Whetstone (4 Gold):** used before a pull, grants **+1 damage and +1 Block to every card
+  played for that entire pull** (all 3 rounds), then consumed. One combined item rather than
+  separate damage/Block versions, matching this project's preference for as few distinct
+  at-the-table item types as the design actually needs.
+- **Preserving Charm (5 Gold):** used at Town, resets one active quest's decay stage back to 0
+  without needing to have collected its loot — doesn't cost the Town visit's one turn, folding
+  into the visit the same way Food/Potion restock already does. The only one of the four not
+  about combat risk at all; it protects quest Gold against the decay mechanic instead.
+
+**Random-drop extension, stated intent only, deliberately unparameterized.** Beyond straight
+Gold purchase, winning a pull (any pull, possibly at better odds for Elite/Boss-tier mobs)
+should be able to drop one of the four items above for free. Exact drop rates, whether a drop
+replaces or stacks on top of the existing +1 Gold win reward, and whether rates vary by mob
+tier are all real open questions, not decided here — this needs its own pass (likely a
+simulator sweep) once the Gold-purchase prices above are validated in play, not guessed
+alongside them.
 
 **Risk policy (locked default): consumable-before-risk, always.** Exact constants:
 `RISK_TOLERANCE = 0.15` (the fraction of hands allowed to be lethal *when this pull would
@@ -526,9 +571,28 @@ mob (Scout) and 7th class (Runecaster) — should be re-swept, not assumed still
 
 ## VII. Progression — NOT YET BUILT
 
-**Nothing in this section is implemented or tested in the simulator** (`sim/macro_sim.py` has
-no Level, no Cull, no Market Row purchase flow, no Final Boss check anywhere). Kept here as
-stated design intent, not current rules:
+**Nothing past Level 2 is implemented or tested in the simulator** (`sim/macro_sim.py` has no
+Level 3-6, no Cull, no Final Boss check). Kept here as stated design intent, not current rules:
+
+**Full-game pacing target, locked 2026-08-22:** a player should go from Level 1 to Level 6 and
+defeat the Final Boss in **~90 turns or less** (turns as defined in `OPEN_QUESTIONS.md`'s "What
+a turn is" — one pull, one Town visit, one Border crossing, etc., each exactly one turn,
+regardless of business done). This is a real constraint on whatever Level 3-6/Cull/Final Boss
+system eventually gets built, not just this section's existing prose — none of it should be
+designed or tuned without checking it against this number. Not yet validated against anything:
+the simulator currently only implements a two-tier Level 1/Level 2 stand-in
+(`LEVEL2_XP_THRESHOLD`), not the real 6-level system, so there is no current tooling that can
+measure whether any real design hits 90 turns — that tooling has to be built alongside Level
+3-6 itself, not assumed to already exist.
+
+**"Market Row," as a separate future system, is retired — it's stale as of the Class Trainer's
+build (2026-08-21), corrected 2026-08-22.** Market Row's own one-line definition ("spending Gold
+in Town adds tuned, tactical cards to a class's deck") is exactly what the Class Trainer already
+does, live in the simulator, today (`SKILL_COST`, `LEVEL2_PURCHASED_ORDER`, buy any number of
+upgrade cards in one Trainer-Zone visit — see Section VI/`MACRO_LOOP_GUIDE.md`). The Trainer just
+hasn't been generalized past Level 2 yet; there is no second, distinct "Market Row" mechanism
+left to build on top of it. Whenever Level 3-6 gets built, the same Trainer-purchase pattern is
+expected to repeat at each level, not a separate system.
 
 - **The strict 6-card limit overrides the original vision below, wherever they conflict.**
   Combat's exact-solver architecture (Section II, "unique decks") depends on every class
@@ -540,8 +604,7 @@ stated design intent, not current rules:
   not as a spec to build against — they need to be redesigned around the 1-for-1 constraint
   before any of this actually gets built.
 - **Leveling (1-6):** turning in quests grants XP; leveling lets players **Cull** (permanently
-  destroy) basic starter cards, thinning the deck so Market-bought upgrades draw more reliably.
-- **Market Row:** spending Gold in Town adds tuned, tactical cards to a class's deck.
+  destroy) basic starter cards, thinning the deck so Trainer-bought upgrades draw more reliably.
 - **Win condition — the Final Boss node:** a single, static, monstrous math check (co-op Party
   Pull) players build toward and attempt whenever ready.
 - **Elite Spikes mixed into a zone's deck at known odds:** rather than a separately authored

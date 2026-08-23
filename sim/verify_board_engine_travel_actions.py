@@ -112,10 +112,10 @@ def run_direct_checks(verbose=True):
     check("use_food costs no turn", hero7.turns == turns_before, (hero7.turns, turns_before))
 
     hero8 = HeroBoardState(class_name="warrior", hp=10.0, max_hp=18.0, position=(1, None),
-                            bag=[("potion", 2), None], locked=[False, False], gold=0)
+                            bag=[{"items": {"potion": 2}}, None], locked=[False, False], gold=0)
     BE.apply_travel_action(hero8, {"type": "use_potion"}, "warrior", board, rng, M.RISK_TOLERANCE_BASE, True)
     check("use_potion heals by POTION_HEAL", hero8.hp == min(18.0, 10.0 + M.POTION_HEAL), hero8.hp)
-    check("use_potion decrements charges", hero8.bag[0] == ("potion", 1), hero8.bag)
+    check("use_potion decrements charges", hero8.bag[0] == {"items": {"potion": 1}}, hero8.bag)
 
     # 7. A locked food/potion slot is never touched by use_food/use_potion.
     hero9 = HeroBoardState(class_name="warrior", hp=10.0, max_hp=18.0, position=(1, None),
@@ -125,7 +125,7 @@ def run_direct_checks(verbose=True):
 
     # 8. Full-HP hero isn't offered use_food/use_potion even holding both.
     hero10 = HeroBoardState(class_name="warrior", hp=18.0, max_hp=18.0, position=(1, None),
-                             bag=["food", ("potion", 1)], locked=[False, False], gold=0)
+                             bag=["food", {"items": {"potion": 1}}], locked=[False, False], gold=0)
     actions10 = BE.get_travel_actions(hero10, board, rng)
     check("full HP hero isn't offered use_food/use_potion",
           not any(a["type"] in ("use_food", "use_potion") for a in actions10), actions10)

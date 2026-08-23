@@ -62,7 +62,7 @@ def run_checks(verbose=True):
     # 2. All active quests already satisfied -> end_trip, no travel needed.
     loot = _zone1_loot()
     q = M.QUESTS[loot]
-    bag = [{"loot": {loot: q["required"]}, "closed": False}, None]
+    bag = [{"items": {loot: q["required"]}}, None]
     hero = _hero(class_name, (1, "town"), active_quests=[loot], bag=bag)
     action = BE.decide_travel(hero, class_name, M.QUESTS, {1, 2}, M.RISK_TOLERANCE_BASE, True)
     check("quests already satisfied", action == {"action": "end_trip"}, action)
@@ -119,19 +119,19 @@ def run_checks(verbose=True):
     action = BE.decide_travel(hero, class_name, M.QUESTS, {1, 2}, M.RISK_TOLERANCE_BASE, True)
     check("no quests, routes toward fallback zone", action["action"] in ("arrived", "cross_border"), action)
 
-    # 10. Bag deadlock (every slot closed/locked, no room) with Food available -- consumes
+    # 10. Bag deadlock (every slot full/locked, no room) with Food available -- consumes
     # Food to free a slot, then continues routing normally (arrives, since target is Zone 1
-    # itself).
+    # itself). Slot 1 genuinely full (ITEM_STACK_CAP=3 items) rather than the old "closed" flag.
     loot = _zone1_loot()
-    bag = ["food", {"loot": {"Something else": 1}, "closed": True}]
+    bag = ["food", {"items": {"Something else": 3}}]
     hero = _hero(class_name, (1, "town"), active_quests=[loot], bag=bag, hp=5.0)
     action = BE.decide_travel(hero, class_name, M.QUESTS, {1, 2}, M.RISK_TOLERANCE_BASE, True)
     check("bag deadlock consumes food", hero.hp == hero.max_hp and hero.bag[0] is None,
           (hero.hp, hero.bag))
     check("bag deadlock then arrives", action["action"] == "arrived", action)
 
-    # 11. Bag deadlock, no consumables available at all -> end_trip.
-    bag = [{"loot": {"Something else": 1}, "closed": True}, {"loot": {"Other": 1}, "closed": True}]
+    # 11. Bag deadlock, no consumables available at all -> end_trip. Both slots genuinely full.
+    bag = [{"items": {"Something else": 3}}, {"items": {"Other": 3}}]
     loot = _zone1_loot()
     hero = _hero(class_name, (1, "town"), active_quests=[loot], bag=bag)
     action = BE.decide_travel(hero, class_name, M.QUESTS, {1, 2}, M.RISK_TOLERANCE_BASE, True)

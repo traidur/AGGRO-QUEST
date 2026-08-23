@@ -154,13 +154,11 @@ def resolve_node_pull(hero, class_name, node_name, mob_name, quest_pool, rng,
                 if slot == "food":
                     hero.hp = hero.max_hp
                     hero.bag[i] = None
-                    M._close_active_loot_slot(hero.bag, hero.locked)
                     consumed = "food"
                     break
                 if M._is_potion_slot(slot):
                     hero.hp = min(hero.max_hp, hero.hp + M.POTION_HEAL)
-                    remaining = slot[1] - 1
-                    hero.bag[i] = ("potion", remaining) if remaining > 0 else None
+                    M._remove_item(hero.bag, hero.locked, "potion", 1)
                     consumed = "potion"
                     break
             if consumed:
@@ -234,6 +232,39 @@ def commit_node_pull(hero, class_name, node_name, mob_name, rng, suppress_loot=F
     _tier, loot_name = M.NODES[node_name]
     with LV.leveled_kit(mod, _level2_swaps_for(class_name, hero.acquired)):
         return _pull_and_resolve(hero, class_name, mod, mob_name, loot_name, rng, suppress_loot)
+
+
+def commit_scroll_vanquish(hero, node_name, mob_name):
+    """Resolves a Scroll of Vanquishing used on a declared Node -- checkpointed 2026-08-22, the
+    Bag-slot consumables slice. No combat played at all: the mob is defeated automatically,
+    hero takes 0 damage, gains the normal +1 Gold and the Node's loot (reuses the SAME win
+    bookkeeping resolve_node_pull/_pull_and_resolve use for an ordinary win, not a separate
+    path, so a Scroll-won pull can never diverge from what an ordinary win grants). Still costs
+    the pull's one turn -- the Node's action still happened, just without cards played.
+
+    Callers are responsible for the Standard-tier-only restriction (get_travel_actions only
+    offers use_scroll for Standard-tier mobs in the first place) -- this function itself doesn't
+    re-check, matching every other resolver's "the action menu is the gate" convention.
+
+    Mutates hero in place. Returns {"outcome": "win", "mob_name": ...} or {"outcome": "no_room",
+    "mob_name": ...} if the Node's loot can't fit."""
+    _tier, loot_name = M.NODES[node_name]
+    hero.turns += 1
+    hero.gold += 1
+    if not M._add_loot(hero.bag, hero.locked, loot_name):
+        return {"outcome": "no_room", "mob_name": mob_name}
+    return {"outcome": "win", "mob_name": mob_name}
+
+
+def commit_smoke_bomb_flee(hero):
+    """Resolves a Smoke Bomb used to bail out of a revealed mob (a declared Node) or a
+    committed Border crossing -- checkpointed 2026-08-22. No combat played, 0 damage, 0 Gold,
+    0 loot -- the pull/crossing just ends. Still costs the turn (the action -- declaring a
+    Node, or committing to a crossing's toll -- still happened).
+
+    Mutates hero in place. Returns {"outcome": "flee"}."""
+    hero.turns += 1
+    return {"outcome": "flee"}
 
 
 def _town_automatic_setup(hero, class_name, strategy, rng):
@@ -372,7 +403,14 @@ def get_town_actions(hero, purchase_queue):
     Deliberately does NOT apply purchase_policy's save-vs-skip ordering at all -- that's an AI
     heuristic for walking the queue unattended; a human sees every affordable option and picks
     freely, in whatever order they want, same as combat_engine.get_legal_actions doesn't
-    pre-filter down to "the AI's preferred card" either."""
+    pre-filter down to "the AI's preferred card" either.
+
+    Also offers buy_consumable (checkpointed 2026-08-22) for each of M.CONSUMABLE_ITEMS the
+    hero can afford AND has Bag room for -- a genuinely different kind of purchase from the
+    Purchase Queue's one-time acquired-tracked items (Bag Upgrade, Skills): these are
+    repeatable, same category as the Food/Potion restock, so they don't belong in
+    purchase_queue/hero.acquired at all. use_charm is offered once per currently-decayed active
+    quest, if the hero holds an unlocked Preserving Charm."""
     zone_id, _node = hero.position
     actions = []
     for item in purchase_queue:
@@ -385,6 +423,16 @@ def get_town_actions(hero, purchase_queue):
         if hero.gold < item["cost"]:
             continue
         actions.append({"type": "buy", "tag": item["tag"], "kind": item["kind"], "cost": item["cost"]})
+
+    for item_name, cost in M.CONSUMABLE_ITEMS.items():
+        if hero.gold >= cost and M._bag_has_room(hero.bag, hero.locked):
+            actions.append({"type": "buy_consumable", "item_name": item_name, "cost": cost})
+
+    if M._accessible_count(hero.bag, hero.locked, "preserving_charm") > 0:
+        for loot in hero.active_quests:
+            if hero.decay_stage.get(loot, 0) > 0:
+                actions.append({"type": "use_charm", "loot": loot})
+
     actions.append({"type": "leave_town"})
     return actions
 
@@ -408,6 +456,17 @@ def apply_town_action(hero, action, purchase_queue):
         zone_id, _node = hero.position
         hero.position = (zone_id, None)
         return False
+
+    if action["type"] == "buy_consumable":
+        hero.gold -= action["cost"]
+        M._add_item(hero.bag, hero.locked, action["item_name"])
+        return True
+
+    if action["type"] == "use_charm":
+        M._remove_item(hero.bag, hero.locked, "preserving_charm", 1)
+        hero.decay_stage[action["loot"]] = 0
+        return True
+
     item = next(i for i in purchase_queue if i["tag"] == action["tag"])
     hero.gold -= item["cost"]
     hero.acquired.add(item["tag"])
@@ -450,9 +509,21 @@ def get_travel_actions(hero, board, rng):
     not a second gate after declare_node (see commit_node_pull's own docstring for why that
     isn't needed once the mob is already visible in this same menu).
 
+    use_scroll/use_smoke_bomb (checkpointed 2026-08-22, the Bag-slot consumables slice) are
+    offered per-target, alongside declare_node/cross_border: use_scroll only for a declared
+    Node whose mob is Standard-tier (never Elite/Boss -- DESIGN_DOC.md's own restriction,
+    enforced here since this is the one place that knows both the mob's identity and its tier);
+    use_smoke_bomb for both declared Nodes and Border crossings (its real value is the crossing
+    case, since resolve_border_crossing has no ordinary decline path once committed -- see
+    commit_smoke_bomb_flee's own docstring). Neither needs the mob known in advance for
+    smoke_bomb's Border case -- it's a blind, unconditional bail, matching how Scouted Pull
+    itself doesn't reveal a Border crossing's mob before committing to the toll.
+
     Returns a list of action dicts, does not mutate hero."""
     zone_or_border, _node = hero.position
     actions = []
+    has_scroll = M._accessible_count(hero.bag, hero.locked, "scroll_of_vanquishing") > 0
+    has_smoke_bomb = M._accessible_count(hero.bag, hero.locked, "smoke_bomb") > 0
 
     if isinstance(zone_or_border, int):
         zone_id = zone_or_border
@@ -461,12 +532,19 @@ def get_travel_actions(hero, board, rng):
             B.deal_zone(board, zone_id, level, _nodes_in_zone(zone_id), rng)
         zone_board = board.zones[zone_id]
         for node_name in legal_node_declares(zone_board):
-            actions.append({"type": "declare_node", "node_name": node_name,
-                             "mob_name": zone_board.dealt[node_name]})
+            mob_name = zone_board.dealt[node_name]
+            actions.append({"type": "declare_node", "node_name": node_name, "mob_name": mob_name})
+            if has_scroll and mob_name in B._STANDARD_MOBS:
+                actions.append({"type": "use_scroll", "node_name": node_name, "mob_name": mob_name})
+            if has_smoke_bomb:
+                actions.append({"type": "use_smoke_bomb", "node_name": node_name, "mob_name": mob_name})
         for border_name, connects in M.BORDER_NODES.items():
             if zone_id in connects:
                 target_zone = next(iter(connects - {zone_id}))
                 actions.append({"type": "cross_border", "border_name": border_name, "target_zone": target_zone})
+                if has_smoke_bomb:
+                    actions.append({"type": "use_smoke_bomb", "border_name": border_name,
+                                     "target_zone": target_zone})
         if zone_id in M.FLIGHT_PATH_ZONES and hero.gold >= M.FLIGHT_PATH_COST:
             target_zone = next(iter(M.FLIGHT_PATH_ZONES - {zone_id}))
             actions.append({"type": "flight_path", "target_zone": target_zone, "cost": M.FLIGHT_PATH_COST})
@@ -503,6 +581,11 @@ def apply_travel_action(hero, action, class_name, board, rng,
       flight_path/enter_zone/return_to_town: {"outcome": "moved"} -- no combat, just position
           (and Gold, for flight_path) changes.
       use_food/use_potion: {"outcome": "healed"} -- no position/turn change.
+      use_scroll: whatever commit_scroll_vanquish returned ("win"/"no_room") -- guaranteed win,
+          no combat played, Zone gets Discarded afterward same as declare_node.
+      use_smoke_bomb: {"outcome": "flee"} from commit_smoke_bomb_flee -- guaranteed flee, no
+          combat played; Zone gets Discarded afterward for the Node case, no Discard for the
+          Border case (no Zone was ever dealt for a crossing).
     A caller should check outcome == "died" the same way run_solo_trip does; a death here
     does NOT do the death/recovery post-processing itself (that lives in run_solo_chain's own
     loop, matching every other resolver's scope boundary -- this function resolves one action,
@@ -530,6 +613,24 @@ def apply_travel_action(hero, action, class_name, board, rng,
         hero.position = (action["target_zone"], None)
         return {"outcome": "moved"}
 
+    if action["type"] == "use_scroll":
+        zone_id, _node = hero.position
+        level = TIER_TO_LEVEL[M.ZONE_TIER[zone_id]]
+        M._remove_item(hero.bag, hero.locked, "scroll_of_vanquishing", 1)
+        result = commit_scroll_vanquish(hero, action["node_name"], action["mob_name"])
+        B.discard_zone(board, zone_id, level)
+        return result
+
+    if action["type"] == "use_smoke_bomb":
+        M._remove_item(hero.bag, hero.locked, "smoke_bomb", 1)
+        if "node_name" in action:
+            zone_id, _node = hero.position
+            level = TIER_TO_LEVEL[M.ZONE_TIER[zone_id]]
+            result = commit_smoke_bomb_flee(hero)
+            B.discard_zone(board, zone_id, level)
+            return result
+        return commit_smoke_bomb_flee(hero)
+
     if action["type"] == "use_food":
         for i, slot in enumerate(hero.bag):
             if hero.locked[i]:
@@ -537,21 +638,14 @@ def apply_travel_action(hero, action, class_name, board, rng,
             if slot == "food":
                 hero.hp = hero.max_hp
                 hero.bag[i] = None
-                M._close_active_loot_slot(hero.bag, hero.locked)
                 hero.consumables_used["food"] += 1
                 break
         return {"outcome": "healed"}
 
     if action["type"] == "use_potion":
-        for i, slot in enumerate(hero.bag):
-            if hero.locked[i]:
-                continue
-            if M._is_potion_slot(slot):
-                hero.hp = min(hero.max_hp, hero.hp + M.POTION_HEAL)
-                remaining = slot[1] - 1
-                hero.bag[i] = ("potion", remaining) if remaining > 0 else None
-                hero.consumables_used["potion"] += 1
-                break
+        hero.hp = min(hero.max_hp, hero.hp + M.POTION_HEAL)
+        M._remove_item(hero.bag, hero.locked, "potion", 1)
+        hero.consumables_used["potion"] += 1
         return {"outcome": "healed"}
 
     # return_to_town -- free, matches Golden Rule 1 ("travel itself is free"). If currently on
@@ -617,13 +711,11 @@ def resolve_border_crossing(hero, class_name, border_name, target_zone, mob_name
                 if slot == "food":
                     hero.hp = hero.max_hp
                     hero.bag[i] = None
-                    M._close_active_loot_slot(hero.bag, hero.locked)
                     hero.consumables_used["food"] += 1
                     break
                 if M._is_potion_slot(slot):
                     hero.hp = min(hero.max_hp, hero.hp + M.POTION_HEAL)
-                    remaining = slot[1] - 1
-                    hero.bag[i] = ("potion", remaining) if remaining > 0 else None
+                    M._remove_item(hero.bag, hero.locked, "potion", 1)
                     hero.consumables_used["potion"] += 1
                     break
 
@@ -698,8 +790,7 @@ def decide_travel(hero, class_name, quest_pool, fallback_target_zones, risk_tole
                 if potion_index is None:
                     return {"action": "end_trip"}
                 hero.hp = min(hero.max_hp, hero.hp + M.POTION_HEAL)
-                remaining = hero.bag[potion_index][1] - 1
-                hero.bag[potion_index] = ("potion", remaining) if remaining > 0 else None
+                M._remove_item(hero.bag, hero.locked, "potion", 1)
                 hero.consumables_used["potion"] += 1
 
         same_zone_first = sorted(incomplete, key=lambda loot: M._hop_distance(

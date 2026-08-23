@@ -4,6 +4,20 @@ Design tensions and undefined interactions flagged before prototyping starts. Mo
 
 ## Unresolved
 
+### Random-drop rates for the new Bag-slot consumables
+
+Raised 2026-08-22, alongside locking the Gold prices for Scroll of Vanquishing, Smoke Bomb,
+Whetstone, and Preserving Charm (see `DESIGN_DOC.md` Section VI). The stated intent is that
+winning a pull should also be able to drop one of these four items for free, not just via Town
+purchase, with better odds at Elite/Boss-tier mobs — but none of the actual numbers are decided:
+- Exact drop rate per mob tier (Standard vs. Elite vs. Boss).
+- Whether a drop replaces the existing +1 Gold win reward or stacks on top of it.
+- Whether the odds are uniform across the 4 items or weighted (e.g. Scroll of Vanquishing rarer
+  than Whetstone, matching its higher purchase price).
+
+Deliberately deferred rather than guessed alongside the Gold prices — this needs its own pass,
+likely a simulator sweep, once those base prices are validated in play.
+
 ### When does a hero deliberately travel to buy a purchased upgrade?
 
 Raised 2026-08-21, right after building deliberate fallback travel for the *free* mandatory
@@ -520,11 +534,12 @@ Per node type:
   recovery" in DESIGN_DOC.md) is just an ordinary quest-node pull under this rule — one turn,
   nothing special about it turn-wise. Travel from the respawn Town to the death node is free,
   same as any other movement.
-- **Elite node, Market Row:** neither is a distinct node type, so neither has its own turn
-  structure. Elites don't have a real map node at all yet (see the "Co-op multi-hero vs.
-  Elite/multi-mob nodes" entry below for where they actually live — inside a node's dealt mob
-  pool, not a separate location); Market Row is superseded by Town and would fold into a
-  Town-visit turn like everything else there, if it's ever built.
+- **Elite node:** not a distinct node type, so it has no turn structure of its own. Elites
+  don't have a real map node at all yet (see the "Co-op multi-hero vs. Elite/multi-mob nodes"
+  entry below for where they actually live — inside a node's dealt mob pool, not a separate
+  location). ("Market Row" used to be listed here too, on the assumption it would fold into a
+  Town-visit turn if it was ever built separately — retired 2026-08-22, since the Class Trainer
+  already IS Market Row under a different name; see DESIGN_DOC.md Section VII.)
 
 **Why this matters beyond bookkeeping:** the simulator's existing "Gold after a fixed number
 of trips" metric is not a fair unit for comparing classes, since a trip's real length (pulls,

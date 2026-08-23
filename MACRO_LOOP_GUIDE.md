@@ -373,8 +373,55 @@ already reads `len(bag)` directly, so this needed no other code changes to take 
 correctly. Verified directly: a hero's `bag_len` grows from 2 to 3 exactly once, tied to
 `started_level2_quests` flipping True and Gold clearing `BAG_UPGRADE_COST`.
 
+## Bag model correction: the locked "capped, no-closing" loot model was never actually built (fixed 2026-08-22)
+
+`DESIGN_DOC.md`'s "Bag Tetris revision" entry (below) already describes the current locked
+rule -- colored Quest Loot tokens, up to 3 per slot, Food no longer closes anything -- but
+`macro_sim.py`'s real code still ran the *previous* model until this fix: one open loot slot,
+uncapped, holding any mix of loot types until Food closed it. A documented, tracked divergence
+(this file's own module docstring flagged it, and task #32 tracked porting the real model), not
+a silent bug, but never acted on.
+
+**Measured directly before fixing it** (`_bag_model_baseline.py`, 300-turn and 90-turn runs,
+10 seeds/class, all 9 classes): under the old model, bag-deadlock (`_bag_has_room` returning
+False) fired essentially never -- 0-9 times per class across 3,000+ turn-samples -- and a
+single loot slot was observed holding up to 11 items despite the documented cap of 3. The Bag
+capacity constraint that Bag Upgrade's price, Potion's price, and the decay/risk-tolerance
+pressure are all implicitly built around was functionally inert the entire time this code has
+existed.
+
+**Fix:** `_add_item`/`_remove_item`/`_accessible_count` (renamed from the old loot-only
+`_add_loot`/`_remove_loot`) now share one unified mechanism with Potions and every other
+non-Food consumable -- any unlocked slot holds up to `ITEM_STACK_CAP` (3) items total, any mix,
+Food never stacks and no longer closes anything. See `macro_sim.py`'s own module docstring for
+the exact before/after code shape.
+
+**Before/after, same seeds, 90-turn window (the real target length, not an arbitrary long
+equilibrium window):**
+
+| class | gold/turn (before→after) | bag-deadlock fires (before→after) | max items ever in one slot (before→after) |
+|---|---|---|---|
+| warrior | 1.172→1.096 | 1→75 | 11→3 |
+| wizard | 1.036→0.971 | 0→86 | 9→3 |
+| cleric | 0.963→0.902 | 0→67 | 8→3 |
+| paladin | 1.246→1.094 | 0→103 | 10→3 |
+| rogue | 1.147→0.981 | 1→87 | 9→3 |
+| ranger | 1.186→1.000 | 0→93 | 9→3 |
+| runecaster | 1.004→0.961 | 0→38 | 7→3 |
+| druid | 0.850→0.866 | 2→33 | 8→3 |
+| necromancer | 0.954→0.985 | 2→46 | 9→3 |
+
+The economic cost is real but moderate: gold/turn drops roughly 5-12% for most classes
+(necromancer and druid actually landed flat-to-slightly-ahead), quest completion rate barely
+moved, and no class collapsed. **Bag Upgrade price (12G) and Potion price (3G) were both
+derived against the old, uncapped model and have not yet been re-swept against this corrected
+one** -- treat both as unlocked/unvalidated until that happens; not done here since it was
+explicitly deprioritized in favor of understanding the behavioral shift first.
+
 ## Not yet done
 
+- **Re-sweep Bag Upgrade price and Potion price** against the corrected Bag model above --
+  both were derived against the old, effectively-uncapped loot slot.
 - **Player-chosen quest pool.** `active_quests` is now a no-repeat-until-cycled shuffled bag
   (see above), but still drawn automatically by the sim, not actually chosen by the player from
   a curated set. The reward math and the no-repeat sequencing are both ready for this; the

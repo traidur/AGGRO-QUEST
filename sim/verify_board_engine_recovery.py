@@ -38,29 +38,43 @@ def run_direct_checks(verbose=True):
             check(f"decay+1 twice == decay+2 once (x={x}, cap={cap})", two_steps == one_step,
                   (two_steps, one_step))
 
-    # 2. Drive a real chain with a seed known to die at trip 3 and recover at trip 4 (warrior,
-    # seed=0) -- trace hero state directly around the death and the recovery.
-    snapshots = []
+    # 2. Drive a real chain until a death actually happens somewhere in it, then trace hero
+    # state directly around that death and the following recovery. Searches seeds rather than
+    # hardcoding one known-to-die value -- which seed produces a death depends on the exact RNG
+    # consumption sequence, and that sequence shifts any time upstream mechanics change (e.g.
+    # the 2026-08-22 Bag-model fix changed it, breaking a previously-hardcoded seed=0 here).
     orig = BE.run_solo_trip
-
-    def traced(hero, class_name, quest_pool, fallback_target_zones, board, rng, *a, **kw):
-        before = dict(bag=list(hero.bag), locked=list(hero.locked), corpse_node=hero.corpse_node,
-                      decay_stage=dict(hero.decay_stage), active_quests=list(hero.active_quests),
-                      position=hero.position)
-        result = orig(hero, class_name, quest_pool, fallback_target_zones, board, rng, *a, **kw)
-        after = dict(bag=list(hero.bag), locked=list(hero.locked), corpse_node=hero.corpse_node,
-                     decay_stage=dict(hero.decay_stage), position=hero.position, alive=hero.alive)
-        snapshots.append((before, result, after))
-        return result
-    BE.run_solo_trip = traced
-
+    snapshots = None
     try:
-        rng = random.Random(0)
-        for entry in BE.run_solo_chain("warrior", "food_only", rng, 40, purchase_policy="save",
-                                        bag_queue_position=0):
-            pass
+        for seed in range(50):
+            trial_snapshots = []
+
+            def traced(hero, class_name, quest_pool, fallback_target_zones, board, rng, *a, **kw):
+                before = dict(bag=list(hero.bag), locked=list(hero.locked), corpse_node=hero.corpse_node,
+                              decay_stage=dict(hero.decay_stage), active_quests=list(hero.active_quests),
+                              position=hero.position)
+                result = orig(hero, class_name, quest_pool, fallback_target_zones, board, rng, *a, **kw)
+                after = dict(bag=list(hero.bag), locked=list(hero.locked), corpse_node=hero.corpse_node,
+                             decay_stage=dict(hero.decay_stage), position=hero.position, alive=hero.alive)
+                trial_snapshots.append((before, result, after))
+                return result
+            BE.run_solo_trip = traced
+
+            rng = random.Random(seed)
+            for entry in BE.run_solo_chain("warrior", "food_only", rng, 40, purchase_policy="save",
+                                            bag_queue_position=0):
+                pass
+            if any(not r["alive"] for _b, r, _a in trial_snapshots):
+                snapshots = trial_snapshots
+                break
     finally:
         BE.run_solo_trip = orig
+
+    check("found a seed (within 50 tried) that produces at least one death", snapshots is not None,
+          "no death in 50 seeds -- suspicious on its own, investigate before trusting anything below")
+    if snapshots is None:
+        print(f"\n{len(failures)} failures" if failures else "\nAll direct checks passed")
+        return not failures
 
     death_idx = next(i for i, (b, r, a) in enumerate(snapshots) if not r["alive"])
     before, result, after = snapshots[death_idx]
@@ -92,7 +106,7 @@ def run_direct_checks(verbose=True):
     # lock/decay outcome precisely.
     from board_state import HeroBoardState
     hero = HeroBoardState(class_name="warrior", hp=0.0, max_hp=18.0, position=(3, None),
-                           bag=["food", {"loot": {"Royal Signets": 1}, "closed": False}],
+                           bag=["food", {"items": {"Royal Signets": 1}}],
                            locked=[False, False], active_quests=["Royal Signets"],
                            decay_stage={"Royal Signets": 2}, alive=False)
     quest_pool = M.LEVEL2_QUESTS
