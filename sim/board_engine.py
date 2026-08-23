@@ -1475,7 +1475,9 @@ def run_competitive_chain(class_names_list, strategy, rng, max_rounds,
     is still genuinely unbuilt follow-up work, not silently dropped -- just no longer paired
     with a lock that has nothing to unlock it.
 
-    Yields one dict per round: {hero_idx: (alive, gold, xp, position)} for every hero, letting
+    Yields one dict per round: {hero_idx: (alive, gold, xp, position, turns)} for every hero,
+    turns being hero.turns (the real comparable unit, matching run_solo_chain's own yield) --
+    letting
     a caller track the whole party's progress round by round."""
     n = len(class_names_list)
     class_names = dict(enumerate(class_names_list))
@@ -1544,4 +1546,4 @@ def run_competitive_chain(class_names_list, strategy, rng, max_rounds,
                 zone_id = hero.position[0] if isinstance(hero.position[0], int) else 1
                 hero.position = (zone_id, "town")
 
-        yield {i: (h.alive, h.gold, h.xp, h.position) for i, h in enumerate(board.heroes)}
+        yield {i: (h.alive, h.gold, h.xp, h.position, h.turns) for i, h in enumerate(board.heroes)}
