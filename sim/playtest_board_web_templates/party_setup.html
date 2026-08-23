@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>QUEST — Competitive Setup</title>
+    <style>
+        body { font-family: sans-serif; max-width: 560px; margin: 60px auto; }
+        .hero-row { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
+        select, input { font-size: 15px; padding: 6px; }
+        button { font-size: 16px; padding: 8px 16px; cursor: pointer; margin-top: 16px; }
+    </style>
+</head>
+<body>
+    <h1>QUEST — Competitive</h1>
+    <p>Pick 2-4 heroes and who controls each. Human seats take turns on this same screen.</p>
+    <form method="POST" action="/party/start">
+        {% for n in range(4) %}
+        <div class="hero-row">
+            <label>Hero {{ n + 1 }}:</label>
+            <select name="class_{{ n }}">
+                <option value="">(unused)</option>
+                {% for c in classes %}<option value="{{ c }}">{{ c|capitalize }}</option>{% endfor %}
+            </select>
+            <select name="controller_{{ n }}">
+                <option value="human">Human</option>
+                <option value="ai">AI</option>
+            </select>
+        </div>
+        {% endfor %}
+        <label>Seed (optional)</label><br>
+        <input type="text" name="seed" placeholder="leave blank for random">
+        <br>
+        <button type="submit">Begin</button>
+    </form>
+</body>
+</html>

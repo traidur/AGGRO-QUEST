@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>QUEST — Travel</title>
+    <style>
+        body { font-family: sans-serif; max-width: 640px; margin: 40px auto; }
+        .stat-row { display: flex; gap: 24px; font-size: 16px; margin-bottom: 12px; }
+        .flash { background: #fff3cd; border: 1px solid #e0a800; border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; }
+        .action { display: block; width: 100%; text-align: left; padding: 10px 14px; margin-bottom: 8px;
+                  border: 1px solid #ccc; border-radius: 6px; background: #fff; cursor: pointer; font-size: 15px; }
+        .action:hover { background: #f5f5f5; }
+        .bag { color: #555; font-size: 14px; }
+        .turn-banner { background: #d1e7ff; border: 1px solid #4a90d9; border-radius: 6px;
+                        padding: 8px 12px; margin-bottom: 12px; font-weight: bold; }
+    </style>
+</head>
+<body>
+    {% if turn_label %}<div class="turn-banner">{{ turn_label }}</div>{% endif %}
+    <h2>At {{ hero.position[0] }}</h2>
+    {% if declare_note %}<p><em>{{ declare_note }}</em></p>{% endif %}
+    {% for msg in flash %}<div class="flash">{{ msg }}</div>{% endfor %}
+    <div class="stat-row">
+        <div>HP: <strong>{{ hero.hp|round(0,'floor')|int }}/{{ hero.max_hp|int }}</strong></div>
+        <div>Gold: <strong>{{ hero.gold }}</strong></div>
+        <div>XP: <strong>{{ hero.xp }}</strong></div>
+    </div>
+    <div class="bag">Bag: {{ hero.bag }}</div>
+    <br>
+    {% for i, a in actions %}
+    <form method="POST" action="{{ action_url or '/travel/action' }}" style="display:inline;">
+        <input type="hidden" name="idx" value="{{ i }}">
+        <button class="action" type="submit">
+            {% if a.type == 'declare_node' %}Fight at {{ a.node_name }} — {{ a.mob_name }}
+            {% elif a.type == 'cross_border' %}Cross {{ a.border_name }} → Zone {{ a.target_zone }} (Scouted Pull)
+            {% elif a.type == 'enter_zone' %}Enter Zone {{ a.target_zone }}
+            {% elif a.type == 'flight_path' %}Flight Path → Zone {{ a.target_zone }} ({{ a.cost }}g)
+            {% elif a.type == 'use_scroll' %}Use Scroll of Vanquishing on {{ a.node_name }} ({{ a.mob_name }})
+            {% elif a.type == 'use_smoke_bomb' %}Use Smoke Bomb to bail on {{ a.node_name or a.border_name }}
+            {% elif a.type == 'use_food' %}Eat Food (full heal)
+            {% elif a.type == 'use_potion' %}Drink Potion
+            {% elif a.type == 'return_to_town' %}Return to Town
+            {% else %}{{ a }}
+            {% endif %}
+        </button>
+    </form>
+    {% endfor %}
+</body>
+</html>

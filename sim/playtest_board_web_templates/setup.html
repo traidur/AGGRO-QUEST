@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>QUEST</title>
+    <style>
+        body { font-family: sans-serif; max-width: 480px; margin: 60px auto; }
+        select, input { font-size: 16px; padding: 6px; margin-bottom: 12px; width: 100%; }
+        button { font-size: 16px; padding: 8px 16px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>QUEST</h1>
+    <form method="POST" action="/start">
+        <label>Class</label>
+        <select name="class_name">
+            {% for c in classes %}<option value="{{ c }}">{{ c|capitalize }}</option>{% endfor %}
+        </select>
+        <label>Seed (optional)</label>
+        <input type="text" name="seed" placeholder="leave blank for random">
+        <button type="submit">Begin</button>
+    </form>
+</body>
+</html>

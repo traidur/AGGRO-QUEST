@@ -1,0 +1,854 @@
+"""
+Browser front end for the full human-playable game (solo + competitive) -- the web
+counterpart to playtest_board_cli.py, built 2026-08-23 once combat_engine.py and
+board_engine.py's Town/Travel/competitive seams were all complete and CLI-proven.
+
+Architecture (checkpointed against AGGRO's own web.py, ui/StS_WoW_Sim/web.py, confirmed by
+reading it directly): single global session state, plain server-rendered Jinja2, full-page-
+reload forms -- no threads, no generators, no sessions. AGGRO's own engine is already
+plain/synchronous (get_legal_actions/apply_action, no blocking calls anywhere); its web layer
+just renders once per request and waits for the next one to supply the next action, using one
+global GameState mutated in place. board_engine.py/combat_engine.py already have the identical
+shape, so the same pattern applies directly.
+
+The one real wrinkle solved here: combat itself doesn't need per-round requests. QUEST's mob
+pattern (all 3 rounds' ATK/Block) is fully visible before any card is played -- there is no
+hidden information across rounds, which is exactly why best_line_for_hand can brute-force the
+whole ordering space. So a human can plan their full 3-card sequence (and Warrior stance) in
+ONE page and submit it as ONE request; the server resolves the whole pull synchronously using
+make_sequence_decide_fn below, which just replays the submitted order -- same cache-and-replay
+shape as QuestIntelligence.decide_combat, fed from a form instead of the solver. This needed
+one small additive backend change (board_engine.py's hand=None threading, task #75) so the web
+route can draw the hand FIRST (to show it) and reuse that exact hand when resolving, rather
+than the pull drawing a second, different hand internally.
+
+Competitive mode's contested Nodes are the one place a human's target can change (blind
+redraw) after they declare -- so a human's turn there is two page-loads instead of one:
+declare the target, then (once the round's contested-node math resolves via
+board_engine._resolve_contested_declarations, task #79) see the real final mob and submit the
+combat plan. No hidden-information scheme between human players either, matching AGGRO's own
+turn_order/active_hero_idx pattern -- players act in sequence on the same shared screen.
+
+Run:
+    python playtest_board_web.py
+    python playtest_board_web.py --port 8080
+"""
+from __future__ import annotations
+
+import argparse
+import random
+
+from flask import Flask, redirect, render_template, request, url_for
+
+import board_engine as BE
+import board_state as B
+import combat_engine as E
+import macro_sim as M
+from board_state import HeroBoardState
+
+app = Flask(__name__, template_folder="playtest_board_web_templates")
+
+# Single-user global state -- deliberately not per-session (matches playtest_web.py's own
+# "local single-player tool, no sessions needed" convention). _S holds everything needed to
+# resume rendering the current page after any request; see reset_session() for the full shape.
+_S = {}
+
+
+def reset_session():
+    _S.clear()
+    _S.update(dict(
+        mode=None, board=None, class_names={}, controllers={}, purchase_queues={},
+        rng=None, strategy="food_only", phase="setup", town_entered=False,
+        pending_kind=None, pending_action=None, pending_hand=None, pending_border=None,
+        flash=[], active_hero_idx=0,
+        # Competitive-only fields, see _cmp_begin_round's own docstring for the state machine.
+        labels={}, human_count=0, round_num=0,
+        cmp_town_pending=[], cmp_town_entered={},
+        cmp_field_idxs=[], cmp_quest_pools={}, cmp_claimed_this_round=set(), cmp_declare_order=[],
+        cmp_declarations_resolved=None, cmp_resolve_order=[], cmp_results={}, cmp_touched_zones=set(),
+    ))
+
+
+reset_session()
+
+
+def make_sequence_decide_fn(sequence, stance_sequence=None):
+    """Web-facing decide_fn -- replays a human's pre-submitted full card ordering (and Warrior
+    stance choice) instead of computing anything live. Mirrors QuestIntelligence.decide_combat's
+    cache-and-replay shape exactly, except the sequence comes from a submitted web form instead
+    of the solver -- see this module's own docstring for why committing to a full ordering up
+    front costs nothing in decision quality versus round-by-round play."""
+    def decide_fn(state, actions):
+        variant = sequence[state.round_num]
+        stance = stance_sequence[state.round_num] if stance_sequence else None
+        for action in actions:
+            if action["variant"] == variant and action.get("stance") == stance and action.get("legal"):
+                return action
+        raise ValueError(f"submitted sequence illegal at round {state.round_num}: "
+                          f"variant={variant!r} stance={stance!r}")
+    return decide_fn
+
+
+def _current_quest_pool(hero):
+    return M.LEVEL2_QUESTS if hero.xp >= M.LEVEL2_XP_THRESHOLD else M.QUESTS
+
+
+def _flash(msg):
+    _S["flash"].append(msg)
+
+
+def _pop_flash():
+    msgs = _S["flash"]
+    _S["flash"] = []
+    return msgs
+
+
+def _hand_options(class_name, hand):
+    """List of (hand_idx, card_name, variant, label) for every selectable option in a hand --
+    almost always one entry per card, except Necromancer's Boneguard's Offering, which the
+    solver already treats as two selectable lines (base vs. the boosted HP-for-damage virtual
+    card) -- mirrors combat_engine._card_variants exactly, duplicated here only because that
+    helper isn't exported (leading-underscore, module-private by convention elsewhere in this
+    codebase too, e.g. board_engine's own _resolve_forced_recovery)."""
+    import condensed_necromancer as N
+    options = []
+    for i, card_name in enumerate(hand):
+        if class_name == "necromancer" and card_name == N.BONEGUARD_OFFERING:
+            options.append((i, card_name, N.BONEGUARD_OFFERING, card_name))
+            options.append((i, card_name, N.BONEGUARD_OFFERING_BOOSTED, f"{card_name} (Boosted)"))
+        else:
+            options.append((i, card_name, card_name, card_name))
+    return options
+
+
+def _parse_combat_plan(form, class_name, hand):
+    """Parses the combat_plan form into (sequence, stance_sequence, error). Each round field is
+    'hand_idx|variant'; validates the 3 rounds use 3 DIFFERENT hand slots (a hand card, once
+    played, leaves the hand -- see combat_engine._remaining_hand) before ever touching
+    combat_engine, so an invalid submission bounces back to the same page with a message
+    instead of raising deep inside the resolution call."""
+    used_idxs = set()
+    sequence = []
+    for round_num in range(3):
+        raw = form.get(f"round_{round_num}", "")
+        if "|" not in raw:
+            return None, None, f"Round {round_num + 1} needs a card chosen."
+        idx_s, variant = raw.split("|", 1)
+        try:
+            idx = int(idx_s)
+        except ValueError:
+            return None, None, f"Round {round_num + 1}: invalid submission."
+        if idx in used_idxs or not (0 <= idx < len(hand)):
+            return None, None, f"Round {round_num + 1}: each hand card can only be played once."
+        used_idxs.add(idx)
+        sequence.append(variant)
+    stance_sequence = None
+    if M.HAS_STANCE[class_name]:
+        stance = form.get("stance")
+        if stance not in ("G", "C"):
+            return None, None, "Choose a stance (Guardian or Crusader)."
+        stance_sequence = [stance] * 3
+    return sequence, stance_sequence, None
+
+
+def _validate_sequence(class_name, hand, mob_name, hero_hp, sequence, stance_sequence):
+    """Dry-runs the submitted sequence through combat_engine directly (a throwaway PullState,
+    never touching the real hero/board) before committing to it for real -- combat resolution
+    is fully deterministic given hand+mob+sequence (no RNG anywhere in get_legal_actions/
+    apply_action, the same property that lets best_line_for_hand brute-force it), so this is
+    cheap and catches a conditionally-illegal card (e.g. Warrior's Execute, only legal below
+    50% mob HP) before it wastes the player's real turn instead of crashing mid-resolution.
+    Returns None if the whole sequence is legal round-by-round, else an error string."""
+    pattern, mob_hp = M._pattern_hp_for_mob(class_name, mob_name)
+    state = E.new_pull_with_hp(class_name, mob_name, hand, pattern, mob_hp, hero_hp)
+    decide_fn = make_sequence_decide_fn(sequence, stance_sequence)
+    try:
+        while state.outcome is None:
+            actions = E.get_legal_actions(state)
+            action = decide_fn(state, actions)
+            state = E.apply_action(state, action)
+        return None
+    except ValueError as e:
+        return (f"That plan isn't legal: {e}. Some cards (like a Warrior's Execute) are only "
+                f"playable once the mob is low enough -- try a different order.")
+
+
+def _outcome_message(kind, result):
+    outcome = result.get("outcome")
+    mob = result.get("mob_name", "the foe")
+    if outcome == "win":
+        return f"Victory over {mob}! +1 Gold."
+    if outcome == "flee":
+        return f"Survived but didn't finish off {mob} -- no loot this time."
+    if outcome == "no_room":
+        return f"Won against {mob}, but your Bag has no room -- loot lost!"
+    if outcome == "died":
+        return f"You fell to {mob}..."
+    return f"Outcome: {outcome}"
+
+
+# ---------------------------------------------------------------------------
+# Setup
+# ---------------------------------------------------------------------------
+
+@app.route("/")
+def index():
+    reset_session()
+    return render_template("setup.html", classes=list(M.CARD_SOURCE.keys()))
+
+
+def _new_hero(class_name, rng):
+    mod = M.CARD_SOURCE[class_name]
+    max_hp = float(getattr(mod, M.HP_ATTR[class_name]))
+    hero = HeroBoardState(class_name=class_name, hp=max_hp, max_hp=max_hp, position=(1, "town"),
+                           bag=[None] * M.BAG_SIZE, locked=[False] * M.BAG_SIZE)
+    hero.bag[0] = "food"
+    if class_name in M.LEVEL2_PURCHASED_ORDER:
+        hero.skill_purchase_order = list(range(len(M.LEVEL2_PURCHASED_ORDER[class_name])))
+        rng.shuffle(hero.skill_purchase_order)
+    return hero
+
+
+@app.route("/start", methods=["POST"])
+def start():
+    reset_session()
+    class_name = request.form.get("class_name")
+    seed_raw = request.form.get("seed", "").strip()
+    seed = int(seed_raw) if seed_raw else None
+    rng = random.Random(seed)
+
+    hero = _new_hero(class_name, rng)
+    purchase_queues = {0: M._build_purchase_queue(class_name, 0)}
+    level_decks = {1: B.LevelDeck.new(1, rng), 2: B.LevelDeck.new(2, rng)}
+    board = B.BoardState(mode="solo", heroes=[hero], zones={}, level_decks=level_decks)
+
+    _S.update(mode="solo", board=board, class_names={0: class_name}, controllers={0: "human"},
+              purchase_queues=purchase_queues, rng=rng, phase="town", town_entered=False,
+              active_hero_idx=0)
+    return redirect(url_for("town"))
+
+
+# ---------------------------------------------------------------------------
+# Town
+# ---------------------------------------------------------------------------
+
+@app.route("/town")
+def town():
+    if _S["board"] is None:
+        return redirect(url_for("index"))
+    hero = _S["board"].heroes[0]
+    class_name = _S["class_names"][0]
+    if not _S["town_entered"]:
+        setup = BE.enter_town(hero, class_name, _S["strategy"], _S["rng"])
+        if setup["quests_completed"]:
+            _flash(f"Turned in {setup['quests_completed']} quest(s).")
+        if setup["mandatory_turn"]:
+            _flash("You've been granted your mandatory Level 2 upgrade!")
+        _S["town_entered"] = True
+    actions = BE.get_town_actions(hero, _S["purchase_queues"][0])
+    return render_template("town.html", hero=hero, actions=list(enumerate(actions)),
+                            flash=_pop_flash())
+
+
+@app.route("/town/action", methods=["POST"])
+def town_action():
+    if _S["board"] is None:
+        return redirect(url_for("index"))
+    hero = _S["board"].heroes[0]
+    actions = BE.get_town_actions(hero, _S["purchase_queues"][0])
+    idx = int(request.form.get("idx", -1))
+    if not (0 <= idx < len(actions)):
+        return redirect(url_for("town"))
+    action = actions[idx]
+    still_in_town = BE.apply_town_action(hero, action, _S["purchase_queues"][0])
+    if not still_in_town:
+        _S["town_entered"] = False
+        if hero.corpse_node is not None:
+            return redirect(url_for("recovery_intro"))
+        _S["phase"] = "travel"
+        return redirect(url_for("travel"))
+    return redirect(url_for("town"))
+
+
+# ---------------------------------------------------------------------------
+# Recovery (forced first action of a trip when hero.corpse_node is set)
+# ---------------------------------------------------------------------------
+
+@app.route("/recovery")
+def recovery_intro():
+    """Determines the forced recovery target and either goes straight to combat_plan (Node
+    case -- mob's already known, no choice) or to scouted_pick (Border case -- gets the same
+    reveal-2-pick-1 treatment an ordinary crossing does, rather than the AI-automatic path's
+    auto-pick, since a human recovering their corpse is still a human making a real choice)."""
+    hero = _S["board"].heroes[0]
+    class_name = _S["class_names"][0]
+    board = _S["board"]
+    rng = _S["rng"]
+    corpse = hero.corpse_node
+    if corpse is None:
+        return redirect(url_for("travel"))
+
+    if corpse.startswith("border:"):
+        _, border_name, _origin_zone, target_zone_s = corpse.split(":")
+        target_zone = int(target_zone_s)
+        level_deck = board.level_decks[BE.TIER_TO_LEVEL[M.ZONE_TIER[target_zone]]]
+        candidates = BE.reveal_scouted_pull_candidates(level_deck, rng)
+        _S["pending_kind"] = "recovery_border"
+        _S["pending_border"] = dict(candidates=candidates, border_name=border_name, target_zone=target_zone)
+        _S["phase"] = "scouted_pick"
+        return redirect(url_for("scouted_pick"))
+
+    node_name = corpse
+    zone_id = M.NODE_ZONE[node_name]
+    level = BE.TIER_TO_LEVEL[M.ZONE_TIER[zone_id]]
+    node_names = BE._nodes_in_zone(zone_id)
+    B.deal_zone(board, zone_id, level, node_names, rng)
+    mob_name = board.zones[zone_id].dealt[node_name]
+    mod = M.CARD_SOURCE[class_name]
+    hand = rng.choice(mod.ALL_HANDS)
+    _S["pending_kind"] = "recovery_node"
+    _S["pending_action"] = {"node_name": node_name, "mob_name": mob_name}
+    _S["pending_hand"] = hand
+    _S["phase"] = "combat_plan"
+    return redirect(url_for("combat_plan"))
+
+
+# ---------------------------------------------------------------------------
+# Travel
+# ---------------------------------------------------------------------------
+
+@app.route("/travel")
+def travel():
+    if _S["board"] is None:
+        return redirect(url_for("index"))
+    hero = _S["board"].heroes[0]
+    actions = BE.get_travel_actions(hero, _S["board"], _S["rng"])
+    return render_template("travel.html", hero=hero, actions=list(enumerate(actions)),
+                            flash=_pop_flash())
+
+
+@app.route("/travel/action", methods=["POST"])
+def travel_action():
+    hero = _S["board"].heroes[0]
+    class_name = _S["class_names"][0]
+    board = _S["board"]
+    rng = _S["rng"]
+    actions = BE.get_travel_actions(hero, board, rng)
+    idx = int(request.form.get("idx", -1))
+    if not (0 <= idx < len(actions)):
+        return redirect(url_for("travel"))
+    action = actions[idx]
+
+    if action["type"] == "declare_node":
+        mod = M.CARD_SOURCE[class_name]
+        hand = rng.choice(mod.ALL_HANDS)
+        _S["pending_kind"] = "declare"
+        _S["pending_action"] = action
+        _S["pending_hand"] = hand
+        _S["phase"] = "combat_plan"
+        return redirect(url_for("combat_plan"))
+
+    if action["type"] == "cross_border":
+        result = BE.apply_travel_action(hero, action, class_name, board, rng,
+                                         M.RISK_TOLERANCE_BASE, True)
+        _S["pending_kind"] = "cross_border"
+        _S["pending_border"] = dict(candidates=result["candidates"], border_name=result["border_name"],
+                                     target_zone=result["target_zone"])
+        _S["phase"] = "scouted_pick"
+        return redirect(url_for("scouted_pick"))
+
+    if action["type"] == "return_to_town":
+        BE.apply_travel_action(hero, action, class_name, board, rng, M.RISK_TOLERANCE_BASE, True)
+        _S["phase"] = "town"
+        return redirect(url_for("town"))
+
+    # use_food / use_potion / use_scroll / use_smoke_bomb / flight_path / enter_zone --
+    # no combat, resolves in one shot.
+    result = BE.apply_travel_action(hero, action, class_name, board, rng, M.RISK_TOLERANCE_BASE, True)
+    if result.get("outcome") in ("win", "flee", "no_room"):
+        _flash(_outcome_message("instant", result))
+    elif result.get("outcome") == "healed":
+        _flash(f"HP now {hero.hp:.0f}/{hero.max_hp:.0f}.")
+    return redirect(url_for("travel"))
+
+
+# ---------------------------------------------------------------------------
+# Scouted Pull reveal-and-pick (ordinary crossing OR a Border-shaped recovery)
+# ---------------------------------------------------------------------------
+
+@app.route("/scouted_pick")
+def scouted_pick():
+    if _S["pending_border"] is None:
+        return redirect(url_for("travel"))
+    return render_template("scouted_pick.html", candidates=_S["pending_border"]["candidates"])
+
+
+@app.route("/scouted_pick/choose", methods=["POST"])
+def scouted_pick_choose():
+    hero = _S["board"].heroes[0]
+    class_name = _S["class_names"][0]
+    pick = request.form.get("pick")
+    candidates = _S["pending_border"]["candidates"]
+    mob_name = candidates[0] if pick == "0" else candidates[1]
+
+    mod = M.CARD_SOURCE[class_name]
+    hand = _S["rng"].choice(mod.ALL_HANDS)
+    _S["pending_action"] = dict(_S["pending_border"], mob_name=mob_name)
+    _S["pending_hand"] = hand
+    _S["phase"] = "combat_plan"
+    return redirect(url_for("combat_plan"))
+
+
+# ---------------------------------------------------------------------------
+# Combat plan -- one page, whole-hand submission
+# ---------------------------------------------------------------------------
+
+@app.route("/combat_plan")
+def combat_plan():
+    hero = _S["board"].heroes[0]
+    class_name = _S["class_names"][0]
+    hand = _S["pending_hand"]
+    mob_name = _S["pending_action"]["mob_name"]
+    pattern, mob_hp = M._pattern_hp_for_mob(class_name, mob_name)
+    return render_template(
+        "combat_plan.html", class_name=class_name, mob_name=mob_name,
+        pattern=list(enumerate(pattern)), mob_hp=mob_hp, hero=hero,
+        hand_options=_hand_options(class_name, hand), has_stance=M.HAS_STANCE[class_name],
+        pending_kind=_S["pending_kind"], flash=_pop_flash(),
+    )
+
+
+@app.route("/combat_plan/submit", methods=["POST"])
+def combat_plan_submit():
+    hero = _S["board"].heroes[0]
+    class_name = _S["class_names"][0]
+    board = _S["board"]
+    rng = _S["rng"]
+    hand = _S["pending_hand"]
+    kind = _S["pending_kind"]
+    pending = _S["pending_action"]
+
+    sequence, stance_sequence, error = _parse_combat_plan(request.form, class_name, hand)
+    if error is None:
+        error = _validate_sequence(class_name, hand, pending["mob_name"], hero.hp, sequence, stance_sequence)
+    if error:
+        _flash(error)
+        return redirect(url_for("combat_plan"))
+    decide_fn = make_sequence_decide_fn(sequence, stance_sequence)
+
+    if kind == "declare":
+        result = BE.apply_travel_action(hero, pending, class_name, board, rng,
+                                         M.RISK_TOLERANCE_BASE, True, decide_fn=decide_fn, hand=hand)
+    elif kind == "cross_border":
+        result = BE.resolve_border_crossing(hero, class_name, pending["border_name"], pending["target_zone"],
+                                             pending["mob_name"], rng, M.RISK_TOLERANCE_BASE, True,
+                                             decide_fn=decide_fn, hand=hand)
+    elif kind == "recovery_node":
+        quest_pool = _current_quest_pool(hero)
+        zone_id = M.NODE_ZONE[pending["node_name"]]
+        level = BE.TIER_TO_LEVEL[M.ZONE_TIER[zone_id]]
+        result = BE.resolve_node_pull(hero, class_name, pending["node_name"], pending["mob_name"], quest_pool,
+                                       rng, M.RISK_TOLERANCE, M.RISK_TOLERANCE_BASE, True,
+                                       suppress_loot=True, decide_fn=decide_fn, hand=hand)
+        B.discard_zone(board, zone_id, level)
+        if result.get("outcome") != "died":
+            hero.corpse_node = None
+    else:  # recovery_border
+        result = BE.resolve_border_crossing(hero, class_name, pending["border_name"], pending["target_zone"],
+                                             pending["mob_name"], rng, M.RISK_TOLERANCE_BASE, True,
+                                             decide_fn=decide_fn, hand=hand)
+        if result.get("outcome") != "died":
+            hero.corpse_node = None
+
+    _S["pending_kind"] = None
+    _S["pending_action"] = None
+    _S["pending_hand"] = None
+    _S["pending_border"] = None
+
+    if result.get("outcome") == "died":
+        death_node = result.get("death_marker", pending.get("node_name") if pending else None)
+        BE.apply_death_post_processing(hero, _current_quest_pool(hero), death_node)
+        _flash(_outcome_message(kind, result))
+        _S["phase"] = "town"
+        return redirect(url_for("town"))
+
+    if kind in ("recovery_node", "recovery_border"):
+        hero.alive = True
+        _flash("You've recovered your gear.")
+    _flash(_outcome_message(kind, result))
+    _S["phase"] = "travel"
+    return redirect(url_for("travel"))
+
+
+# ---------------------------------------------------------------------------
+# Competitive mode -- N=2-4 heroes, any human/AI mix, sequential turns on one shared screen
+# ---------------------------------------------------------------------------
+#
+# State machine (mirrors playtest_board_cli.py's play_competitive, but each "pause point" is
+# its own page instead of a blocking input()):
+#   cmp_town      -> per-hero Town visit for whichever human is next in cmp_town_pending
+#   cmp_declare   -> per-hero Travel declaration for whichever human is next in cmp_declare_order
+#   cmp_scouted_pick / cmp_combat_plan -> a human's resolve-time reveal/plan, keyed by whichever
+#                     hero_idx is next in cmp_resolve_order
+#   cmp_round_result -> summary once every hero has been resolved this round
+# AI-controlled heroes never get a page -- every AI step resolves instantly inline wherever the
+# state machine reaches it, exactly like the CLI's controllers[hero_idx] == "ai" branches.
+
+def _cmp_label(hero_idx):
+    return _S["labels"][hero_idx]
+
+
+@app.route("/party")
+def party_setup():
+    reset_session()
+    return render_template("party_setup.html", classes=list(M.CARD_SOURCE.keys()))
+
+
+@app.route("/party/start", methods=["POST"])
+def party_start():
+    reset_session()
+    specs = []
+    for n in range(4):
+        class_name = request.form.get(f"class_{n}", "")
+        if not class_name:
+            continue
+        controller = request.form.get(f"controller_{n}", "ai")
+        specs.append((class_name, controller))
+    if not 2 <= len(specs) <= 4:
+        return render_template("party_setup.html", classes=list(M.CARD_SOURCE.keys()),
+                                error="Pick 2-4 heroes.")
+
+    seed_raw = request.form.get("seed", "").strip()
+    seed = int(seed_raw) if seed_raw else None
+    rng = random.Random(seed)
+
+    heroes = [_new_hero(class_name, rng) for class_name, _ctrl in specs]
+    class_names = {i: c for i, (c, _ctrl) in enumerate(specs)}
+    controllers = {i: ctrl for i, (_c, ctrl) in enumerate(specs)}
+    labels = {i: f"Player {i + 1} ({c.title()}, {ctrl})" for i, (c, ctrl) in enumerate(specs)}
+    purchase_queues = {i: M._build_purchase_queue(class_names[i], 0) for i in range(len(specs))}
+    level_decks = {1: B.LevelDeck.new(1, rng), 2: B.LevelDeck.new(2, rng)}
+    board = B.BoardState(mode="competitive", heroes=heroes, zones={}, level_decks=level_decks)
+
+    _S.update(mode="competitive", board=board, class_names=class_names, controllers=controllers,
+              labels=labels, purchase_queues=purchase_queues, rng=rng,
+              human_count=sum(1 for c in controllers.values() if c == "human"), round_num=0)
+    return _cmp_begin_round()
+
+
+def _cmp_begin_round():
+    """Start-of-round: resolve every AI hero's Town visit instantly, queue up humans still
+    standing in Town. Mirrors run_competitive_chain's own Town-phase loop (per-hero,
+    independent, never contested) but splits out human turns into real pages."""
+    _S["round_num"] += 1
+    board = _S["board"]
+    town_pending = []
+    for hero_idx, hero in enumerate(board.heroes):
+        if hero.position[1] != "town":
+            continue
+        if _S["controllers"][hero_idx] == "ai":
+            BE.enter_town(hero, _S["class_names"][hero_idx], _S["strategy"], _S["rng"])
+            while True:
+                actions = BE.get_town_actions(hero, _S["purchase_queues"][hero_idx])
+                buyable = next((a for a in actions if a["type"] == "buy"), None)
+                chosen = buyable if buyable else next(a for a in actions if a["type"] == "leave_town")
+                if not BE.apply_town_action(hero, chosen, _S["purchase_queues"][hero_idx]):
+                    break
+        else:
+            town_pending.append(hero_idx)
+    _S["cmp_town_pending"] = town_pending
+    _S["cmp_town_entered"] = {}
+    return _cmp_after_town()
+
+
+def _cmp_after_town():
+    if _S["cmp_town_pending"]:
+        hero_idx = _S["cmp_town_pending"][0]
+        _S["active_hero_idx"] = hero_idx
+        _S["phase"] = "cmp_town"
+        return redirect(url_for("cmp_town"))
+    return _cmp_begin_declare()
+
+
+@app.route("/cmp/town")
+def cmp_town():
+    hero_idx = _S["active_hero_idx"]
+    hero = _S["board"].heroes[hero_idx]
+    if not _S["cmp_town_entered"].get(hero_idx):
+        setup = BE.enter_town(hero, _S["class_names"][hero_idx], _S["strategy"], _S["rng"])
+        if setup["quests_completed"]:
+            _flash(f"Turned in {setup['quests_completed']} quest(s).")
+        if setup["mandatory_turn"]:
+            _flash("You've been granted your mandatory Level 2 upgrade!")
+        _S["cmp_town_entered"][hero_idx] = True
+    actions = BE.get_town_actions(hero, _S["purchase_queues"][hero_idx])
+    return render_template("town.html", hero=hero, actions=list(enumerate(actions)), flash=_pop_flash(),
+                            turn_label=_cmp_label(hero_idx), action_url=url_for("cmp_town_action"))
+
+
+@app.route("/cmp/town/action", methods=["POST"])
+def cmp_town_action():
+    hero_idx = _S["active_hero_idx"]
+    hero = _S["board"].heroes[hero_idx]
+    actions = BE.get_town_actions(hero, _S["purchase_queues"][hero_idx])
+    idx = int(request.form.get("idx", -1))
+    if not (0 <= idx < len(actions)):
+        return redirect(url_for("cmp_town"))
+    still_in_town = BE.apply_town_action(hero, actions[idx], _S["purchase_queues"][hero_idx])
+    if not still_in_town:
+        _S["cmp_town_pending"].pop(0)
+        return _cmp_after_town()
+    return redirect(url_for("cmp_town"))
+
+
+def _cmp_begin_declare():
+    """Every field hero (not in Town) submits one Travel declaration this round, in priority-
+    token order -- AI resolves instantly via the SAME board_engine._choose_field_action the CLI
+    and run_competitive_chain both already use; a human pauses on cmp_declare. Non-field heroes
+    submit a harmless return_to_town no-op (matches advance_board's own contract: every hero in
+    board.heroes needs an entry, not just field-active ones)."""
+    board = _S["board"]
+    field_idxs = [i for i, h in enumerate(board.heroes) if h.position[1] != "town"]
+    _S["cmp_field_idxs"] = field_idxs
+    _S["cmp_quest_pools"] = {i: _current_quest_pool(board.heroes[i]) for i in field_idxs}
+    _S["cmp_claimed_this_round"] = set()
+    order = BE._priority_order(board)
+    _S["cmp_declare_order"] = [i for i in order if i in field_idxs]
+    for hero_idx in range(len(board.heroes)):
+        if hero_idx not in field_idxs:
+            BE.declare_for_hero(board, hero_idx, {"type": "return_to_town"})
+    return _cmp_process_declare_queue()
+
+
+def _cmp_process_declare_queue():
+    board = _S["board"]
+    rng = _S["rng"]
+    while _S["cmp_declare_order"]:
+        hero_idx = _S["cmp_declare_order"][0]
+        if _S["controllers"][hero_idx] == "ai":
+            action = BE._choose_field_action(hero_idx, board, _S["class_names"], _S["cmp_quest_pools"],
+                                              rng, _S["cmp_claimed_this_round"])
+            if action["type"] == "declare_node":
+                _S["cmp_claimed_this_round"].add(action["node_name"])
+            BE.declare_for_hero(board, hero_idx, action)
+            _S["cmp_declare_order"].pop(0)
+            continue
+        _S["active_hero_idx"] = hero_idx
+        _S["phase"] = "cmp_declare"
+        return redirect(url_for("cmp_declare"))
+    return _cmp_begin_resolve()
+
+
+@app.route("/cmp/declare")
+def cmp_declare():
+    hero_idx = _S["active_hero_idx"]
+    hero = _S["board"].heroes[hero_idx]
+    actions = BE.get_travel_actions(hero, _S["board"], _S["rng"])
+    return render_template(
+        "travel.html", hero=hero, actions=list(enumerate(actions)), flash=_pop_flash(),
+        turn_label=_cmp_label(hero_idx), action_url=url_for("cmp_declare_action"),
+        declare_note="Declare your target for this round -- everyone's declarations resolve "
+                     "together once all heroes have chosen.",
+    )
+
+
+@app.route("/cmp/declare/action", methods=["POST"])
+def cmp_declare_action():
+    hero_idx = _S["active_hero_idx"]
+    board = _S["board"]
+    hero = board.heroes[hero_idx]
+    actions = BE.get_travel_actions(hero, board, _S["rng"])
+    idx = int(request.form.get("idx", -1))
+    if not (0 <= idx < len(actions)):
+        return redirect(url_for("cmp_declare"))
+    action = actions[idx]
+    if action["type"] == "declare_node":
+        _S["cmp_claimed_this_round"].add(action["node_name"])
+    BE.declare_for_hero(board, hero_idx, action)
+    _S["cmp_declare_order"].pop(0)
+    return _cmp_process_declare_queue()
+
+
+def _cmp_begin_resolve():
+    """Once every hero has declared, resolve contested Nodes ONCE (BE._resolve_contested_
+    declarations -- task #79, exactly so this doesn't redraw blind-redraw cards twice), then
+    resolve each hero's action. AI resolves instantly; a human whose action needs combat
+    (declare_node, or cross_border after its own reveal) pauses on cmp_scouted_pick/
+    cmp_combat_plan with their FINAL (post-redraw) mob already known."""
+    board = _S["board"]
+    rng = _S["rng"]
+    _S["cmp_declarations_resolved"] = BE._resolve_contested_declarations(board, rng)
+    _S["cmp_resolve_order"] = list(_S["cmp_field_idxs"])
+    _S["cmp_results"] = {}
+    _S["cmp_touched_zones"] = set()
+    return _cmp_process_resolve_queue()
+
+
+def _cmp_process_resolve_queue():
+    board = _S["board"]
+    rng = _S["rng"]
+    class_names = _S["class_names"]
+    while _S["cmp_resolve_order"]:
+        hero_idx = _S["cmp_resolve_order"][0]
+        hero = board.heroes[hero_idx]
+        action = _S["cmp_declarations_resolved"][hero_idx]
+        zone_or_border, _node = hero.position
+        if isinstance(zone_or_border, int) and action["type"] in ("declare_node", "use_scroll", "use_smoke_bomb"):
+            _S["cmp_touched_zones"].add((zone_or_border, BE.TIER_TO_LEVEL[M.ZONE_TIER[zone_or_border]]))
+
+        if _S["controllers"][hero_idx] == "ai" or action["type"] not in ("declare_node", "cross_border"):
+            result = BE.apply_travel_action(hero, action, class_names[hero_idx], board, rng,
+                                             M.RISK_TOLERANCE_BASE, True, defer_zone_discard=True)
+            if result.get("outcome") == "scouted_pull_reveal":
+                picked = rng.choice(result["candidates"])
+                result = BE.resolve_border_crossing(hero, class_names[hero_idx], result["border_name"],
+                                                      result["target_zone"], picked, rng,
+                                                      M.RISK_TOLERANCE_BASE, True)
+            if result.get("outcome") == "died":
+                BE.apply_competitive_death_post_processing(hero, _S["cmp_quest_pools"][hero_idx])
+            _S["cmp_results"][hero_idx] = result
+            _S["cmp_resolve_order"].pop(0)
+            continue
+
+        # human, needs a page
+        _S["active_hero_idx"] = hero_idx
+        if action["type"] == "cross_border":
+            level_deck = board.level_decks[BE.TIER_TO_LEVEL[M.ZONE_TIER[action["target_zone"]]]]
+            candidates = BE.reveal_scouted_pull_candidates(level_deck, rng)
+            _S["pending_kind"] = "cmp_cross_border"
+            _S["pending_border"] = dict(candidates=candidates, border_name=action["border_name"],
+                                         target_zone=action["target_zone"])
+            _S["phase"] = "cmp_scouted_pick"
+            return redirect(url_for("cmp_scouted_pick"))
+
+        mod = M.CARD_SOURCE[class_names[hero_idx]]
+        hand = rng.choice(mod.ALL_HANDS)
+        _S["pending_kind"] = "cmp_declare_node"
+        _S["pending_action"] = action
+        _S["pending_hand"] = hand
+        _S["phase"] = "cmp_combat_plan"
+        return redirect(url_for("cmp_combat_plan"))
+    return _cmp_round_done()
+
+
+@app.route("/cmp/scouted_pick")
+def cmp_scouted_pick():
+    hero_idx = _S["active_hero_idx"]
+    return render_template("scouted_pick.html", candidates=_S["pending_border"]["candidates"],
+                            turn_label=_cmp_label(hero_idx), action_url=url_for("cmp_scouted_pick_choose"))
+
+
+@app.route("/cmp/scouted_pick/choose", methods=["POST"])
+def cmp_scouted_pick_choose():
+    hero_idx = _S["active_hero_idx"]
+    class_name = _S["class_names"][hero_idx]
+    pick = request.form.get("pick")
+    candidates = _S["pending_border"]["candidates"]
+    mob_name = candidates[0] if pick == "0" else candidates[1]
+
+    mod = M.CARD_SOURCE[class_name]
+    hand = _S["rng"].choice(mod.ALL_HANDS)
+    _S["pending_action"] = dict(_S["pending_border"], mob_name=mob_name)
+    _S["pending_hand"] = hand
+    _S["phase"] = "cmp_combat_plan"
+    return redirect(url_for("cmp_combat_plan"))
+
+
+@app.route("/cmp/combat_plan")
+def cmp_combat_plan():
+    hero_idx = _S["active_hero_idx"]
+    hero = _S["board"].heroes[hero_idx]
+    class_name = _S["class_names"][hero_idx]
+    hand = _S["pending_hand"]
+    mob_name = _S["pending_action"]["mob_name"]
+    pattern, mob_hp = M._pattern_hp_for_mob(class_name, mob_name)
+    return render_template(
+        "combat_plan.html", class_name=class_name, mob_name=mob_name,
+        pattern=list(enumerate(pattern)), mob_hp=mob_hp, hero=hero,
+        hand_options=_hand_options(class_name, hand), has_stance=M.HAS_STANCE[class_name],
+        pending_kind=_S["pending_kind"], flash=_pop_flash(),
+        turn_label=_cmp_label(hero_idx), action_url=url_for("cmp_combat_plan_submit"),
+    )
+
+
+@app.route("/cmp/combat_plan/submit", methods=["POST"])
+def cmp_combat_plan_submit():
+    hero_idx = _S["active_hero_idx"]
+    hero = _S["board"].heroes[hero_idx]
+    class_name = _S["class_names"][hero_idx]
+    board = _S["board"]
+    rng = _S["rng"]
+    hand = _S["pending_hand"]
+    kind = _S["pending_kind"]
+    pending = _S["pending_action"]
+
+    sequence, stance_sequence, error = _parse_combat_plan(request.form, class_name, hand)
+    if error is None:
+        error = _validate_sequence(class_name, hand, pending["mob_name"], hero.hp, sequence, stance_sequence)
+    if error:
+        _flash(error)
+        return redirect(url_for("cmp_combat_plan"))
+    decide_fn = make_sequence_decide_fn(sequence, stance_sequence)
+
+    if kind == "cmp_declare_node":
+        result = BE.apply_travel_action(hero, pending, class_name, board, rng,
+                                         M.RISK_TOLERANCE_BASE, True, defer_zone_discard=True,
+                                         decide_fn=decide_fn, hand=hand)
+    else:  # cmp_cross_border
+        result = BE.resolve_border_crossing(hero, class_name, pending["border_name"], pending["target_zone"],
+                                             pending["mob_name"], rng, M.RISK_TOLERANCE_BASE, True,
+                                             decide_fn=decide_fn, hand=hand)
+
+    if result.get("outcome") == "died":
+        BE.apply_competitive_death_post_processing(hero, _S["cmp_quest_pools"][hero_idx])
+
+    _S["pending_kind"] = None
+    _S["pending_action"] = None
+    _S["pending_hand"] = None
+    _S["pending_border"] = None
+    _S["cmp_results"][hero_idx] = result
+    _S["cmp_resolve_order"].pop(0)
+    return _cmp_process_resolve_queue()
+
+
+def _cmp_round_done():
+    board = _S["board"]
+    for zone_id, level in _S["cmp_touched_zones"]:
+        B.discard_zone(board, zone_id, level)
+    board.priority_token_holder = (board.priority_token_holder + 1) % len(board.heroes)
+    board.pending_declarations.clear()
+    _S["phase"] = "cmp_round_result"
+    return redirect(url_for("cmp_round_result"))
+
+
+@app.route("/cmp/round_result")
+def cmp_round_result():
+    board = _S["board"]
+    rows = []
+    for hero_idx, hero in enumerate(board.heroes):
+        result = _S["cmp_results"].get(hero_idx, {})
+        rows.append(dict(
+            label=_cmp_label(hero_idx), outcome=result.get("outcome", "-"),
+            hp=f"{hero.hp:.0f}/{hero.max_hp:.0f}", gold=hero.gold, xp=hero.xp,
+            position=hero.position[0],
+        ))
+    return render_template("cmp_round_result.html", round_num=_S["round_num"], rows=rows)
+
+
+@app.route("/cmp/round_result/continue", methods=["POST"])
+def cmp_round_result_continue():
+    return _cmp_begin_round()
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--port", type=int, default=5152)
+    parser.add_argument("--localhost", action="store_true", help="Bind to 127.0.0.1 only")
+    args = parser.parse_args()
+    host = "127.0.0.1" if args.localhost else "0.0.0.0"
+    print(f"\n  QUEST board playtest\n  Open http://localhost:{args.port} in your browser\n")
+    app.run(host=host, debug=False, port=args.port)
+
+
+if __name__ == "__main__":
+    main()

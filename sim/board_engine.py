@@ -98,7 +98,7 @@ def choose_node_to_declare(hero, zone_board, quest_pool):
 
 def resolve_node_pull(hero, class_name, node_name, mob_name, quest_pool, rng,
                        risk_tolerance, risk_tolerance_base, risk_only_as_last_resort,
-                       suppress_loot=False, decide_fn=None):
+                       suppress_loot=False, decide_fn=None, hand=None):
     """Resolves one declared Node pull for a single hero -- faithful port of run_one_trip's own
     per-pull block: fluid risk-tolerance gate (higher tolerance only when this pull, if won,
     would complete the quest being pursued), consumable use if the gate trips, the actual pull
@@ -117,7 +117,9 @@ def resolve_node_pull(hero, class_name, node_name, mob_name, quest_pool, rng,
     decide_fn (checkpointed 2026-08-23): passed straight through to _pull_and_resolve --
     None (every existing caller) keeps the pull solver-automatic; a human-facing driver
     supplies its own terminal-input callback instead. Purely additive, see _pull_and_resolve's
-    own docstring."""
+    own docstring. hand: same passthrough, see _pull_and_resolve's own docstring for why a
+    web-facing caller needs to pre-draw and reuse a specific hand rather than let this function
+    draw its own."""
     mod = M.CARD_SOURCE[class_name]
     has_stance = M.HAS_STANCE[class_name]
     tier, loot_name = M.NODES[node_name]
@@ -175,10 +177,11 @@ def resolve_node_pull(hero, class_name, node_name, mob_name, quest_pool, rng,
                 return {"outcome": "declined", "mob_name": mob_name}
 
         return _pull_and_resolve(hero, class_name, mod, mob_name, loot_name, rng, suppress_loot,
-                                  decide_fn=decide_fn)
+                                  decide_fn=decide_fn, hand=hand)
 
 
-def _pull_and_resolve(hero, class_name, mod, mob_name, loot_name, rng, suppress_loot, decide_fn=None):
+def _pull_and_resolve(hero, class_name, mod, mob_name, loot_name, rng, suppress_loot, decide_fn=None,
+                       hand=None):
     """Shared tail of resolve_node_pull and commit_node_pull -- draws a hand, runs the actual
     combat_engine pull, and resolves win/loss/loot bookkeeping. Must be called from inside an
     already-open LV.leveled_kit(...) scope (both callers open one for their own risk-gate/
@@ -193,9 +196,17 @@ def _pull_and_resolve(hero, class_name, mod, mob_name, loot_name, rng, suppress_
     death) changes either way -- decide_fn only ever affects WHICH cards get played, never
     what happens as a result of the outcome.
 
+    hand (checkpointed 2026-08-23, web-UI slice): optional pre-drawn hand tuple, skipping the
+    rng.choice(mod.ALL_HANDS) draw below -- None (every existing caller) is unchanged. Exists
+    for a driver that needs to SHOW the hand to a human before resolving the pull (a terminal
+    can just print-then-resolve in the same blocking call, but a web request/response can't --
+    the route has to draw the hand, render it, then use that SAME hand once the human's full
+    card-order submission comes back in a later request, not draw a second, different hand).
+
     Mutates hero in place. Returns {"outcome": "win"/"flee"/"died"/"no_room", "mob_name": ...}."""
     pattern, mob_hp = M._pattern_hp_for_mob(class_name, mob_name)
-    hand = rng.choice(mod.ALL_HANDS)
+    if hand is None:
+        hand = rng.choice(mod.ALL_HANDS)
     win, final_hp, final_rounds = M._engine_pull(class_name, mob_name, hand, pattern, mob_hp, hero.hp,
                                                   decide_fn=decide_fn)
     hero.hp = final_hp
@@ -225,7 +236,8 @@ def _pull_and_resolve(hero, class_name, mod, mob_name, loot_name, rng, suppress_
     return {"outcome": "flee", "mob_name": mob_name}
 
 
-def commit_node_pull(hero, class_name, node_name, mob_name, rng, suppress_loot=False, decide_fn=None):
+def commit_node_pull(hero, class_name, node_name, mob_name, rng, suppress_loot=False, decide_fn=None,
+                      hand=None):
     """Human-facing equivalent of resolve_node_pull, used by apply_travel_action's declare_node
     handling -- checkpointed 2026-08-22 after confirming the shape directly: get_travel_actions
     already shows every dealt Node's mob up front (OPEN_QUESTIONS.md: "what's currently at each
@@ -243,13 +255,14 @@ def commit_node_pull(hero, class_name, node_name, mob_name, rng, suppress_loot=F
 
     decide_fn (checkpointed 2026-08-23): forwarded to _pull_and_resolve unchanged -- None
     keeps this pull solver-automatic; a human-facing driver's own callback plays the hand.
+    hand: same passthrough, see _pull_and_resolve's own docstring.
 
     Mutates hero in place. Returns {"outcome": "win"/"flee"/"died"/"no_room", "mob_name": ...}."""
     mod = M.CARD_SOURCE[class_name]
     _tier, loot_name = M.NODES[node_name]
     with LV.leveled_kit(mod, _level2_swaps_for(class_name, hero.acquired)):
         return _pull_and_resolve(hero, class_name, mod, mob_name, loot_name, rng, suppress_loot,
-                                  decide_fn=decide_fn)
+                                  decide_fn=decide_fn, hand=hand)
 
 
 def commit_scroll_vanquish(hero, node_name, mob_name):
@@ -614,7 +627,7 @@ def get_travel_actions(hero, board, rng):
 
 def apply_travel_action(hero, action, class_name, board, rng,
                          risk_tolerance_base, risk_only_as_last_resort, defer_zone_discard=False,
-                         decide_fn=None):
+                         decide_fn=None, hand=None):
     """Resolves one Travel action from get_travel_actions. declare_node now commits
     unconditionally via commit_node_pull -- no automatic risk-gate or consumable substitution
     (checkpointed 2026-08-22, the Risk-gate slice: see commit_node_pull's own docstring for
@@ -662,7 +675,9 @@ def apply_travel_action(hero, action, class_name, board, rng,
     decide_fn (checkpointed 2026-08-23): forwarded to commit_node_pull for declare_node only
     (the one action type here that actually plays combat cards) -- None keeps the pull
     solver-automatic, matching every existing caller (including advance_board's competitive
-    driver) exactly; a human-facing driver's own callback plays the hand instead. cross_border
+    driver) exactly; a human-facing driver's own callback plays the hand instead. hand: same
+    passthrough, also declare_node-only, see _pull_and_resolve's own docstring for why a web
+    driver needs to pre-draw and reuse a specific hand. cross_border
     never reaches combat here at all (see the outcome-shape docstring above), so decide_fn is
     unused for it -- the caller passes it to resolve_border_crossing separately, after picking
     a candidate from the reveal."""
@@ -670,7 +685,7 @@ def apply_travel_action(hero, action, class_name, board, rng,
         zone_id, _node = hero.position
         level = TIER_TO_LEVEL[M.ZONE_TIER[zone_id]]
         result = commit_node_pull(hero, class_name, action["node_name"], action["mob_name"], rng,
-                                   decide_fn=decide_fn)
+                                   decide_fn=decide_fn, hand=hand)
         if not defer_zone_discard:
             B.discard_zone(board, zone_id, level)
         return result
@@ -783,8 +798,44 @@ def _blind_redraw(board, zone_id, level, rng):
     return card
 
 
+def _resolve_contested_declarations(board, rng):
+    """Extracted 2026-08-23 from advance_board's own inline block (web-UI slice, task #79) --
+    computes this round's final per-hero mob_name assignments (applying blind-redraw to every
+    contested Node's non-first claimant, per OPEN_QUESTIONS.md's locked rule) WITHOUT running
+    any combat or mutating board.pending_declarations. Pure other than the level-deck draws a
+    redraw itself performs (see _blind_redraw's own docstring) -- reads board.pending_declarations,
+    returns a corrected copy.
+
+    Exists as its own callable because a human-facing web driver needs the FINAL mob (post-
+    redraw, if contested) before it can show a human their hand and let them plan a pull --
+    that has to happen strictly BEFORE advance_board's own combat-resolution loop runs, not
+    inside it (a web request/response can't pause mid-loop the way a terminal's blocking input()
+    can). advance_board itself still calls this first thing when its own declarations= isn't
+    given, so every existing AI-only caller (run_competitive_chain, this file's own docstring
+    examples) is completely unaffected -- see advance_board's own docstring for the two-call
+    contract a web driver uses instead."""
+    declarations = dict(board.pending_declarations)
+    node_claims = {}
+    for hero_idx, action in declarations.items():
+        if action["type"] == "declare_node":
+            node_claims.setdefault(action["node_name"], []).append(hero_idx)
+
+    order = _priority_order(board)
+    for node_name, claimants in node_claims.items():
+        if len(claimants) < 2:
+            continue
+        claimants.sort(key=order.index)
+        for hero_idx in claimants[1:]:
+            hero = board.heroes[hero_idx]
+            zone_id, _node = hero.position
+            level = TIER_TO_LEVEL[M.ZONE_TIER[zone_id]]
+            blind_mob = _blind_redraw(board, zone_id, level, rng)
+            declarations[hero_idx] = dict(declarations[hero_idx], mob_name=blind_mob)
+    return declarations
+
+
 def advance_board(board, class_names, rng, risk_tolerance_base, risk_only_as_last_resort,
-                   decide_fns=None):
+                   decide_fns=None, declarations=None):
     """The Move-and-declare barrier's second half -- resolves contested Nodes and every hero's
     declared action once everyone has one (checkpointed 2026-08-23, task #64). Returns None
     if any hero in board.heroes hasn't declared yet ("still waiting," matching the tabletop
@@ -820,6 +871,14 @@ def advance_board(board, class_names, rng, risk_tolerance_base, risk_only_as_las
     AI-controlled hero (including every hero in the existing AI-only run_competitive_chain,
     which never passes this parameter at all) untouched.
 
+    declarations (checkpointed 2026-08-23, task #79): optional pre-resolved dict from
+    _resolve_contested_declarations, skipping this function's own call to it. None (every
+    existing caller) is unchanged -- resolves contested Nodes itself, as always. A web driver
+    calls _resolve_contested_declarations directly FIRST (to learn each human's final,
+    post-redraw mob before asking them to plan a pull), then passes the SAME dict back in here
+    so the blind-redraw math (which draws real cards from the level deck) never runs twice for
+    the same round.
+
     Mutates every declared hero and board in place. Returns {hero_idx: result_dict} (same
     per-action-type shapes apply_travel_action's own docstring already documents), or None if
     still waiting on at least one hero's declaration."""
@@ -827,23 +886,8 @@ def advance_board(board, class_names, rng, risk_tolerance_base, risk_only_as_las
     if len(board.pending_declarations) < len(board.heroes):
         return None
 
-    declarations = dict(board.pending_declarations)
-    node_claims = {}
-    for hero_idx, action in declarations.items():
-        if action["type"] == "declare_node":
-            node_claims.setdefault(action["node_name"], []).append(hero_idx)
-
-    order = _priority_order(board)
-    for node_name, claimants in node_claims.items():
-        if len(claimants) < 2:
-            continue
-        claimants.sort(key=order.index)
-        for hero_idx in claimants[1:]:
-            hero = board.heroes[hero_idx]
-            zone_id, _node = hero.position
-            level = TIER_TO_LEVEL[M.ZONE_TIER[zone_id]]
-            blind_mob = _blind_redraw(board, zone_id, level, rng)
-            declarations[hero_idx] = dict(declarations[hero_idx], mob_name=blind_mob)
+    if declarations is None:
+        declarations = _resolve_contested_declarations(board, rng)
 
     touched_zone_levels = set()
     results = {}
@@ -866,7 +910,7 @@ def advance_board(board, class_names, rng, risk_tolerance_base, risk_only_as_las
 
 
 def resolve_border_crossing(hero, class_name, border_name, target_zone, mob_name, rng,
-                             risk_tolerance_base, risk_only_as_last_resort, decide_fn=None):
+                             risk_tolerance_base, risk_only_as_last_resort, decide_fn=None, hand=None):
     """Resolves one Scouted Pull toll crossing -- faithful port of run_one_trip's own
     _cross_to. mob_name is supplied by the caller, not sourced internally (mirrors
     resolve_node_pull's own shape) -- today's real caller uses macro_sim._scouted_pull_mob
@@ -894,7 +938,8 @@ def resolve_border_crossing(hero, class_name, border_name, target_zone, mob_name
     keeps the crossing's pull solver-automatic; a human-facing driver's own callback plays the
     hand instead. The consumable-substitution/risk-gate logic above this stays automatic
     either way (matches this function's own "no decline path once committed" rule) -- decide_fn
-    only ever governs which cards get played, never whether the crossing is attempted.
+    only ever governs which cards get played, never whether the crossing is attempted. hand:
+    same passthrough, see _pull_and_resolve's own docstring.
 
     Mutates hero in place. Returns a dict: {"outcome": "win"/"flee"/"died", "mob_name": ...,
     "death_marker": ... (died only)}."""
@@ -931,7 +976,8 @@ def resolve_border_crossing(hero, class_name, border_name, target_zone, mob_name
                     hero.consumables_used["potion"] += 1
                     break
 
-        hand = rng.choice(mod.ALL_HANDS)
+        if hand is None:
+            hand = rng.choice(mod.ALL_HANDS)
         win, final_hp, final_rounds = M._engine_pull(class_name, mob_name, hand, pattern, mob_hp, hero.hp,
                                                        decide_fn=decide_fn)
         hero.hp = final_hp
