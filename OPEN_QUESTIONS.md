@@ -4,6 +4,46 @@ Design tensions and undefined interactions flagged before prototyping starts. Mo
 
 ## Unresolved
 
+### Competitive AI: does a hero weigh contested-Node risk before declaring, and against what information?
+
+Raised 2026-08-23, after building the Move-and-declare barrier (`declare_for_hero`/
+`advance_board`, task #64). That barrier is pure resolution machinery — it settles a contest
+once declarations exist, but nothing decides *whether* an AI hero should risk declaring a Node
+that might turn out contested (blind redraw, unpreviewed mob) versus a different Node in the
+same Zone. The existing single-hero AI (`decide_travel`) has zero concept that other heroes
+exist at all, so this isn't a small addition to it — it's a new decision layer.
+
+**What's actually known/computable, not guessed:** a hero's own class's cost%/win% against
+every currently-dealt mob in their Zone (existing diagnostics), whether they hold the priority
+token this round (not hidden — a hero knows this in advance), and which Zone each other hero is
+currently standing in (physical position on a shared board — visible, unlike what they're about
+to declare). What's genuinely uncertain: which specific Node each other present hero will
+declare this round, since Move-and-declare is simultaneous and blind by design.
+
+**Real open sub-questions, not decided here:**
+- **Are other heroes' active quest logs public information at the table, or private to each
+  hero?** This isn't settled anywhere in the docs. It matters a lot: if quest logs are public, a
+  contest-risk model can reason "hero B is 1 loot away from finishing at Node X, they're likely
+  to declare it"; if private, the model can only work off Zone occupancy and generic contest-
+  probability, a much cruder signal.
+- **What value function is being optimized** — expected gold/turn, this-pull win probability, a
+  blend? The solo AI has established diagnostics for the deterministic case; nothing analogous
+  exists yet for "expected value under contest uncertainty."
+- **How is a blind redraw's expected value computed** — averaged over the level deck's full
+  starting composition (a reasonable, tabletop-legible simplification) or its true remaining
+  composition at that moment (more accurate, state-dependent, harder to reason about at a real
+  table)?
+- **Heuristic vs. genuine opponent modeling.** A flat rule ("if 2+ heroes share a Zone and more
+  than one Node serves my active quest, prefer whichever has the better EV against a fixed
+  assumed contest probability") fits this project's stated bias toward simple, tabletop-
+  executable rules over hidden-conditional cleverness (`DESIGN_DOC.md`'s own repeated framing).
+  A fuller Bayesian model of what other AI heroes are likely to do would be more accurate but is
+  a different, much bigger build — needs a real decision, not an assumption either way.
+
+**Blocked on task #65 (drive an actual competitive game through the barrier) existing first** —
+there's nothing to validate a contest-risk heuristic against until multiple AI heroes are
+actually being run through `declare_for_hero`/`advance_board` in a loop.
+
 ### Random-drop rates for the new Bag-slot consumables
 
 Raised 2026-08-22, alongside locking the Gold prices for Scroll of Vanquishing, Smoke Bomb,
