@@ -148,6 +148,14 @@ class BoardState:
     level_decks: dict  # level (1 or 2) -> LevelDeck
     turn_num: int = 0
     priority_token_holder: int = 0  # hero_idx -- competitive/co-op only, unused in solo
+    pending_declarations: dict = field(default_factory=dict)  # hero_idx -> declared action
+    # dict (Travel-seam vocabulary only -- get_travel_actions/apply_travel_action), filled in
+    # one hero at a time via board_engine.declare_for_hero as part of the Move-and-declare
+    # barrier (OPEN_QUESTIONS.md's locked turn-phase order, step 2: "every hero moves and
+    # declares their target node simultaneously"). board_engine.advance_board waits until every
+    # hero in `heroes` has an entry here before resolving anything, competitive N=2-4 only --
+    # solo (one hero) trivially always has exactly one entry, so it resolves every round
+    # immediately, same as calling apply_travel_action directly always did.
 
 
 def deal_zone(state, zone_id, level, node_names, rng):

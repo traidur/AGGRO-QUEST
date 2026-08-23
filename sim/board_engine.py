@@ -564,7 +564,7 @@ def get_travel_actions(hero, board, rng):
 
 
 def apply_travel_action(hero, action, class_name, board, rng,
-                         risk_tolerance_base, risk_only_as_last_resort):
+                         risk_tolerance_base, risk_only_as_last_resort, defer_zone_discard=False):
     """Resolves one Travel action from get_travel_actions. declare_node now commits
     unconditionally via commit_node_pull -- no automatic risk-gate or consumable substitution
     (checkpointed 2026-08-22, the Risk-gate slice: see commit_node_pull's own docstring for
@@ -599,12 +599,21 @@ def apply_travel_action(hero, action, class_name, board, rng,
     A caller should check outcome == "died" the same way run_solo_trip does; a death here
     does NOT do the death/recovery post-processing itself (that lives in run_solo_chain's own
     loop, matching every other resolver's scope boundary -- this function resolves one action,
-    it doesn't own the surrounding chain bookkeeping)."""
+    it doesn't own the surrounding chain bookkeeping).
+
+    defer_zone_discard (checkpointed 2026-08-23, task #64): when True, skips this function's
+    own inline B.discard_zone call for declare_node/use_scroll/use_smoke_bomb -- used by
+    advance_board's multi-hero barrier, where a second hero's pull at the SAME Zone this same
+    round would otherwise get wiped out from under them by the first hero's own per-action
+    discard. The caller (advance_board) is responsible for discarding every touched Zone once,
+    after every hero's declaration this round has resolved. Solo mode never sets this, so its
+    behavior is completely unchanged."""
     if action["type"] == "declare_node":
         zone_id, _node = hero.position
         level = TIER_TO_LEVEL[M.ZONE_TIER[zone_id]]
         result = commit_node_pull(hero, class_name, action["node_name"], action["mob_name"], rng)
-        B.discard_zone(board, zone_id, level)
+        if not defer_zone_discard:
+            B.discard_zone(board, zone_id, level)
         return result
 
     if action["type"] == "cross_border":
@@ -627,7 +636,8 @@ def apply_travel_action(hero, action, class_name, board, rng,
         level = TIER_TO_LEVEL[M.ZONE_TIER[zone_id]]
         M._remove_item(hero.bag, hero.locked, "scroll_of_vanquishing", 1)
         result = commit_scroll_vanquish(hero, action["node_name"], action["mob_name"])
-        B.discard_zone(board, zone_id, level)
+        if not defer_zone_discard:
+            B.discard_zone(board, zone_id, level)
         return result
 
     if action["type"] == "use_smoke_bomb":
@@ -636,7 +646,8 @@ def apply_travel_action(hero, action, class_name, board, rng,
             zone_id, _node = hero.position
             level = TIER_TO_LEVEL[M.ZONE_TIER[zone_id]]
             result = commit_smoke_bomb_flee(hero)
-            B.discard_zone(board, zone_id, level)
+            if not defer_zone_discard:
+                B.discard_zone(board, zone_id, level)
             return result
         return commit_smoke_bomb_flee(hero)
 
@@ -666,6 +677,123 @@ def apply_travel_action(hero, action, class_name, board, rng,
     zone_id = zone_or_border if isinstance(zone_or_border, int) else next(iter(M.BORDER_NODES[zone_or_border]))
     hero.position = (zone_id, "town")
     return {"outcome": "moved"}
+
+
+def declare_for_hero(board, hero_idx, action):
+    """Records hero_idx's chosen Travel action for this round without resolving it -- the
+    Move-and-declare barrier's first half (OPEN_QUESTIONS.md's locked turn-phase order, step 2:
+    "every hero moves and declares their target node simultaneously"), checkpointed 2026-08-23,
+    task #64. Call once per hero per round (get_travel_actions to see the legal menu, pick one,
+    declare_for_hero to submit it); advance_board waits until every hero in board.heroes has an
+    entry here before resolving anything.
+
+    Scope note: only Travel-seam actions (get_travel_actions/apply_travel_action's vocabulary)
+    go through this barrier. Town visits are handled separately, exactly as they already are
+    for solo mode (enter_town + a get_town_actions/apply_town_action loop whenever a hero's
+    position lands on "town") -- Town "has unlimited capacity and is never contested... it's a
+    hub, not a fight" (board_state.py's own docstring), so it never needs a barrier at all."""
+    board.pending_declarations[hero_idx] = action
+
+
+def _priority_order(board):
+    """Hero indices in this round's priority order, starting from whoever currently holds the
+    token -- "a rotating 'pass the buck' Player-One token that shifts one seat to the left
+    every round, giving a straight 1-2-3 priority count from whoever's holding it that round"
+    (OPEN_QUESTIONS.md, locked, verbatim)."""
+    n = len(board.heroes)
+    return [(board.priority_token_holder + i) % n for i in range(n)]
+
+
+def _blind_redraw(board, zone_id, level, rng):
+    """A contested Node's second-or-later hero (in priority-token order) doesn't get the
+    already-dealt mob -- they draw a fresh, unpreviewed replacement from the level deck
+    instead: "whoever's second (etc.) at that *same* node the *same* round draws a fresh
+    replacement blind -- no preview before committing" (OPEN_QUESTIONS.md, locked, verbatim) --
+    the one deliberate hidden-information exception in this whole project. Does NOT touch
+    board.zones[zone_id].dealt -- this is a personal draw for one hero's own pull, not a change
+    to the shared board state the winning hero (who keeps the original dealt card) still needs
+    to see. Discards the drawn card immediately, same convention as deal_zone/
+    scouted_pull_from_deck -- it's a one-off personal draw, never placed on the shared board, so
+    nothing else would ever sweep it into discard otherwise."""
+    deck = board.level_decks[level]
+    card = deck.draw(rng)
+    while B.is_spice(card):
+        deck.discard(card)
+        card = deck.draw(rng)
+    deck.discard(card)
+    return card
+
+
+def advance_board(board, class_names, rng, risk_tolerance_base, risk_only_as_last_resort):
+    """The Move-and-declare barrier's second half -- resolves contested Nodes and every hero's
+    declared action once everyone has one (checkpointed 2026-08-23, task #64). Returns None
+    if any hero in board.heroes hasn't declared yet ("still waiting," matching the tabletop
+    reality that a real round can't resolve until every player has chosen). Once complete:
+
+    1. Groups this round's declare_node declarations by target Node. Any Node claimed by 2+
+       heroes is contested: priority-token order decides who's "first" (sees the already-dealt
+       mob, unchanged) versus every other claimant (gets a fresh blind redraw, see
+       _blind_redraw's own docstring) -- OPEN_QUESTIONS.md's locked rule, step 3.
+    2. Resolves every hero's action via the existing single-hero apply_travel_action, with Zone
+       Discard deferred (defer_zone_discard=True) until every hero touching a given Zone this
+       round has resolved -- doing it per-action the way solo mode always has would wipe a
+       second hero's own still-pending dealt mob out from under them mid-round.
+    3. Discards every Zone any hero declared into this round (end-of-turn cleanup, step 5),
+       advances the priority token one seat, and clears pending_declarations for next round.
+
+    Explicitly NOT handled by this first slice (real, documented gaps, not oversights):
+    simultaneous Border-crossing arrivals at the same border+target_zone this round (Scouted
+    Pull's own multiplayer-contention sub-case isn't fully locked yet -- see
+    unified-sprouting-aurora.md's open question (part of the "Revision" section)); multi-hero
+    corpse recovery/death interaction with this barrier (run_solo_chain's own death
+    post-processing was built and verified for exactly one hero, never re-checked against a
+    barrier where OTHER heroes are still resolving their own turns the same round).
+
+    class_names is a {hero_idx: class_name} dict -- every other resolver in this file only ever
+    handled one hero (and so one class) at a time; this is the first one where different heroes
+    can be different classes within the same call.
+
+    Mutates every declared hero and board in place. Returns {hero_idx: result_dict} (same
+    per-action-type shapes apply_travel_action's own docstring already documents), or None if
+    still waiting on at least one hero's declaration."""
+    if len(board.pending_declarations) < len(board.heroes):
+        return None
+
+    declarations = dict(board.pending_declarations)
+    node_claims = {}
+    for hero_idx, action in declarations.items():
+        if action["type"] == "declare_node":
+            node_claims.setdefault(action["node_name"], []).append(hero_idx)
+
+    order = _priority_order(board)
+    for node_name, claimants in node_claims.items():
+        if len(claimants) < 2:
+            continue
+        claimants.sort(key=order.index)
+        for hero_idx in claimants[1:]:
+            hero = board.heroes[hero_idx]
+            zone_id, _node = hero.position
+            level = TIER_TO_LEVEL[M.ZONE_TIER[zone_id]]
+            blind_mob = _blind_redraw(board, zone_id, level, rng)
+            declarations[hero_idx] = dict(declarations[hero_idx], mob_name=blind_mob)
+
+    touched_zone_levels = set()
+    results = {}
+    for hero_idx, action in declarations.items():
+        hero = board.heroes[hero_idx]
+        zone_or_border, _node = hero.position
+        if isinstance(zone_or_border, int) and action["type"] in ("declare_node", "use_scroll", "use_smoke_bomb"):
+            touched_zone_levels.add((zone_or_border, TIER_TO_LEVEL[M.ZONE_TIER[zone_or_border]]))
+        results[hero_idx] = apply_travel_action(hero, action, class_names[hero_idx], board, rng,
+                                                  risk_tolerance_base, risk_only_as_last_resort,
+                                                  defer_zone_discard=True)
+
+    for zone_id, level in touched_zone_levels:
+        B.discard_zone(board, zone_id, level)
+
+    board.priority_token_holder = (board.priority_token_holder + 1) % len(board.heroes)
+    board.pending_declarations.clear()
+    return results
 
 
 def resolve_border_crossing(hero, class_name, border_name, target_zone, mob_name, rng,
