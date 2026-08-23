@@ -570,14 +570,24 @@ def apply_travel_action(hero, action, class_name, board, rng,
     (checkpointed 2026-08-22, the Risk-gate slice: see commit_node_pull's own docstring for
     why that gate isn't needed once the mob is already visible in this same menu).
     resolve_border_crossing's own risk-gate/consumable logic is UNCHANGED and still automatic
-    for cross_border -- Scouted Pull's own "draw 2, reveal both, hero picks one" tabletop
-    choice is a separate, not-yet-built gap, explicitly out of scope for this slice.
+    once a candidate is chosen -- only WHICH candidate is picked became a real choice
+    (checkpointed 2026-08-23, task #63): cross_border no longer auto-resolves combat, it reveals
+    both real Scouted Pull candidates and lets the caller pick.
 
     Mutates hero and board in place. Returns a dict: {"outcome": str, ...} -- shape depends on
     action type:
       declare_node: whatever commit_node_pull returned ("win"/"flee"/"died"/"no_room"), plus
           the Zone gets Discarded afterward (end-of-turn cleanup, matching run_solo_trip's own).
-      cross_border: whatever resolve_border_crossing returned ("win"/"flee"/"died").
+      cross_border: {"outcome": "scouted_pull_reveal", "candidates": [mob1, mob2],
+          "border_name": ..., "target_zone": ...} -- no combat played yet. The caller picks one
+          of the 2 candidates and calls resolve_border_crossing directly with that mob_name
+          (resolve_border_crossing already takes mob_name as a plain externally-sourced
+          parameter -- no new resolver needed) to actually attempt the crossing and get the
+          real "win"/"flee"/"died" outcome. The crossing itself is already committed to at this
+          point (matching resolve_border_crossing's own "once committed, the pull always
+          happens" rule) -- there's no way to back out AFTER seeing both candidates; a Smoke
+          Bomb bail-out has to be chosen at the ORIGINAL cross_border decision (see
+          get_travel_actions), before this reveal happens, not after.
       flight_path/enter_zone/return_to_town: {"outcome": "moved"} -- no combat, just position
           (and Gold, for flight_path) changes.
       use_food/use_potion: {"outcome": "healed"} -- no position/turn change.
@@ -598,11 +608,10 @@ def apply_travel_action(hero, action, class_name, board, rng,
         return result
 
     if action["type"] == "cross_border":
-        return resolve_border_crossing(hero, class_name, action["border_name"], action["target_zone"],
-                                        scouted_pull_from_deck(class_name,
-                                                                board.level_decks[TIER_TO_LEVEL[M.ZONE_TIER[action["target_zone"]]]],
-                                                                rng),
-                                        rng, risk_tolerance_base, risk_only_as_last_resort)
+        level_deck = board.level_decks[TIER_TO_LEVEL[M.ZONE_TIER[action["target_zone"]]]]
+        candidates = reveal_scouted_pull_candidates(level_deck, rng)
+        return {"outcome": "scouted_pull_reveal", "candidates": candidates,
+                "border_name": action["border_name"], "target_zone": action["target_zone"]}
 
     if action["type"] == "flight_path":
         hero.gold -= action["cost"]
@@ -851,23 +860,54 @@ def _best_scouted_candidate(class_name, candidates):
     return best_mob
 
 
-def scouted_pull_from_deck(class_name, level_deck, rng):
-    """Real Scouted Pull, replacing macro_sim._scouted_pull_mob's independent rng.choices
-    2-draw with an actual draw from the shared level deck -- checkpointed 2026-08-22. Draws
-    until 2 real (non-Spice) mob cards are gathered, discarding every card drawn along the
-    way -- Spice has no combat mechanic yet, so a Spice draw is simply skipped and discarded,
-    not treated as a candidate and not reshuffled back in (matches the locked "cards go to
-    discard" rule; drawing again on a Spice hit was checkpointed directly rather than assumed
-    -- the alternative of treating Spice as an automatic-loss candidate or forcing the OTHER
-    drawn card was considered and rejected). Reveals both real candidates and picks whichever
-    has the lower cost% for this class via _best_scouted_candidate."""
+def _draw_scouted_candidates(level_deck, rng):
+    """Draws until 2 real (non-Spice) mob cards are gathered, discarding every card drawn
+    along the way -- Spice has no combat mechanic yet, so a Spice draw is simply skipped and
+    discarded, not treated as a candidate and not reshuffled back in (matches the locked "cards
+    go to discard" rule; drawing again on a Spice hit was checkpointed directly rather than
+    assumed -- the alternative of treating Spice as an automatic-loss candidate or forcing the
+    OTHER drawn card was considered and rejected). Shared by both the AI-automatic path
+    (scouted_pull_from_deck) and the human-facing one (reveal_scouted_pull_candidates) --
+    the draw/discard mechanics are identical either way; only WHO picks the winner differs."""
     candidates = []
     while len(candidates) < 2:
         card = level_deck.draw(rng)
         level_deck.discard(card)
         if not B.is_spice(card):
             candidates.append(card)
+    return candidates
+
+
+def scouted_pull_from_deck(class_name, level_deck, rng):
+    """Real Scouted Pull, replacing macro_sim._scouted_pull_mob's independent rng.choices
+    2-draw with an actual draw from the shared level deck -- checkpointed 2026-08-22. AI-
+    automatic path only (decide_travel/run_solo_trip) -- picks whichever of the 2 real
+    candidates has the lower cost% for this class via _best_scouted_candidate. See
+    reveal_scouted_pull_candidates for the human-facing equivalent, which exposes both
+    candidates instead of auto-picking (checkpointed 2026-08-23, task #63)."""
+    candidates = _draw_scouted_candidates(level_deck, rng)
     return _best_scouted_candidate(class_name, candidates)
+
+
+def reveal_scouted_pull_candidates(level_deck, rng):
+    """Human-facing equivalent of scouted_pull_from_deck -- checkpointed 2026-08-23 (task #63).
+    Draws and discards the same 2 real candidates via the identical mechanism
+    (_draw_scouted_candidates), but returns BOTH instead of auto-picking one, matching Scouted
+    Pull's own locked tabletop rule ("draw 2, reveal both face-up, the hero chooses which one")
+    -- the AI-automatic path always just picked the statistically safer one, which was never
+    actually a real choice for a human player. Both drawn cards are already discarded by the
+    time this returns (matching the locked "cards go to discard" rule) -- the candidate NOT
+    chosen doesn't get reshuffled back in, there's nothing left to "un-discard" for it.
+
+    Used by apply_travel_action's cross_border handling: it returns a
+    {"outcome": "scouted_pull_reveal", "candidates": [...], ...} dict instead of resolving
+    combat immediately: a caller picks one of the 2 candidates, then calls
+    resolve_border_crossing directly with that chosen mob_name (resolve_border_crossing already
+    takes mob_name as a plain parameter, sourced externally, so no new resolver was needed for
+    the actual combat step -- only the reveal-instead-of-auto-pick step was missing).
+
+    Mutates level_deck (draw + discard). Returns a list of 2 mob names."""
+    return _draw_scouted_candidates(level_deck, rng)
 
 
 def _nodes_in_zone(zone_id):

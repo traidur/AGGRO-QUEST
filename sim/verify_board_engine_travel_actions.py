@@ -142,6 +142,45 @@ def run_direct_checks(verbose=True):
         outcomes_seen.add(result["outcome"])
     check("commit_node_pull never declines", "declined" not in outcomes_seen, outcomes_seen)
 
+    # 10. cross_border reveals 2 real candidates instead of auto-resolving (task #63,
+    # 2026-08-23). Both discarded immediately regardless of which gets chosen.
+    rng_s = random.Random(21)
+    level_decks_s = {1: B.LevelDeck.new(1, rng_s), 2: B.LevelDeck.new(2, rng_s)}
+    board_s = B.BoardState(mode="solo", heroes=[], zones={}, level_decks=level_decks_s)
+    hero11 = HeroBoardState(class_name="warrior", hp=18.0, max_hp=18.0, position=(1, None),
+                             bag=[None, None], locked=[False, False], gold=0)
+    discard_before = list(level_decks_s[1].discard_pile)
+    result11 = BE.apply_travel_action(hero11, {"type": "cross_border", "border_name": "border_1_2", "target_zone": 2},
+                                       "warrior", board_s, rng_s, M.RISK_TOLERANCE_BASE, True)
+    check("cross_border returns a scouted_pull_reveal, not a resolved outcome",
+          result11["outcome"] == "scouted_pull_reveal", result11)
+    check("scouted_pull_reveal carries exactly 2 candidates", len(result11["candidates"]) == 2, result11)
+    check("scouted_pull_reveal candidates are all real (non-Spice) mobs",
+          all(not B.is_spice(m) for m in result11["candidates"]), result11)
+    check("cross_border doesn't move the hero yet (crossing not resolved)",
+          hero11.position == (1, None), hero11.position)
+    check("cross_border doesn't cost a turn yet (the pick+resolve step does)",
+          hero11.turns == 0, hero11.turns)
+    check("both drawn candidates land in the discard pile immediately",
+          len(level_decks_s[1].discard_pile) >= len(discard_before) + 2, level_decks_s[1].discard_pile)
+
+    # 11. Picking one of the 2 candidates and calling resolve_border_crossing directly resolves
+    # the crossing for real (win/flee/died, position/turn changes as appropriate).
+    picked = result11["candidates"][0]
+    result11b = BE.resolve_border_crossing(hero11, "warrior", result11["border_name"], result11["target_zone"],
+                                            picked, rng_s, M.RISK_TOLERANCE_BASE, True)
+    check("resolving the picked candidate produces a real combat outcome",
+          result11b["outcome"] in ("win", "flee", "died"), result11b)
+    check("resolving the picked candidate costs one turn", hero11.turns == 1, hero11.turns)
+
+    # 12. The AI-automatic path (scouted_pull_from_deck) is untouched -- still auto-picks one
+    # mob directly, never returns a reveal dict.
+    rng_ai = random.Random(22)
+    level_decks_ai = {1: B.LevelDeck.new(1, rng_ai), 2: B.LevelDeck.new(2, rng_ai)}
+    picked_ai = BE.scouted_pull_from_deck("warrior", level_decks_ai[1], rng_ai)
+    check("scouted_pull_from_deck (AI path) still returns a single mob name directly",
+          isinstance(picked_ai, str) and not B.is_spice(picked_ai), picked_ai)
+
     print(f"\n{len(failures)} failures" if failures else "\nAll direct checks passed")
     return not failures
 
@@ -190,6 +229,12 @@ def _play_full_chain_via_seam(class_name, strategy, rng, max_turns):
         non_retreat = [a for a in actions if a["type"] != "return_to_town"]
         chosen = rng.choice(non_retreat) if non_retreat else actions[0]
         result = BE.apply_travel_action(hero, chosen, class_name, board, rng, M.RISK_TOLERANCE_BASE, True)
+        if result.get("outcome") == "scouted_pull_reveal":
+            # cross_border no longer auto-resolves (task #63) -- pick one of the 2 revealed
+            # candidates and actually attempt the crossing.
+            picked_mob = rng.choice(result["candidates"])
+            result = BE.resolve_border_crossing(hero, class_name, result["border_name"], result["target_zone"],
+                                                 picked_mob, rng, M.RISK_TOLERANCE_BASE, True)
         turns_seen += 1
         if result.get("outcome") == "died":
             # Minimal death handling for this smoke test only -- just enough to keep the
