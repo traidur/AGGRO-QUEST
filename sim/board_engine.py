@@ -367,7 +367,8 @@ def resolve_town_turn(hero, class_name, strategy, purchase_queue, purchase_polic
     setup = _town_automatic_setup(hero, class_name, strategy, rng)
 
     hero.gold, purchase_trainer_turn = M._walk_purchase_queue(
-        purchase_queue, hero.acquired, hero.bag, hero.locked, zone_id, hero.gold, purchase_policy)
+        purchase_queue, hero.acquired, hero.bag, hero.locked, zone_id, hero.gold, purchase_policy,
+        skill_purchase_order=hero.skill_purchase_order or None)
 
     # One turn, always -- "a hero may do as much business as they want in one visit... One
     # turn total per Town visit, no matter how much gets done there" (OPEN_QUESTIONS.md,
@@ -400,10 +401,19 @@ def get_town_actions(hero, purchase_queue):
     """Legal Town actions available RIGHT NOW: any Purchase Queue item that's currently
     eligible (right location for a Trainer-gated skill, Level-2-quests-started for the Bag
     Upgrade, not already owned) AND affordable this instant, plus leave_town (always legal).
-    Deliberately does NOT apply purchase_policy's save-vs-skip ordering at all -- that's an AI
-    heuristic for walking the queue unattended; a human sees every affordable option and picks
-    freely, in whatever order they want, same as combat_engine.get_legal_actions doesn't
-    pre-filter down to "the AI's preferred card" either.
+    Deliberately does NOT apply purchase_policy's save-vs-skip ordering at all for the Bag
+    Upgrade -- that's an AI heuristic for walking the queue unattended; a human sees it as soon
+    as it's affordable and eligible, same as combat_engine.get_legal_actions doesn't pre-filter
+    down to "the AI's preferred card" either.
+
+    Skills are a real exception to that "sees every affordable option" framing (checkpointed
+    2026-08-23, see LEVELING_GUIDE.md's "Purchased upgrade order" entry): at most ONE skill is
+    ever offered at a time, whichever is next in hero.skill_purchase_order -- a personally-
+    shuffled deck of upgrade cards, revealed one at a time, replacing the old fixed
+    LEVEL2_PURCHASED_ORDER sequence. This isn't player choice among skills, deliberately: the
+    whole point is preventing every table from converging on the same optimal purchase
+    sequence, so a human's only real decision here is whether to spend the Gold on the one
+    skill offered (or save it, or spend on the Bag Upgrade instead), never which skill.
 
     Also offers buy_consumable (checkpointed 2026-08-22) for each of M.CONSUMABLE_ITEMS the
     hero can afford AND has Bag room for -- a genuinely different kind of purchase from the
@@ -413,6 +423,7 @@ def get_town_actions(hero, purchase_queue):
     quest, if the hero holds an unlocked Preserving Charm."""
     zone_id, _node = hero.position
     actions = []
+    skills_acquired_so_far = sum(1 for tag in hero.acquired if tag.startswith("skill_"))
     for item in purchase_queue:
         if item["tag"] in hero.acquired:
             continue
@@ -420,6 +431,10 @@ def get_town_actions(hero, purchase_queue):
             continue
         if item["requires_l2_started"] and "started_l2_quests" not in hero.acquired:
             continue
+        if item["kind"] == "skill" and hero.skill_purchase_order:
+            if (skills_acquired_so_far >= len(hero.skill_purchase_order)
+                    or item["index"] != hero.skill_purchase_order[skills_acquired_so_far]):
+                continue
         if hero.gold < item["cost"]:
             continue
         actions.append({"type": "buy", "tag": item["tag"], "kind": item["kind"], "cost": item["cost"]})
@@ -1264,6 +1279,9 @@ def run_solo_chain(class_name, strategy, rng, max_turns, risk_tolerance=M.RISK_T
     hero = HeroBoardState(class_name=class_name, hp=max_hp, max_hp=max_hp, position=(1, "town"),
                            bag=[None] * M.BAG_SIZE, locked=[False] * M.BAG_SIZE)
     hero.bag[0] = "food"  # matches _trip_chain's own starting loadout
+    if class_name in M.LEVEL2_PURCHASED_ORDER:
+        hero.skill_purchase_order = list(range(len(M.LEVEL2_PURCHASED_ORDER[class_name])))
+        rng.shuffle(hero.skill_purchase_order)
     purchase_queue = M._build_purchase_queue(class_name, bag_queue_position)
     level_decks = {1: B.LevelDeck.new(1, rng), 2: B.LevelDeck.new(2, rng)}
     board = B.BoardState(mode="solo", heroes=[hero], zones={}, level_decks=level_decks)
@@ -1381,17 +1399,15 @@ def _choose_field_action(hero_idx, board, class_names, quest_pools, rng, claimed
 
     incomplete = [loot for loot in hero.active_quests
                   if M._accessible_count(hero.bag, hero.locked, loot) < quest_pool[loot]["required"]]
-    # remaining_needed backs the node-priority sort below -- fixes a real deadlock caught live:
-    # round-robining between whichever incomplete quest's Node happened to be dealt (no
-    # preference) can fragment the Bag across 3 different partial quests at once, eventually
-    # filling every slot with none of them complete and no Food/Potion left to free space --
-    # a genuine dead end (nothing to turn in, nothing to consume, nowhere to go). Preferring
-    # whichever quest needs the LEAST additional loot finishes quests one at a time instead.
-    remaining_needed = {loot: quest_pool[loot]["required"] - M._accessible_count(hero.bag, hero.locked, loot)
-                         for loot in incomplete}
-    quest_node_names = {n for n, (_tier, loot) in M.NODES.items() if loot in incomplete}
-    node_priority = {n: remaining_needed[loot] for n, (_tier, loot) in M.NODES.items() if loot in incomplete}
-
+    # remaining_needed identifies the single globally-closest-to-completion quest -- fixes a
+    # real deadlock caught live TWICE: sorting only among whatever's dealt in the CURRENT zone
+    # (an earlier version of this fix) still let a hero opportunistically pick up a DIFFERENT,
+    # lower-priority quest's loot whenever their true top-priority quest's Node happened to be
+    # in a different Zone -- since different active quests can live in different Zones, this
+    # still fragmented the Bag across 2-3 partial quests over time, eventually filling every
+    # slot with none of them complete and no Food/Potion left to free space. Fixed by ALWAYS
+    # beelining for the single quest that needs the least additional loot, everywhere -- never
+    # opportunistically declaring a different quest's Node just because it happens to be local.
     if not incomplete:
         # No active quests to route toward -- either the Level 1 starter batch is exhausted, or
         # the hero just crossed the Level 2 XP threshold and hasn't picked up Level 2 quests yet
@@ -1412,27 +1428,28 @@ def _choose_field_action(hero_idx, board, class_names, quest_pools, rng, claimed
             return routed
         return next(a for a in actions if a["type"] == "return_to_town")
 
+    remaining_needed = {loot: quest_pool[loot]["required"] - M._accessible_count(hero.bag, hero.locked, loot)
+                         for loot in incomplete}
+    top_priority_loot = min(incomplete, key=lambda loot: remaining_needed[loot])
+    top_priority_nodes = {n for n, (_tier, loot) in M.NODES.items() if loot == top_priority_loot}
+
     declares = [a for a in actions if a["type"] == "declare_node"]
-    quest_declares = sorted([a for a in declares if a["node_name"] in quest_node_names],
-                             key=lambda a: node_priority[a["node_name"]])
-    uncontested = [a for a in quest_declares if a["node_name"] not in claimed_this_round]
+    top_declares = [a for a in declares if a["node_name"] in top_priority_nodes]
+    uncontested = [a for a in top_declares if a["node_name"] not in claimed_this_round]
     if uncontested:
         return uncontested[0]
-    if quest_declares:
-        return quest_declares[0]
+    if top_declares:
+        return top_declares[0]
 
-    # None of this round's incomplete quests have their Node in the current Zone -- route
-    # toward whichever quest-serving Zone is actually closest (the exact bug _route_toward_zone
-    # itself documents: this branch used to just grab "the first" crossing/entry available,
-    # regardless of whether it moved toward or away from any quest).
-    quest_zones = {M.NODE_ZONE[n] for n in quest_node_names}
+    # The single top-priority quest's Node isn't declarable here this round (wrong Zone, or
+    # Spice-dealt) -- route toward ITS OWN Zone specifically, never toward "any" quest zone in
+    # general (that generality is exactly what let a different, lower-priority quest get
+    # opportunistically picked up along the way in the bug this replaces).
+    target_zone = M.NODE_ZONE[next(iter(top_priority_nodes))]
     if isinstance(zone_or_border, int):
         flight = next((a for a in actions if a["type"] == "flight_path"), None)
-        if flight and flight["target_zone"] in quest_zones:
+        if flight and flight["target_zone"] == target_zone:
             return flight
-        target_zone = min(quest_zones, key=lambda z: M._hop_distance(zone_or_border, z))
-    else:
-        target_zone = min(quest_zones, key=lambda z: M._hop_distance(zone_or_border, z))
     routed = _route_toward_zone(actions, zone_or_border, target_zone)
     if routed:
         return routed
@@ -1488,6 +1505,9 @@ def run_competitive_chain(class_names_list, strategy, rng, max_rounds,
         hero = HeroBoardState(class_name=class_name, hp=max_hp, max_hp=max_hp, position=(1, "town"),
                                bag=[None] * M.BAG_SIZE, locked=[False] * M.BAG_SIZE)
         hero.bag[0] = "food"
+        if class_name in M.LEVEL2_PURCHASED_ORDER:
+            hero.skill_purchase_order = list(range(len(M.LEVEL2_PURCHASED_ORDER[class_name])))
+            rng.shuffle(hero.skill_purchase_order)
         heroes.append(hero)
     purchase_queues = {i: M._build_purchase_queue(class_names_list[i], 0) for i in range(n)}
     level_decks = {1: B.LevelDeck.new(1, rng), 2: B.LevelDeck.new(2, rng)}

@@ -424,11 +424,21 @@ LEVEL2_QUEST_ZONES = {3, 4}
 # it the instant XP crossed the threshold regardless of location, no visit required at all).
 #
 # LEVEL2_PURCHASED_ORDER: class_name -> ordered list of (old_card_name, new_card_name,
-# new_card_dict), cheapest/simplest priority rule -- bought strictly in this order, one at a
-# time, whenever the hero can afford SKILL_COST and is at a Trainer, matching the user's own
-# framing of this build: "the only decision to make is what purchasable card the AI will
-# choose" -- fixed priority (the same order each was locked in LEVELING_GUIDE.md's own worked
-# examples) rather than a more elaborate scoring/preference system.
+# new_card_dict) -- this list's OWN order is just the sequence each card was derived/locked in
+# during balance work, not a rule about acquisition order. Which one a hero actually buys
+# 2nd/3rd/4th is randomized per hero instead (checkpointed 2026-08-23, see LEVELING_GUIDE.md's
+# "Purchased upgrade order" entry -- board_engine.py's HeroBoardState.skill_purchase_order is
+# a shuffled permutation of this list's indices, one per hero, matching a personally-shuffled
+# deck of upgrade cards revealed one at a time). Not player-selected, deliberately: this is a
+# quick, one-shot, non-legacy game, and letting players freely pick which upgrade to buy would
+# let every table converge on the same "optimal" sequence over repeated sessions. Safe to
+# randomize because LEVELING_GUIDE.md's own methodology already diagnosed each purchased
+# upgrade independently against the minimum guaranteed baseline (mandatory-only) -- "Purchased
+# upgrades are independent choices a player can take in any combination, not a fixed sequence"
+# (verbatim) -- order was never a balance dependency to begin with. Callers with no per-hero
+# shuffled order (the frozen _trip_chain baseline, or any HeroBoardState that doesn't populate
+# skill_purchase_order) still walk this list in its own raw order -- backward compatible, not a
+# second behavior to maintain.
 LEVEL2_MANDATORY = {
     "warrior": (W, "Shield Block", "Shield Bash",
                 dict(G=(1, 5), C=(2, 2), sunder=False, execute_finisher=False, chain_stance=None,
@@ -1232,7 +1242,8 @@ def _build_purchase_queue(class_name, bag_position=0):
     return skill_items[:pos] + [bag_item] + skill_items[pos:]
 
 
-def _walk_purchase_queue(queue, acquired, bag, locked, current_position, gold, policy):
+def _walk_purchase_queue(queue, acquired, bag, locked, current_position, gold, policy,
+                          skill_purchase_order=None):
     """Walks queue in order, buying/applying whichever unowned items are both location-eligible
     and affordable, mutating `acquired`/`bag`/`locked` in place. Returns (gold, trainer_turn) --
     trainer_turn is True only if a skill was bought this call (Bag Upgrade is a general Town
@@ -1248,8 +1259,21 @@ def _walk_purchase_queue(queue, acquired, bag, locked, current_position, gold, p
     policy='skip': keep scanning past an unaffordable item for anything else in the queue that
     is affordable right now, buying out of strict order rather than saving up.
     Not yet decided which policy is actually correct -- kept as a parameter specifically so both
-    can be measured and compared, not chosen by feel."""
+    can be measured and compared, not chosen by feel.
+
+    skill_purchase_order (checkpointed 2026-08-23, replacing the old fixed
+    LEVEL2_PURCHASED_ORDER sequence as the locked rule -- see LEVELING_GUIDE.md's "Purchased
+    upgrade order" entry for the reasoning): optional per-hero shuffled permutation of skill-
+    slot indices, matching a personally-shuffled deck of upgrade cards revealed one at a time.
+    When provided, a skill item is only ever eligible once its own index is "next" in this
+    hero's shuffled sequence -- every other not-yet-acquired skill is treated as temporarily
+    ineligible, same as a wrong-Zone Trainer skill. None (the default) preserves the exact old
+    fixed-order behavior unchanged -- used by the frozen `_trip_chain` baseline, which has no
+    hero object to carry a shuffled order and isn't meant to gain new behavior."""
     trainer_turn = False
+    skills_acquired_so_far = None
+    if skill_purchase_order is not None:
+        skills_acquired_so_far = sum(1 for tag in acquired if tag.startswith("skill_"))
     for item in queue:
         if item["tag"] in acquired:
             continue
@@ -1257,6 +1281,10 @@ def _walk_purchase_queue(queue, acquired, bag, locked, current_position, gold, p
             continue
         if item["requires_l2_started"] and "started_l2_quests" not in acquired:
             continue
+        if skill_purchase_order is not None and item["kind"] == "skill":
+            if (skills_acquired_so_far >= len(skill_purchase_order)
+                    or item["index"] != skill_purchase_order[skills_acquired_so_far]):
+                continue
         if gold < item["cost"]:
             if policy == "save":
                 break
@@ -1268,6 +1296,8 @@ def _walk_purchase_queue(queue, acquired, bag, locked, current_position, gold, p
             locked.append(False)
         else:
             trainer_turn = True
+            if skills_acquired_so_far is not None:
+                skills_acquired_so_far += 1
     return gold, trainer_turn
 
 

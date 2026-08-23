@@ -594,6 +594,17 @@ hasn't been generalized past Level 2 yet; there is no second, distinct "Market R
 left to build on top of it. Whenever Level 3-6 gets built, the same Trainer-purchase pattern is
 expected to repeat at each level, not a separate system.
 
+**Which purchased upgrade a hero gets 2nd/3rd/4th is randomized per hero, not fixed and not
+player-selected (locked 2026-08-23).** The mandatory upgrade stays free/automatic/earned, but
+beyond that, each hero draws from their own personally-shuffled order of the remaining upgrade
+cards — a human never picks which one, only whether to spend the Gold on whichever is offered.
+Deliberate, not an oversight: QUEST is a quick, one-shot, non-legacy game, and free selection
+among a known upgrade set converges over repeated sessions (every table eventually just buys
+whatever's mathematically strongest, in the same order, every time) — randomizing removes that
+convergence. Safe because the balance methodology already validated each purchased upgrade
+independently against the guaranteed-minimum kit, never against an order-dependent sequence —
+see `LEVELING_GUIDE.md`'s "Purchased upgrade order" entry for the full reasoning.
+
 - **The strict 6-card limit overrides the original vision below, wherever they conflict.**
   Combat's exact-solver architecture (Section II, "unique decks") depends on every class
   holding exactly 6 unique cards, always — the 15-hand enumeration every diagnostic in this

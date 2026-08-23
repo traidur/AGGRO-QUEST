@@ -138,6 +138,12 @@ class HeroBoardState:
     # NOT "trips" (a trip's own length varies wildly by class and luck). A declined pull
     # (resolve_node_pull's "declined" outcome) does NOT increment this -- nothing was actually
     # attempted at the table, matching "a turn is defined by the action, not the movement."
+    skill_purchase_order: list = field(default_factory=list)  # shuffled permutation of this
+    # hero's class's skill-slot indices (0..N-1), set once at hero creation -- replaces the old
+    # fixed LEVEL2_PURCHASED_ORDER sequence as the locked rule (checkpointed 2026-08-23, see
+    # LEVELING_GUIDE.md's "Purchased upgrade order" entry): a personally-shuffled deck of
+    # upgrade cards, revealed one at a time, not player-selected and not identical across every
+    # hero of the same class. Empty for a class with no Level 2 slate at all.
 
 
 @dataclass

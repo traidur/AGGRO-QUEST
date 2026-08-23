@@ -42,11 +42,15 @@ def run_direct_checks(verbose=True):
     # state directly around that death and the following recovery. Searches seeds rather than
     # hardcoding one known-to-die value -- which seed produces a death depends on the exact RNG
     # consumption sequence, and that sequence shifts any time upstream mechanics change (e.g.
-    # the 2026-08-22 Bag-model fix changed it, breaking a previously-hardcoded seed=0 here).
+    # the 2026-08-22 Bag-model fix changed it, breaking a previously-hardcoded seed=0 here; the
+    # 2026-08-23 skill-purchase-order randomization shifted it again and pushed the search
+    # window from 50 to 200 seeds -- Warrior's real death rate is under 1% per pull, low enough
+    # that a 50-seed search has a real, non-negligible chance of missing purely by luck, not a
+    # sign of anything actually wrong).
     orig = BE.run_solo_trip
     snapshots = None
     try:
-        for seed in range(50):
+        for seed in range(200):
             trial_snapshots = []
 
             def traced(hero, class_name, quest_pool, fallback_target_zones, board, rng, *a, **kw):
@@ -70,8 +74,8 @@ def run_direct_checks(verbose=True):
     finally:
         BE.run_solo_trip = orig
 
-    check("found a seed (within 50 tried) that produces at least one death", snapshots is not None,
-          "no death in 50 seeds -- suspicious on its own, investigate before trusting anything below")
+    check("found a seed (within 200 tried) that produces at least one death", snapshots is not None,
+          "no death in 200 seeds -- suspicious on its own, investigate before trusting anything below")
     if snapshots is None:
         print(f"\n{len(failures)} failures" if failures else "\nAll direct checks passed")
         return not failures

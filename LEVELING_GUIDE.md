@@ -841,6 +841,37 @@ per card, not assumed from level number alone, since a player could easily have 
 anything at Level 2 and still be evaluating a Level 4 mandatory upgrade's candidates from a
 kit that's genuinely different from another player's at the same level.
 
+## Purchased upgrade order: randomized per hero, not fixed, not player-selected (locked 2026-08-23)
+
+`sim/macro_sim.py`'s `LEVEL2_PURCHASED_ORDER` list was originally walked in a single fixed
+sequence -- the same order for every hero of a given class, every playthrough. Corrected: each
+hero now gets their own shuffled permutation of that list's indices
+(`HeroBoardState.skill_purchase_order`, set once at hero creation), revealed one at a time as
+they're bought -- a personally-shuffled deck of upgrade cards, not a script. The mandatory
+upgrade (still free, automatic, earned the instant a hero reaches Level 2 and visits a Trainer)
+is completely unaffected -- this only concerns the *purchased* ones beyond it.
+
+**Why not player-selected instead, letting a human pick which of the remaining upgrades to
+buy:** QUEST is a quick, one-shot, non-legacy game -- sit down, play a session, done, not a
+persistent campaign. Free selection among a known set of upgrades converges over repeated
+sessions: once a table has played enough times, everyone learns which purchased upgrade is
+strongest and just buys that one first, every time, at every table. Randomizing which upgrade
+becomes available removes that convergence entirely -- the real decision left to a player is
+whether to spend the Gold on whatever's offered (or save it, or spend on the Bag Upgrade
+instead), never which specific card.
+
+**Why this is safe to randomize at all, rather than a break from validated balance:** the
+methodology above (see "always run it against the minimum kit that's actually guaranteed")
+already diagnosed each purchased upgrade candidate independently, against the mandatory-only
+baseline, never against a kit assuming some other purchased upgrade came first -- "Purchased
+upgrades are independent choices a player can take in any combination, not a fixed sequence"
+(verbatim, above). The list's own stored order was only ever the sequence each card happened to
+get derived and locked in during this guide's own worked examples, never a claim that buying
+them in a different order changes anything about their safety. Randomizing acquisition order
+doesn't touch that validation at all -- the final, fully-stacked kit (all purchased upgrades
+owned) is identical regardless of what order they arrived in, and every intermediate state
+along the way was already validated on its own, independent of what came before it.
+
 ## Worked example: Warrior's Shield Bash (mandatory) + Dominate (first purchased upgrade)
 
 **Diagnosis.** `unplayed_card_diagnostic` on Warrior found Shield Block left unplayed in
