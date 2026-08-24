@@ -59,12 +59,18 @@ def run_direct_checks(verbose=True):
           action3["type"] == "enter_zone" and action3["target_zone"] in (1, 2), action3)
 
     # 3. From a Zone with 2 borders, picks the one that's actually closer to the target
-    # (the "always grabs the first border in dict order" bug).
+    # (the "always grabs the first border in dict order" bug). acquired={"mandatory"}
+    # (checkpointed 2026-08-24, Class Trainer split from Town into its own turn-costing node
+    # type) isolates this from the NEW, separate, correct opportunistic-Trainer-visit priority
+    # -- without it, this hero (xp=6 exactly at LEVEL2_XP_THRESHOLD, standing in Zone 2, a
+    # Trainer Zone, mandatory not yet acquired) would correctly choose visit_trainer first,
+    # entangling two different things this test was never meant to check at once.
     rng3 = random.Random(3)
     level_decks3 = {1: B.LevelDeck.new(1, rng3), 2: B.LevelDeck.new(2, rng3)}
     hero4 = HeroBoardState(class_name="warrior", hp=18.0, max_hp=18.0, position=(2, None),
                             bag=[None, None], locked=[False, False], gold=0,
-                            active_quests=["Royal Signets"], xp=6, decay_stage={})
+                            active_quests=["Royal Signets"], xp=6, decay_stage={},
+                            acquired={"mandatory"})
     board4 = B.BoardState(mode="competitive", heroes=[hero4], zones={}, level_decks=level_decks3)
     action4 = BE._choose_field_action(0, board4, {0: "warrior"}, {0: M.LEVEL2_QUESTS}, rng3, set())
     check("from Zone 2 pursuing a Zone-3 quest (Royal Signets), crosses toward Zone 3 directly, not backward",

@@ -34,8 +34,10 @@ def run_direct_checks(verbose=True):
     purchase_queue = M._build_purchase_queue("warrior", 0)
 
     # 1. With a shuffled order set, only ONE skill is ever offered (get_town_actions), and it's
-    # the one hero.skill_purchase_order says is next.
-    hero = HeroBoardState(class_name="warrior", hp=18.0, max_hp=18.0, position=(2, "town"),
+    # the one hero.skill_purchase_order says is next. Skills are Trainer-only (checkpointed
+    # 2026-08-24, Class Trainer split from Town into its own turn-costing node type) -- hero
+    # position must be (zone, "trainer"), not "town", for get_town_actions to offer any.
+    hero = HeroBoardState(class_name="warrior", hp=18.0, max_hp=18.0, position=(2, "trainer"),
                            bag=[None, None], locked=[False, False], gold=100,
                            acquired={"mandatory"}, skill_purchase_order=[2, 0, 1])
     actions = BE.get_town_actions(hero, purchase_queue)
@@ -54,7 +56,7 @@ def run_direct_checks(verbose=True):
     # 3. Backward compatibility: a hero with NO skill_purchase_order set (empty list, the
     # dataclass default -- what every pre-existing verify file's HeroBoardState literals still
     # use) sees every affordable, eligible skill at once, exactly like before this change.
-    hero_old = HeroBoardState(class_name="warrior", hp=18.0, max_hp=18.0, position=(2, "town"),
+    hero_old = HeroBoardState(class_name="warrior", hp=18.0, max_hp=18.0, position=(2, "trainer"),
                                bag=[None, None], locked=[False, False], gold=100,
                                acquired={"mandatory"})
     actions_old = BE.get_town_actions(hero_old, purchase_queue)
@@ -87,11 +89,12 @@ def run_direct_checks(verbose=True):
           hero3.acquired == {"mandatory", "skill_0", "skill_1", "skill_2"}, hero3.acquired)
 
     # 5. Mandatory upgrade is completely untouched by any of this -- still granted for free,
-    # automatically, no purchase queue involvement at all.
-    hero4 = HeroBoardState(class_name="warrior", hp=18.0, max_hp=18.0, position=(2, "town"),
+    # automatically, no purchase queue involvement at all. Lives in _trainer_automatic_setup
+    # now, not _town_automatic_setup (checkpointed 2026-08-24, Class Trainer split from Town
+    # into its own turn-costing node type -- the mandatory grant moved with it).
+    hero4 = HeroBoardState(class_name="warrior", hp=18.0, max_hp=18.0, position=(2, "trainer"),
                             bag=[None, None], locked=[False, False], gold=0, xp=M.LEVEL2_XP_THRESHOLD)
-    rng = random.Random(1)
-    setup = BE._town_automatic_setup(hero4, "warrior", "food_only", rng)
+    setup = BE._trainer_automatic_setup(hero4, "warrior")
     check("mandatory upgrade still granted free/automatic regardless of skill_purchase_order",
           "mandatory" in hero4.acquired and setup["mandatory_turn"], (hero4.acquired, setup))
 

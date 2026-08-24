@@ -1,0 +1,188 @@
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Crimson+Pro:ital,wght@0,400;0,600;1,400&family=Barlow+Condensed:wght@400;600;700&display=swap');
+
+:root {
+  --bg-color: #1a1a1a;
+  --panel-bg: rgba(17, 17, 17, 0.9);
+  --text-color: #eee;
+  --accent-color: #90CAF9;
+  --accent-glow: rgba(144, 202, 249, 0.5);
+  
+  --warrior:  #C79C6E;  --warrior-light:  #FDF5EC;
+  --rogue:    #FFF569;  --rogue-light:    #FFFFF0;
+  --cleric:   #AAAAAA;  --cleric-light:   #FFFFFF;
+  --paladin:  #F58CBA;  --paladin-light:  #FDE8F2;
+  --wizard:   #69CCF0;  --wizard-light:   #E8F7FD;
+  --ranger:   #ABD473;  --ranger-light:   #F0F8E8;
+  --runecaster: #0070DE;  --runecaster-light: #E0F0FF;
+  --druid: #FF7D0A;       --druid-light: #FFF0E0;
+  --necromancer: #8787ED; --necromancer-light: #F0F0FD;
+
+  --card-w: 2.5in;
+  --card-h: 3.5in;
+}
+
+
+
+
+
+/* UI Bar */
+
+
+
+
+
+
+/* Filters */
+.filters { display: flex; gap: 8px; }
+.filter-btn {
+  background: transparent;
+  border: 1px solid #333;
+  color: #888;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  text-transform: uppercase;
+  transition: all 0.2s ease;
+}
+
+.filter-btn:hover { border-color: #555; color: #bbb; }
+.filter-btn.active { color: white; border-color: transparent; }
+.filter-btn[data-class="warrior"].active { background: var(--warrior); color: #000; }
+.filter-btn[data-class="rogue"].active { background: var(--rogue); color: #000; }
+.filter-btn[data-class="cleric"].active { background: var(--cleric); color: #000; }
+.filter-btn[data-class="paladin"].active { background: var(--paladin); color: #000; }
+.filter-btn[data-class="ranger"].active { background: var(--ranger); color: #000; }
+.filter-btn[data-class="wizard"].active { background: var(--wizard); color: #000; }
+.filter-btn[data-class="runecaster"].active { background: var(--runecaster); color: #fff; }
+
+/* Buttons */
+.btn {
+  padding: 8px 20px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.btn-primary { background: #2E7D32; color: white; }
+.btn-primary:hover { background: #388E3C; }
+
+/* Print Sheets */
+.sheet-container { padding: 40px; display: flex; flex-direction: column; align-items: center; gap: 40px; }
+.sheet { box-sizing: border-box; width: 8.5in; height: 11in; background: white; position: relative; box-shadow: 0 8px 40px rgba(0,0,0,0.6); display: grid; grid-template-columns: repeat(3, var(--card-w)); grid-template-rows: repeat(3, var(--card-h)); padding: 0.25in 0.5in; gap: 0; overflow: hidden; flex-shrink: 0; }
+.card-empty { width: var(--card-w); height: var(--card-h); border: 0.5pt dashed #ddd; }
+
+/* AGGRO CARD GRAPHICS */
+.card { width: var(--card-w); height: var(--card-h); display: flex; color: #111; flex-direction: column; overflow: hidden; position: relative; background: white; border: 0.5pt dashed #c89b3c; }
+.card-hdr { display: flex; align-items: center; padding: 5pt 6pt 4pt; height: 32pt; flex-shrink: 0; position: relative; gap: 4pt; }
+.card-hdr::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(255,255,255,0.08) 0%, transparent 100%); pointer-events: none; }
+.card-name { flex: 1; text-align: center; font-family: 'Cinzel', serif; font-weight: 700; color: white; line-height: 1.15; letter-spacing: 0.1pt; font-size: 14pt;}
+.aggro-badge { padding: 2pt 4pt; border-radius: 4pt; background: rgba(0,0,0,0.4); border: 0.5pt solid rgba(255,255,255,0.25); display: flex; align-items: center; justify-content: center; font-size: 7.5pt; color: rgba(255,255,255,0.85); font-family: 'Barlow Condensed', sans-serif; flex-shrink: 0; }
+
+.type-bar { height: 18pt; display: flex; align-items: center; padding: 0 6pt; gap: 4pt; flex-shrink: 0; border-bottom: 0.4pt solid rgba(0,0,0,0.12); }
+.tag { font-family: 'Barlow Condensed', sans-serif; font-size: 8pt; font-weight: 600; padding: 1pt 4pt; border-radius: 2pt; letter-spacing: 0.2pt; text-transform: uppercase; }
+.tag-attack { background: #FFEBEE; color: #B71C1C; } /* Warrior/Rogue */
+.tag-magic { background: #E3F2FD; color: #0D47A1; } /* Wizard/Runecaster */
+.tag-holy { background: #FFF8E1; color: #F57F17; } /* Cleric/Paladin */
+.tag-nature { background: #E8F5E9; color: #1B5E20; } /* Ranger/Druid */
+.tag-dark { background: #EDE7F6; color: #4527A0; } /* Necromancer */
+.tag-default { background: #ECEFF1; color: #37474F; }
+
+.art-zone { height: 38pt; flex-shrink: 0; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; }
+.art-zone::before { content: ''; position: absolute; inset: 0; opacity: 0.07; background-image: repeating-linear-gradient( 45deg, rgba(0,0,0,0.4) 0px, rgba(0,0,0,0.4) 1px, transparent 1px, transparent 8px ); }
+.divider { height: 0.4pt; flex-shrink: 0; }
+
+.card-
+.effect-text { font-family: 'Crimson Pro', serif; line-height: 1.35; color: #1a1a1a; text-align: left; width: 100%; margin: 2pt 0; }
+
+/* Sub-panels */
+.panels-container { display: flex; flex-direction: column; gap: 4pt; width: 100%; }
+.sub-panel { border-radius: 3pt; padding: 3pt 5pt; border-left: 3pt solid; background: rgba(0,0,0,0.04); margin-bottom: 2pt; box-shadow: 0 1pt 2pt rgba(0,0,0,0.05); }
+.panel-nature { border-left-color: #388E3C; background: #E8F5E9; }
+.panel-magic { border-left-color: #1976D2; background: #E3F2FD; }
+.panel-holy { border-left-color: #FBC02D; background: #FFFDE7; }
+.panel-buff { border-left-color: #795548; background: #EFEBE9; }
+.panel-combo { border-left-color: #C62828; background: #FFEBEE; }
+.sub-panel-label { font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 8pt; letter-spacing: 0.5pt; margin-bottom: 2pt; text-transform: uppercase; }
+.panel-nature .sub-panel-label { color: #2E7D32; }
+.panel-magic .sub-panel-label { color: #1565C0; }
+.panel-holy .sub-panel-label { color: #E65100; }
+.panel-buff .sub-panel-label { color: #4E342E; }
+.panel-combo .sub-panel-label { color: #B71C1C; }
+.sub-panel-text { font-family: 'Crimson Pro', serif; font-size: inherit; line-height: inherit; color: #1a1a1a; }
+.magic-text { color: #1565C0; font-weight: 700; }
+.combo-text { color: #C62828; font-weight: 700; }
+
+/* Art Zone Badges */
+.badge-wrapper { position: absolute; display: flex; gap: 1px; z-index: 10; }
+.badge-wrapper-tl { top: 0; left: 0; }
+.badge-wrapper-tr { top: 0; right: 0; }
+.badge-wrapper-bl { bottom: 0; left: 0; }
+.badge-wrapper-br { bottom: 0; right: 0; }
+
+.art-badge { background: #fff; border: 0.5pt solid #ccc; border-radius: 3pt; padding: 2pt 4pt; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 11pt; color: #1a1a1a; box-shadow: 0 1px 3px rgba(0,0,0,0.15); display: flex; align-items: center; gap: 3pt; line-height: 1; letter-spacing: 0.5px; }
+
+.badge-wrapper-tl .art-badge { border-top: none; }
+.badge-wrapper-tl .art-badge:first-child { border-left: none; border-radius: 0 0 3pt 0; }
+.badge-wrapper-tl .art-badge:not(:first-child) { border-radius: 0 0 3pt 3pt; }
+
+.badge-wrapper-tr .art-badge { border-top: none; }
+.badge-wrapper-tr .art-badge:last-child { border-right: none; border-radius: 0 0 0 3pt; }
+.badge-wrapper-tr .art-badge:not(:last-child) { border-radius: 0 0 3pt 3pt; }
+
+.badge-wrapper-bl .art-badge { border-bottom: none; }
+.badge-wrapper-bl .art-badge:first-child { border-left: none; border-radius: 0 3pt 0 0; }
+.badge-wrapper-bl .art-badge:not(:first-child) { border-radius: 3pt 3pt 0 0; }
+
+.badge-wrapper-br .art-badge { border-bottom: none; }
+.badge-wrapper-br .art-badge:last-child { border-right: none; border-radius: 3pt 0 0 0; }
+.badge-wrapper-br .art-badge:not(:last-child) { border-radius: 3pt 3pt 0 0; }
+
+/* Stance Badges */
+.stance-badge { position: absolute; background: #fff; border: 0.5pt solid #ccc; border-radius: 3pt; padding: 1pt 3pt; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 10pt; color: #1a1a1a; box-shadow: 0 1px 2px rgba(0,0,0,0.15); display: flex; align-items: center; gap: 2pt; z-index: 10; line-height: 1; }
+.badge-c-tl { top: -2pt; left: -4pt; border-top: none; border-left: none; border-radius: 0 0 3pt 0; }
+.badge-c-br { bottom: -2pt; right: -4pt; border-bottom: none; border-right: none; border-radius: 3pt 0 0 0; }
+
+/* Split Cards */
+.split-top, .split-bottom { position: relative; flex: 1; display: flex; flex-direction: column; justify-content: flex-start; align-items: center; text-align: center; padding: 6pt 0; font-family: 'Crimson Pro', serif; font-size: 10.5pt; line-height: 1.25; color: #1a1a1a; min-height: 0; }
+.split-top { border-bottom: 0.5pt dashed rgba(0,0,0,0.15); }
+.split-bottom { transform: rotate(180deg); }
+.stance-label { font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 8.5pt; color: #888; letter-spacing: 1px; margin-bottom: 1pt; text-transform: uppercase; }
+.mini-hdr { font-family: 'Cinzel', serif; font-weight: 700; font-size: 9.5pt; color: #fff; text-shadow: 0 1pt 2pt rgba(0,0,0,0.5); border: 0.5pt solid rgba(0,0,0,0.3); border-radius: 3pt; padding: 1pt 6pt; margin-bottom: 3pt; letter-spacing: 0.5px; }
+.mini-aggro { background: rgba(0,0,0,0.4); border: 0.5pt solid rgba(255,255,255,0.25); border-radius: 2pt; padding: 0 4pt; color: rgba(255,255,255,0.85); font-family: 'Barlow Condensed', sans-serif; font-size: 8.5pt; }
+
+.card-ftr { height: 22pt; flex-shrink: 0; display: flex; align-items: center; padding: 0 6pt; gap: 0; position: relative; overflow: visible; }
+.ftr-stat { display: flex; align-items: center; gap: 3pt; font-family: 'Barlow Condensed', sans-serif; font-size: 8.5pt; font-weight: 600; color: rgba(255,255,255,0.85); letter-spacing: 0.1pt; white-space: nowrap; }
+.ftr-divider { flex: 1; height: 0.5pt; background: rgba(255,255,255,0.2); margin: 0 5pt; }
+.ftr-class { font-family: 'Barlow Condensed', sans-serif; font-size: 8pt; font-weight: 700; letter-spacing: 0.8pt; text-transform: uppercase; color: rgba(255,255,255,0.7); flex-shrink: 0; }
+
+/* CLASS COLORS */
+.cls-warrior  .card-hdr, .cls-warrior  .mini-hdr { background: linear-gradient(135deg, #3d2b0e, #c79c6e); } .cls-warrior  .card-ftr { background: var(--warrior); } .cls-warrior  .art-zone { background: var(--warrior-light); } .cls-warrior  .divider { background: var(--warrior); opacity: 0.25; }
+.cls-rogue    .card-hdr, .cls-rogue    .mini-hdr { background: linear-gradient(135deg, #2a2200, #8a7400); } .cls-rogue    .card-ftr { background: var(--rogue); } .cls-rogue    .art-zone { background: var(--rogue-light); } .cls-rogue    .divider { background: var(--rogue); opacity: 0.25; }
+.cls-cleric   .card-hdr, .cls-cleric   .mini-hdr { background: linear-gradient(135deg, #1a1a1a, #666); } .cls-cleric   .card-ftr { background: var(--cleric); } .cls-cleric   .art-zone { background: var(--cleric-light); } .cls-cleric   .divider { background: var(--cleric); opacity: 0.2; }
+.cls-paladin  .card-hdr, .cls-paladin  .mini-hdr { background: linear-gradient(135deg, #3a0a20, #b05070); } .cls-paladin  .card-ftr { background: var(--paladin); } .cls-paladin  .art-zone { background: var(--paladin-light); } .cls-paladin  .divider { background: var(--paladin); opacity: 0.25; }
+.cls-wizard   .card-hdr, .cls-wizard   .mini-hdr { background: linear-gradient(135deg, #021520, #1a5a80); } .cls-wizard   .card-ftr { background: var(--wizard); } .cls-wizard   .art-zone { background: var(--wizard-light); } .cls-wizard   .divider { background: var(--wizard); opacity: 0.25; }
+.cls-ranger   .card-hdr, .cls-ranger   .mini-hdr { background: linear-gradient(135deg, #0a1800, #4a6820); } .cls-ranger   .card-ftr { background: var(--ranger); } .cls-ranger   .art-zone { background: var(--ranger-light); } .cls-ranger   .divider { background: var(--ranger); opacity: 0.25; }
+.cls-runecaster .card-hdr, .cls-runecaster .mini-hdr { background: linear-gradient(135deg, #001a3d, #0070de); } .cls-runecaster .card-ftr { background: var(--runecaster); } .cls-runecaster .art-zone { background: var(--runecaster-light); } .cls-runecaster .divider { background: var(--runecaster); opacity: 0.25; }
+.cls-druid      .card-hdr, .cls-druid      .mini-hdr { background: linear-gradient(135deg, #4a1f00, #c45b00); } .cls-druid      .card-ftr { background: var(--druid); } .cls-druid      .art-zone { background: var(--druid-light); } .cls-druid      .divider { background: var(--druid); opacity: 0.25; }
+.cls-necromancer .card-hdr, .cls-necromancer .mini-hdr { background: linear-gradient(135deg, #1d0f2b, #5f3e82); } .cls-necromancer .card-ftr { background: var(--necromancer); } .cls-necromancer .art-zone { background: var(--necromancer-light); } .cls-necromancer .divider { background: var(--necromancer); opacity: 0.25; }
+
+/* Dark footer backgrounds need white text */
+.cls-runecaster .ftr-stat, .cls-runecaster .ftr-class { color: rgba(255,255,255,0.9); }
+.cls-runecaster .ftr-divider { background: rgba(255,255,255,0.25); }
+
+/* Text fixes */
+.card-name { color: #fff; text-shadow: 0 1pt 3pt rgba(0,0,0,0.5); }
+.ftr-divider { background: rgba(0,0,0,0.15); }
+.ftr-class { color: rgba(0,0,0,0.6); }
+
+
+
+
+/* Image Toggle */
+body

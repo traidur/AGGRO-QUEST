@@ -65,6 +65,11 @@ def run_scripted_session(class_name, seed, max_steps=120, verbose=False):
                 actions = BE.get_town_actions(hero, PW._S["purchase_queues"][0])
                 idx = rng.randrange(len(actions))
                 resp = client.post("/town/action", data={"idx": str(idx)}, follow_redirects=True)
+            elif phase == "trainer":
+                hero = PW._S["board"].heroes[0]
+                actions = BE.get_town_actions(hero, PW._S["purchase_queues"][0])
+                idx = rng.randrange(len(actions))
+                resp = client.post("/trainer/action", data={"idx": str(idx)}, follow_redirects=True)
             elif phase == "travel":
                 idx = _pick_travel_action(rng)
                 resp = client.post("/travel/action", data={"idx": str(idx)}, follow_redirects=True)

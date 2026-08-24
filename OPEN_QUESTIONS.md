@@ -155,6 +155,79 @@ caught and flagged during the `DESIGN_DOC.md` rewrite/audit. If Wizard's actual 
 all-or-nothing outcome variance under condensed combat's real rules ever needs its own
 investigation, that's a fresh, unrelated question — see task #29.)*
 
+### PvP duel mechanic for competitive mode — raised 2026-08-24, not evaluated or decided
+
+Raised alongside the observation that competitive mode currently has zero actual player-vs-
+player interaction — heroes just race in parallel, with contested-Node priority/blind-redraw
+(see "The Claim phase's failure mode" below) being the only indirect friction between them.
+Motivating case also raised: a quest or mechanic could someday *compel* two heroes into a
+direct fight rather than leaving it opt-in. Recorded here as a real idea worth having on
+record, not a queued build — nothing below has been checked against anything the way this
+project's other mechanics are.
+
+**Proposed mechanic, as raised:** two heroes each shuffle their own deck and draw 4, same as
+an ordinary pull. Each plays 3 of their 4 cards face-down, across from each other. Reveal one
+at a time (matching the existing 3-round structure), resolving damage/block/heal mutually each
+round, until someone is defeated. If both heroes still have HP left after all 3 rounds resolve,
+everything gets shuffled up, each draws a fresh 4, and another 3-round face-down exchange
+begins — repeating until one side is defeated.
+
+**Why this is a bigger build than it looks, not a small addition:** it would be the first
+genuinely hidden-information mechanic anywhere in this project's combat system. Every pull
+today — including every worked example in `LEVELING_GUIDE.md`, every diagnostic tool in
+`condensed_trip.py`/`leveling_validation.py`, and the whole-hand-submit-in-one-request design
+`sim/playtest_board_web.py`'s combat page uses — depends on the opponent's future being fully
+known data (a mob's 3-round ATK/Block pattern is fixed and visible, never a choice). That's
+exactly why `best_line_for_hand` can brute-force an exact optimum and why
+`QuestIntelligence.decide_combat` is just "solve once, replay." This project already has an
+explicit, locked stance on the general tension ("Solved-hand risk in OTK combat" below:
+"reserve affixes... visible at reveal, no hidden info") -- a blind, simultaneous, adversarial
+duel would be a deliberate, one-off exception to that principle, not a natural extension of it,
+and should be treated as such rather than slipped in unremarked.
+
+**Concretely, what doesn't carry over as-is if built exactly as proposed (face-down,
+simultaneous):**
+- The exact-solver machinery (`best_line_for_hand`/`get_legal_actions`/`decide_combat`'s
+  "solve once, replay" shape) doesn't apply -- there's no longer a single deterministic optimum
+  to find, since the opponent is also choosing under uncertainty. A real hidden-info matchup
+  needs equilibrium/mixed-strategy analysis to validate an AI's play, a genuinely different
+  (and harder) category of tool than the brute-force search this project has used everywhere
+  else. Also affects the AI itself: what does an AI opponent even "know" when facing a hidden
+  human or AI hand -- needs its own ruling, not assumed.
+- `playtest_board_web.py`'s whole-hand-submit-in-one-request design (built 2026-08-23
+  specifically because nothing about a normal pull is hidden) doesn't carry over -- a real
+  blind duel needs an actual commit-then-reveal step. Buildable (this project already solved
+  an adjacent problem -- the pass-the-device gate for competitive Travel declarations, task
+  #78 -- reuse that shape rather than inventing a new one), but real, non-free work.
+- Every mob-targeted mechanic in the existing card set assumes an asymmetric mob-vs-hero shape,
+  not symmetric hero-vs-hero: `grants_range`'s melee/ranged split (a mob has a fixed
+  `mob_type`; a hero doesn't), Sunder/DOT tags (currently degrade a mob's stats, not another
+  hero's kit), killing-blow riders (currently "prevents the mob's attack this round," needs a
+  ruling for what that means against another hero's own card choice), persistent effects
+  (Ranger's Beast Bond) -- none of this translation work is scoped, let alone done.
+- Class max HP (14-18 across the roster) was tuned entirely for solo PvE survivability against
+  already-balanced mob patterns, never checked for hero-vs-hero fairness. A straight duel might
+  just systematically favor high-HP classes (Warrior 18) over low-HP ones (Cleric/Wizard 14) in
+  a way nothing in this project's validation tooling currently measures.
+
+**A cheaper alternative worth weighing against the original proposal, not a replacement for
+it:** sequential-but-visible instead of simultaneous-and-hidden -- heroes alternate playing and
+revealing one card at a time rather than committing 3 blind. Loses the bluffing tension the
+original proposal has, but reuses almost the entire existing engine (same precedent this
+project already used twice for an adjacent problem: the competitive AI's priority-order-
+declaration insight, and the pass-the-device *sequential* turn order actually shipped in the
+competitive web UI, task #78) instead of needing a new adversarial solver and a new UI
+commit/reveal flow.
+
+**Also undecided, separate from the mechanic itself:** whether this would *replace* the
+current contested-Node resolution (priority token + blind redraw, "The Claim phase's failure
+mode" below) when two heroes declare the same Node, or exist as a separate, standalone
+"declare a duel against another hero" action unrelated to Node contention. Very different scope
+either way -- the first touches the whole competitive round loop (`advance_board`/
+`_resolve_contested_declarations`) already built and regression-tested; the second is more
+additive/opt-in. Needs deciding before any design work starts, not implied by the mechanic
+itself.
+
 ### "Dungeon" node concept — forced multi-pull chain, not evaluated or decided
 
 Raised 2026-08-22, inspired by how the WoW board game handles dungeons. Not yet scoped to a

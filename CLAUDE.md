@@ -73,6 +73,10 @@ SOTG — same discipline AGGRO's SOTG uses.
 
 ## Working style
 
+- **The simulator serves the tabletop design, it does not drive it.** Evaluate a proposed
+  mechanic as a physical game first; only then figure out how the simulator validates it.
+  Hard-to-simulate is a real cost worth naming honestly, never a reason to reject the idea or
+  substitute an easier one in its place.
 - Validate design ideas with the simulator before trusting intuition — that's the entire
   point of this project's tooling.
 - When a fix is proposed for a class or mob balance issue, find the actual mechanism behind

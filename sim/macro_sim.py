@@ -456,6 +456,9 @@ LEVEL2_MANDATORY = {
     "wizard": (Z, "Fire Blast", "Fire Blast",
                dict(dmg=(4, 4), block=0, grants_range=False, weave_source=True, payoff=False,
                     armor_pierce=True, aggro=1)),
+    "runecaster": (N, "Tidal Ward", "Tidal Ward [Lv 2]",
+                   dict(dmg=0, heal=2, block=3, grants_range=False, chain_bonus_if_prev=None,
+                        chain_bonus_dmg=0, echo_dmg=0, echo_heal=0, aggro=1)),
 }
 LEVEL2_PURCHASED_ORDER = {
     "warrior": [
@@ -505,6 +508,10 @@ LEVEL2_PURCHASED_ORDER = {
          weave_source=True, payoff=False, aggro=2)),
         ("Snap Freeze", "Deep Freeze", dict(dmg=(2, 2), block=2, grants_range=True, weave_source=True,
          payoff=False, aggro=3)),
+    ],
+    "runecaster": [
+        ("Lightning Bolt", "Lightning Bolt [Lv 2]", dict(dmg=4, heal=0, block=0, grants_range=False,
+         chain_bonus_if_prev="Chain Lightning", chain_bonus_dmg=1, echo_dmg=0, echo_heal=0, aggro=2)),
     ],
 }
 RISK_TOLERANCE = 0.15  # fraction of hands allowed to be lethal, when this pull would complete a quest
@@ -1436,10 +1443,16 @@ def _trip_chain(class_name, strategy, rng, risk_tolerance=RISK_TOLERANCE,
         if class_name in LEVEL2_MANDATORY and "mandatory" in acquired:
             _, old_name, new_name, new_card = LEVEL2_MANDATORY[class_name]
             level2_swaps[old_name] = (new_name, new_card)
-            for i in range(len(LEVEL2_PURCHASED_ORDER[class_name])):
-                if f"skill_{i}" in acquired:
-                    old_name, new_name, new_card = LEVEL2_PURCHASED_ORDER[class_name][i]
-                    level2_swaps[old_name] = (new_name, new_card)
+            # A class can have its mandatory upgrade locked before any purchased upgrades
+            # exist yet (checkpointed 2026-08-24, Runecaster's own in-progress leveling pass)
+            # -- don't assume LEVEL2_PURCHASED_ORDER has an entry just because LEVEL2_MANDATORY
+            # does. Same real KeyError, same fix, as board_engine._level2_swaps_for's sibling
+            # guard (this is the older, pre-BoardState driver's own copy of the same logic).
+            if class_name in LEVEL2_PURCHASED_ORDER:
+                for i in range(len(LEVEL2_PURCHASED_ORDER[class_name])):
+                    if f"skill_{i}" in acquired:
+                        old_name, new_name, new_card = LEVEL2_PURCHASED_ORDER[class_name][i]
+                        level2_swaps[old_name] = (new_name, new_card)
 
         # Where a hero with nothing to do travels toward (run_one_trip's own routing, when
         # active_quests is empty): the pending mandatory upgrade takes priority over getting

@@ -80,8 +80,8 @@ def human_decide_combat(state, actions):
 
 
 def _fmt_town_action(i, a):
-    if a["type"] == "leave_town":
-        return f"  {i}) Leave Town"
+    if a["type"] in ("leave_town", "leave_trainer"):
+        return f"  {i}) Leave {'Trainer' if a['type'] == 'leave_trainer' else 'Town'}"
     if a["type"] == "buy":
         return f"  {i}) Buy {a['tag']} ({a['kind']}) -- {a['cost']}g"
     if a["type"] == "buy_consumable":
@@ -96,8 +96,6 @@ def _do_town(hero, class_name, strategy, purchase_queue, rng):
     print(f"\n=== Town (Zone {hero.position[0]}) ===")
     if setup["quests_completed"]:
         print(f"Turned in {setup['quests_completed']} quest(s).")
-    if setup["mandatory_turn"]:
-        print("You've been granted your mandatory Level 2 upgrade!")
     print(f"Gold: {hero.gold}  XP: {hero.xp}  HP: {hero.hp:.0f}/{hero.max_hp:.0f}")
     print(f"Active quests: {hero.active_quests}")
 
@@ -107,6 +105,28 @@ def _do_town(hero, class_name, strategy, purchase_queue, rng):
         still_in_town = BE.apply_town_action(hero, a, purchase_queue)
         if not still_in_town:
             print("Leaving Town, fully rested.")
+            return
+        print(f"Gold: {hero.gold}")
+
+
+def _do_trainer(hero, class_name, purchase_queue):
+    """Human-facing Trainer visit -- checkpointed 2026-08-24, Class Trainer split from Town
+    into its own turn-costing node type (see board_engine.get_town_actions/enter_trainer's own
+    docstrings for the full finding). Mirrors _do_town's shape exactly, using the SAME
+    get_town_actions/apply_town_action functions (filtered by hero.position's "trainer"
+    marker) -- only enter_trainer/leave_trainer differ from Town's own enter_town/leave_town."""
+    setup = BE.enter_trainer(hero, class_name)
+    print(f"\n=== Class Trainer (Zone {hero.position[0]}) ===")
+    if setup["mandatory_turn"]:
+        print("You've been granted your mandatory Level 2 upgrade!")
+    print(f"Gold: {hero.gold}")
+
+    while True:
+        actions = BE.get_town_actions(hero, purchase_queue)
+        a = _prompt_choice("Choose: ", actions, _fmt_town_action)
+        still_at_trainer = BE.apply_town_action(hero, a, purchase_queue)
+        if not still_at_trainer:
+            print("Leaving the Trainer.")
             return
         print(f"Gold: {hero.gold}")
 
@@ -129,6 +149,8 @@ def _fmt_travel_action(i, a):
         return f"  {i}) Eat Food (full heal)"
     if a["type"] == "use_potion":
         return f"  {i}) Drink Potion (+{M.POTION_HEAL:.0f} HP)"
+    if a["type"] == "visit_trainer":
+        return f"  {i}) Visit the Class Trainer"
     return f"  {i}) Return to Town"
 
 
@@ -149,8 +171,10 @@ def _report_outcome(result):
 
 
 def _do_travel(hero, class_name, board, rng):
-    """Runs one field trip until the hero returns to Town or dies. Mirrors run_solo_trip's own
-    scope, human-driven. Returns "town" or "died"."""
+    """Runs one field trip until the hero returns to Town, visits the Trainer, or dies. Mirrors
+    run_solo_trip's own scope, human-driven. Returns "town", "trainer", or "died" -- "trainer"
+    checkpointed 2026-08-24, Class Trainer split from Town into its own turn-costing node
+    type, reachable from this same Travel menu via visit_trainer."""
     while True:
         actions = BE.get_travel_actions(hero, board, rng)
         zone_or_border, _node = hero.position
@@ -184,6 +208,8 @@ def _do_travel(hero, class_name, board, rng):
         _report_outcome(result)
         if a["type"] == "return_to_town":
             return "town"
+        if a["type"] == "visit_trainer":
+            return "trainer"
 
 
 def play(class_name, strategy="food_only", seed=None):
@@ -220,6 +246,9 @@ def play(class_name, strategy="food_only", seed=None):
             print("You've recovered your gear.")
 
         outcome = _do_travel(hero, class_name, board, rng)
+        if outcome == "trainer":
+            _do_trainer(hero, class_name, purchase_queue)
+            continue
         _do_town(hero, class_name, strategy, purchase_queue, rng)
         if input("\nContinue? [Y/n]: ").strip().lower() == "n":
             break
@@ -245,24 +274,35 @@ def _pass_device(label):
 
 
 def _do_competitive_town(hero, class_name, strategy, purchase_queue, rng, controller, label, human_count):
-    """AI branch matches run_competitive_chain's own Town heuristic exactly (buy the first
-    affordable thing, else leave) -- deliberately not QuestIntelligence or the Purchase Queue's
-    own save/skip policy, since this driver isn't trying to reproduce run_competitive_chain's
-    bit-for-bit numbers, just its behavior shape, for AI seats a human is actually playing
-    against."""
+    """AI branch matches run_competitive_chain's own Town/Trainer heuristic exactly (buy the
+    first affordable thing, else leave) -- deliberately not QuestIntelligence or the Purchase
+    Queue's own save/skip policy, since this driver isn't trying to reproduce
+    run_competitive_chain's bit-for-bit numbers, just its behavior shape, for AI seats a human
+    is actually playing against. Dispatches on hero.position's own node marker ("town" vs
+    "trainer", checkpointed 2026-08-24) rather than assuming Town -- a hero can arrive at
+    either from a previous round's declared return_to_town/visit_trainer."""
+    at_trainer = hero.position[1] == "trainer"
     if controller == "ai":
-        BE.enter_town(hero, class_name, strategy, rng)
+        if at_trainer:
+            BE.enter_trainer(hero, class_name)
+        else:
+            BE.enter_town(hero, class_name, strategy, rng)
         while True:
             actions = BE.get_town_actions(hero, purchase_queue)
             buyable = next((a for a in actions if a["type"] == "buy"), None)
-            chosen = buyable if buyable else next(a for a in actions if a["type"] == "leave_town")
+            leave_type = "leave_trainer" if at_trainer else "leave_town"
+            chosen = buyable if buyable else next(a for a in actions if a["type"] == leave_type)
             if not BE.apply_town_action(hero, chosen, purchase_queue):
                 break
         return
     if human_count > 1:
         _pass_device(label)
-    print(f"\n--- {label}'s Town turn ---")
-    _do_town(hero, class_name, strategy, purchase_queue, rng)
+    if at_trainer:
+        print(f"\n--- {label}'s Trainer turn ---")
+        _do_trainer(hero, class_name, purchase_queue)
+    else:
+        print(f"\n--- {label}'s Town turn ---")
+        _do_town(hero, class_name, strategy, purchase_queue, rng)
 
 
 def _human_field_action(hero, label, board, rng):
@@ -316,11 +356,11 @@ def play_competitive(specs, strategy="food_only", seed=None, max_rounds=200):
     for round_num in range(max_rounds):
         print(f"\n\n######## Round {round_num + 1} ########")
         for hero_idx, hero in enumerate(board.heroes):
-            if hero.position[1] == "town":
+            if hero.position[1] in ("town", "trainer"):
                 _do_competitive_town(hero, class_names[hero_idx], strategy, purchase_queues[hero_idx], rng,
                                       controllers[hero_idx], labels[hero_idx], human_count)
 
-        field_idxs = [i for i, h in enumerate(board.heroes) if h.position[1] != "town"]
+        field_idxs = [i for i, h in enumerate(board.heroes) if h.position[1] not in ("town", "trainer")]
         quest_pools = {i: (M.LEVEL2_QUESTS if board.heroes[i].xp >= M.LEVEL2_XP_THRESHOLD else M.QUESTS)
                        for i in field_idxs}
         claimed_this_round = set()
@@ -333,13 +373,16 @@ def play_competitive(specs, strategy="food_only", seed=None, max_rounds=200):
                 action = _human_field_action(hero, labels[hero_idx], board, rng)
                 decide_fns[hero_idx] = human_decide_combat
             else:
-                action = BE._choose_field_action(hero_idx, board, class_names, quest_pools, rng, claimed_this_round)
+                action = BE._choose_field_action(hero_idx, board, class_names, quest_pools, rng, claimed_this_round,
+                                                  purchase_queues=purchase_queues)
             if action["type"] == "declare_node":
                 claimed_this_round.add(action["node_name"])
             BE.declare_for_hero(board, hero_idx, action)
         for hero_idx in range(n):
             if hero_idx not in field_idxs:
-                BE.declare_for_hero(board, hero_idx, {"type": "return_to_town"})
+                still_town = board.heroes[hero_idx].position[1] == "town"
+                BE.declare_for_hero(board, hero_idx,
+                                     {"type": "return_to_town" if still_town else "visit_trainer"})
 
         if human_count > 1:
             print("\n(All declarations submitted -- resolving the round...)")

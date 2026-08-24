@@ -1386,6 +1386,116 @@ Level-2 player typically has on hand -- matches the "Three skills (24G)" pacing 
 Gold-accumulation work (~4.5-6.1 trips, ~33-40 XP by then), meaning a full purchased slate is a
 real mid-game goal, not something bought all at once the moment Level 2 unlocks.
 
+## Seventh class worked example: Runecaster (in progress, 2026-08-24)
+
+First of the three classes (Runecaster, Druid, Necromancer) that had no Level 2 slate at all
+before this pass -- `sim/board_engine.py`'s `_level2_swaps_for` and `sim/macro_sim.py`'s
+`_build_purchase_queue` already handled this gracefully (empty swaps, no skill items offered),
+confirmed by direct code read before starting, not assumed.
+
+**Diagnosis.** `unplayed_card_diagnostic_genuine` on the unmodified Level 1 kit: Lightning
+Bolt tops the raw genuine list (44.0%, 11/25 -- 65 of the 90 total pairs were ties), but it's a
+pure offense card (3 dmg, +1 if Chain Lightning was played the previous round) -- same
+mismatch the tie-artifact section above already flags for Paladin's Sacred Light. **Tidal
+Ward**, second at 28.0% (7/25) and the kit's only real defensive card (0 dmg / 2 heal / 2
+block), is the one actually tied to the survivability mechanism the mandatory slot exists to
+fix -- picked over the raw top spot for the same reason the guide's own methodology calls for.
+
+**Real, class-specific risk found before sweeping anything: this exact card has direct
+equilibrium-breaking history.** Runecaster's own module docstring records that its original
+Level 1 numbers (Tidal Ward at heal=3/block=3) broke equilibrium and pushed pulls-before-death
+to 9.14 against the plain 6-mob pool (pack range 5.12-5.64) before being cut back to heal=2/
+block=2 -- a prior, real incident on this precise card, not a hypothetical caution. Re-ran
+`equilibrium_check` directly on every swept variant rather than trusting the cost/win/pulls
+margin table alone:
+
+| Variant | Equilibrium | Cost margin | Win margin | Pulls margin |
+|---|---|---|---|---|
+| h2/b2 (unchanged) | clear | -3.9 | -4.8 | -0.64 |
+| h3/b2 (+1 heal) | **broken (Bruiser)** | -- | -- | -- |
+| h2/b3 (+1 block) | clear | -1.5 | -4.8 | +0.02 |
+| h2/b4 (+2 block) | clear | -0.1 | -4.8 | +0.52 |
+
+**Heal is the dangerous lever for this specific card, block is safe** -- block swept clear
+through +2 (b4) with no equilibrium break, heal breaks equilibrium at even +1. Win margin is
+completely flat (-4.8) at every variant, structurally, since Tidal Ward is 0-damage and can
+never affect whether the mob dies -- same shape as Cleric's Greater Heal and Ranger's Beast's
+Stand, all of win%'s recovery work has to land on purchased upgrades, none of it on this card.
+
+**Locked: Tidal Ward -> Tidal Ward [Lv 2], heal unchanged at 2, block 2->3.** Standard +1 grain
+size (not the also-clear +2/block=4 option, left as headroom), equilibrium-clear on all 6
+Standard mobs, deliberately conservative (pulls margin +0.02, essentially untouched) so real
+margin stays unclaimed for the purchased-upgrade slots still to come.
+
+**Real bug found and fixed while wiring this in, not just a numbers exercise.**
+`board_engine._level2_swaps_for` unconditionally indexed `M.LEVEL2_PURCHASED_ORDER[class_name]`
+once a class's mandatory upgrade was acquired -- safe for every class built so far, since all
+six already had both dicts populated together, but a real `KeyError` the instant a class has a
+mandatory upgrade locked with no purchased-order entry yet, which is exactly this class's
+current state and exactly the scenario this pass creates for the first time. Fixed with the
+same defensive `if class_name in M.LEVEL2_PURCHASED_ORDER` guard `_build_purchase_queue`
+already had. Caught live (a real `KeyError`, not found by inspection) while verifying the
+mandatory grant actually fires for a Runecaster hero standing in a Trainer zone at Level 2 --
+re-verified after the fix across 20 full `run_solo_chain` seeds (150 turns each), every one
+reaching the mandatory Trainer visit cleanly, plus the full existing regression suite
+(`verify_combat_engine`, `verify_board_engine*`, both CLI/web smoke-test suites) re-run clean.
+
+**First purchased upgrade, re-diagnosed against the correct mandatory-only baseline (Tidal Ward
+[Lv 2] locked, nothing else) per Step 3.** `unplayed_card_diagnostic_genuine`: Lightning Bolt,
+41.9% (13/31) -- confirms the unmodified-kit reading (44.0%) essentially unchanged, since
+Tidal Ward's own play rate barely shifted anything else. Lightning Bolt is a pure offense card
+(3 dmg, +1 if the previous round's card was Chain Lightning) -- the natural first candidate to
+recover win margin, which Tidal Ward (0 damage, structurally incapable of moving win rate) left
+entirely untouched at -4.8.
+
+**Combo bonus (`chain_bonus_dmg`) checked and confirmed a dead lever for the decision that
+matters, though not literally zero-effect once traced precisely.** Only 6 of 15 hands even
+contain both Chain Lightning and Lightning Bolt, and the combo fires in the optimal line only
+16.7% of the time (15/90) against the 6 Standard mobs. Swept `chain_bonus_dmg` 1/2/3 holding
+base damage at 3 -- win margin identical to 1 decimal at every value (-4.8). Traced why, per
+mob type: against Standard mobs, every single case where the combo fires already has the *base*
+bonus's damage (4 total) fully lethal that round, or the mob is already dead from an earlier
+card -- more bonus damage lands on an already-secured kill, changing nothing. Against Elites
+(HP=12), there IS real remaining headroom (4-7 HP left when Bolt resolves, more than the base
+bonus's 4 damage) -- and a direct per-pair comparison confirmed a real, non-zero effect there:
+8 of 315 (hand, pool-mob) pairs gain extra `hp_left` in already-won Elite pulls as the bonus
+grows (e.g. hp_left 2->7 in one case), matching the exact shape of Ranger's already-documented
+Deadeye/Point Blank Shot finding ("zero aggregate effect despite real, verified per-sequence
+differences") -- confirmed real, but too diluted across the full 315-pair pool to move the
+rounded cost-margin number, and dwarfed by the flat-damage lever regardless.
+
+**Flat damage swept instead, and it's a real, strong lever -- with a real, traced cost:**
+
+| dmg | cost margin | win margin | pulls margin |
+|---|---|---|---|
+| 3 (unmodified) | -1.5 | -4.8 | +0.02 |
+| **4** | **-2.1** | **-1.0** | **-0.10** |
+| 5 | -1.0 | -0.0 | +0.03 |
+| 6 | -0.6 | +0.6 | +0.09 |
+| 7 | +0.9 | +0.9 | +0.46 |
+
+Cost margin genuinely *worsens* from dmg=3 to dmg=4, at the same step win margin improves the
+most -- traced to a specific, direct mechanism, not noise: 12 (hand, pool-mob) pairs flip from
+a cheap flee (survives, doesn't finish the mob, e.g. `win=False, hp_left=12` costing only 4 HP)
+into a real win that costs more HP to see through (`win=True, hp_left=7`, costing 9 HP) once
+the extra damage makes finishing the fight worthwhile instead of bailing early. Win margin
+improving and cost margin worsening at the same step aren't two separate effects here -- they're
+the same flipped pairs read through two different metrics. Cost margin recovers again from
+dmg=5 onward as those same fights start finishing in fewer total rounds.
+
+**Locked, by explicit user choice: Lightning Bolt -> Lightning Bolt [Lv 2], damage 3->4, combo
+bonus unchanged (`chain_bonus_dmg` stays 1).** Deliberately not dmg=6 (where win margin already
+flips positive) -- chosen specifically to accept the real cost-margin dip in exchange for the
+larger win-margin recovery at this step, leaving cost/pulls fully to future purchased upgrades
+in the same complementary split already established by the mandatory slot (Tidal Ward purely
+defensive, this card purely offensive). Combined slate (mandatory + this card), measured
+directly rather than assumed additive: cost -2.1, win -1.0, pulls -0.10 -- matches the isolated
+sweep exactly here (expected, since Tidal Ward touches no offensive stat at all), equilibrium
+re-confirmed clear on all 6 Standard mobs with both upgrades stacked. Verified end-to-end: a
+Runecaster hero with 100 Gold standing at a Trainer with the mandatory upgrade already granted
+can see and buy `skill_0`, and the resulting kit correctly swaps in both `Tidal Ward [Lv 2]`
+and `Lightning Bolt [Lv 2]` together.
+
 ## Explicitly open
 
 - **How many Gold-purchased upgrades a player can take beyond the mandatory one** -- capped at

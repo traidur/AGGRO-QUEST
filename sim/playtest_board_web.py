@@ -35,6 +35,19 @@ Run:
 """
 from __future__ import annotations
 
+
+import json
+import os
+
+
+
+_CARDS_TEXT = {}
+try:
+    with open(os.path.join(os.path.dirname(__file__), "../pnp-tool/src/cards_text.json"), "r", encoding="utf-8") as f:
+        _CARDS_TEXT = json.load(f)
+except Exception as e:
+    print(f"Warning: could not load cards_text.json: {e}")
+
 import argparse
 import random
 
@@ -58,12 +71,12 @@ def reset_session():
     _S.clear()
     _S.update(dict(
         mode=None, board=None, class_names={}, controllers={}, purchase_queues={},
-        rng=None, strategy="food_only", phase="setup", town_entered=False,
+        rng=None, strategy="food_only", phase="setup", town_entered=False, trainer_entered=False,
         pending_kind=None, pending_action=None, pending_hand=None, pending_border=None,
         flash=[], active_hero_idx=0,
         # Competitive-only fields, see _cmp_begin_round's own docstring for the state machine.
         labels={}, human_count=0, round_num=0,
-        cmp_town_pending=[], cmp_town_entered={},
+        cmp_town_pending=[], cmp_town_entered={}, cmp_trainer_entered={},
         cmp_field_idxs=[], cmp_quest_pools={}, cmp_claimed_this_round=set(), cmp_declare_order=[],
         cmp_declarations_resolved=None, cmp_resolve_order=[], cmp_results={}, cmp_touched_zones=set(),
     ))
@@ -93,6 +106,71 @@ def _current_quest_pool(hero):
     return M.LEVEL2_QUESTS if hero.xp >= M.LEVEL2_XP_THRESHOLD else M.QUESTS
 
 
+
+def _build_map_data(board, active_hero_idx=0):
+    import macro_sim as M
+    zones = {}
+    
+    # All existing zones based on nodes
+    all_zones = sorted(list(set(M.NODE_ZONE.values())))
+    for z in all_zones:
+        zones[z] = {"id": z, "name": f"Zone {z}", "nodes": [], "town_heroes": [], "trainer_heroes": [], "borders": []}
+    
+    # Place heroes
+    for i, h in enumerate(board.heroes):
+        z, n = h.position
+        if isinstance(z, int) and n == "town":
+            if z in zones:
+                zones[z]["town_heroes"].append(i)
+        elif isinstance(z, int) and n == "trainer":
+            if z in zones:
+                zones[z]["trainer_heroes"].append(i)
+        elif isinstance(z, int):
+            # In a node
+            pass
+            
+    for node_name, z in M.NODE_ZONE.items():
+        mob = board.zones[z].dealt.get(node_name) if z in board.zones else None
+        heroes_here = [i for i, h in enumerate(board.heroes) if h.position == (z, node_name)]
+        zones[z]["nodes"].append({"id": node_name, "mob": mob, "heroes": heroes_here})
+        
+    for border_name, z_set in M.BORDER_NODES.items():
+        z_list = list(z_set)
+        if len(z_list) == 2:
+            z1, z2 = z_list
+            heroes_here = [i for i, h in enumerate(board.heroes) if h.position[0] == border_name]
+            if z1 in zones: zones[z1]["borders"].append({"id": border_name, "target": z2, "heroes": heroes_here})
+            if z2 in zones: zones[z2]["borders"].append({"id": border_name, "target": z1, "heroes": heroes_here})
+
+    return zones
+
+
+def _build_action_dict(actions):
+    """Maps a map-clickable key -> action index, for travel.html's map-pin onclick handlers.
+    Node/Border/Zone-targeted actions key by their own node_name/border_name/target_zone;
+    everything else (visit_trainer, return_to_town, use_food, etc. -- anything with none of
+    those three fields) keys by its own action "type" string instead. Fixed 2026-08-24 -- the
+    original version fell through all three .get()s to None for every type-only action, so
+    return_to_town and visit_trainer's map pins (which look up action_dict.get('return_to_town')/
+    action_dict.get('visit_trainer') by literal string) could never actually match anything and
+    always rendered inactive, confirmed by reading both the Python and template sides together."""
+    result = {}
+    for i, a in enumerate(actions):
+        key = a.get("node_name", a.get("border_name", a.get("target_zone")))
+        if key is None:
+            key = a["type"]
+        result[key] = i
+    return result
+
+
+def _load_map_coords():
+    path = os.path.join(os.path.dirname(__file__), "static", "map_coords.json")
+    if not os.path.exists(path):
+        return {}
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
 def _flash(msg):
     _S["flash"].append(msg)
 
@@ -104,20 +182,18 @@ def _pop_flash():
 
 
 def _hand_options(class_name, hand):
-    """List of (hand_idx, card_name, variant, label) for every selectable option in a hand --
-    almost always one entry per card, except Necromancer's Boneguard's Offering, which the
-    solver already treats as two selectable lines (base vs. the boosted HP-for-damage virtual
-    card) -- mirrors combat_engine._card_variants exactly, duplicated here only because that
-    helper isn't exported (leading-underscore, module-private by convention elsewhere in this
-    codebase too, e.g. board_engine's own _resolve_forced_recovery)."""
+    """List of (hand_idx, card_name, variant, label, dict_json) for every selectable option in a hand --"""
     import condensed_necromancer as N
+    import json
     options = []
+    class_data = _CARDS_TEXT.get(class_name, {})
     for i, card_name in enumerate(hand):
+        card_data = class_data.get(card_name, {})
         if class_name == "necromancer" and card_name == N.BONEGUARD_OFFERING:
-            options.append((i, card_name, N.BONEGUARD_OFFERING, card_name))
-            options.append((i, card_name, N.BONEGUARD_OFFERING_BOOSTED, f"{card_name} (Boosted)"))
+            options.append((i, card_name, N.BONEGUARD_OFFERING, card_name, json.dumps(card_data)))
+            options.append((i, card_name, N.BONEGUARD_OFFERING_BOOSTED, f"{card_name} (Boosted)", json.dumps(card_data)))
         else:
-            options.append((i, card_name, card_name, card_name))
+            options.append((i, card_name, card_name, card_name, json.dumps(card_data)))
     return options
 
 
@@ -242,8 +318,6 @@ def town():
         setup = BE.enter_town(hero, class_name, _S["strategy"], _S["rng"])
         if setup["quests_completed"]:
             _flash(f"Turned in {setup['quests_completed']} quest(s).")
-        if setup["mandatory_turn"]:
-            _flash("You've been granted your mandatory Level 2 upgrade!")
         _S["town_entered"] = True
     actions = BE.get_town_actions(hero, _S["purchase_queues"][0])
     return render_template("town.html", hero=hero, actions=list(enumerate(actions)),
@@ -268,6 +342,48 @@ def town_action():
         _S["phase"] = "travel"
         return redirect(url_for("travel"))
     return redirect(url_for("town"))
+
+
+# ---------------------------------------------------------------------------
+# Class Trainer (checkpointed 2026-08-24: split from Town into its own turn-costing node
+# type -- see board_engine.get_town_actions/_trainer_automatic_setup's own docstrings for the
+# full finding. Mirrors the Town routes exactly, using the SAME get_town_actions/
+# apply_town_action functions (filtered by hero.position's "trainer" marker) -- only
+# enter_trainer/leave_trainer differ from Town's own enter_town/leave_town.)
+# ---------------------------------------------------------------------------
+
+@app.route("/trainer")
+def trainer():
+    if _S["board"] is None:
+        return redirect(url_for("index"))
+    hero = _S["board"].heroes[0]
+    class_name = _S["class_names"][0]
+    if not _S["trainer_entered"]:
+        setup = BE.enter_trainer(hero, class_name)
+        if setup["mandatory_turn"]:
+            _flash("You've been granted your mandatory Level 2 upgrade!")
+        _S["trainer_entered"] = True
+    actions = BE.get_town_actions(hero, _S["purchase_queues"][0])
+    return render_template("town.html", hero=hero, actions=list(enumerate(actions)),
+                            flash=_pop_flash(), action_url=url_for("trainer_action"))
+
+
+@app.route("/trainer/action", methods=["POST"])
+def trainer_action():
+    if _S["board"] is None:
+        return redirect(url_for("index"))
+    hero = _S["board"].heroes[0]
+    actions = BE.get_town_actions(hero, _S["purchase_queues"][0])
+    idx = int(request.form.get("idx", -1))
+    if not (0 <= idx < len(actions)):
+        return redirect(url_for("trainer"))
+    action = actions[idx]
+    still_at_trainer = BE.apply_town_action(hero, action, _S["purchase_queues"][0])
+    if not still_at_trainer:
+        _S["trainer_entered"] = False
+        _S["phase"] = "travel"
+        return redirect(url_for("travel"))
+    return redirect(url_for("trainer"))
 
 
 # ---------------------------------------------------------------------------
@@ -323,8 +439,9 @@ def travel():
         return redirect(url_for("index"))
     hero = _S["board"].heroes[0]
     actions = BE.get_travel_actions(hero, _S["board"], _S["rng"])
-    return render_template("travel.html", hero=hero, actions=list(enumerate(actions)),
-                            flash=_pop_flash())
+    return render_template("travel.html", hero=hero, actions=list(enumerate(actions)), flash=_pop_flash(),
+                            map_data=_build_map_data(_S["board"], 0), action_dict=_build_action_dict(actions),
+                            coords=_load_map_coords())
 
 
 @app.route("/travel/action", methods=["POST"])
@@ -361,6 +478,16 @@ def travel_action():
         BE.apply_travel_action(hero, action, class_name, board, rng, M.RISK_TOLERANCE_BASE, True)
         _S["phase"] = "town"
         return redirect(url_for("town"))
+
+    if action["type"] == "visit_trainer":
+        # Checkpointed 2026-08-24: Class Trainer split from Town into its own turn-costing
+        # node type -- falling through to the generic tail below (which just re-renders
+        # /travel) would be wrong here, same as return_to_town needs its own explicit branch:
+        # hero.position becomes (zone_id, "trainer"), which needs the Trainer's own route/menu,
+        # not another Travel-menu render.
+        BE.apply_travel_action(hero, action, class_name, board, rng, M.RISK_TOLERANCE_BASE, True)
+        _S["phase"] = "trainer"
+        return redirect(url_for("trainer"))
 
     # use_food / use_potion / use_scroll / use_smoke_bomb / flight_path / enter_zone --
     # no combat, resolves in one shot.
@@ -537,27 +664,37 @@ def party_start():
 
 
 def _cmp_begin_round():
-    """Start-of-round: resolve every AI hero's Town visit instantly, queue up humans still
-    standing in Town. Mirrors run_competitive_chain's own Town-phase loop (per-hero,
-    independent, never contested) but splits out human turns into real pages."""
+    """Start-of-round: resolve every AI hero's Town/Trainer visit instantly, queue up humans
+    still standing in either. Mirrors run_competitive_chain's own Town/Trainer-phase loop
+    (per-hero, independent, never contested) but splits out human turns into real pages.
+    Dispatches per-hero on hero.position's own "town"/"trainer" marker (checkpointed
+    2026-08-24, Class Trainer split from Town into its own turn-costing node type) rather than
+    assuming Town -- a hero can arrive at either from a previous round's declared
+    return_to_town/visit_trainer."""
     _S["round_num"] += 1
     board = _S["board"]
     town_pending = []
     for hero_idx, hero in enumerate(board.heroes):
-        if hero.position[1] != "town":
+        at_trainer = hero.position[1] == "trainer"
+        if hero.position[1] not in ("town", "trainer"):
             continue
         if _S["controllers"][hero_idx] == "ai":
-            BE.enter_town(hero, _S["class_names"][hero_idx], _S["strategy"], _S["rng"])
+            if at_trainer:
+                BE.enter_trainer(hero, _S["class_names"][hero_idx])
+            else:
+                BE.enter_town(hero, _S["class_names"][hero_idx], _S["strategy"], _S["rng"])
             while True:
                 actions = BE.get_town_actions(hero, _S["purchase_queues"][hero_idx])
                 buyable = next((a for a in actions if a["type"] == "buy"), None)
-                chosen = buyable if buyable else next(a for a in actions if a["type"] == "leave_town")
+                leave_type = "leave_trainer" if at_trainer else "leave_town"
+                chosen = buyable if buyable else next(a for a in actions if a["type"] == leave_type)
                 if not BE.apply_town_action(hero, chosen, _S["purchase_queues"][hero_idx]):
                     break
         else:
             town_pending.append(hero_idx)
     _S["cmp_town_pending"] = town_pending
     _S["cmp_town_entered"] = {}
+    _S["cmp_trainer_entered"] = {}
     return _cmp_after_town()
 
 
@@ -565,8 +702,9 @@ def _cmp_after_town():
     if _S["cmp_town_pending"]:
         hero_idx = _S["cmp_town_pending"][0]
         _S["active_hero_idx"] = hero_idx
-        _S["phase"] = "cmp_town"
-        return redirect(url_for("cmp_town"))
+        at_trainer = _S["board"].heroes[hero_idx].position[1] == "trainer"
+        _S["phase"] = "cmp_trainer" if at_trainer else "cmp_town"
+        return redirect(url_for("cmp_trainer" if at_trainer else "cmp_town"))
     return _cmp_begin_declare()
 
 
@@ -578,8 +716,6 @@ def cmp_town():
         setup = BE.enter_town(hero, _S["class_names"][hero_idx], _S["strategy"], _S["rng"])
         if setup["quests_completed"]:
             _flash(f"Turned in {setup['quests_completed']} quest(s).")
-        if setup["mandatory_turn"]:
-            _flash("You've been granted your mandatory Level 2 upgrade!")
         _S["cmp_town_entered"][hero_idx] = True
     actions = BE.get_town_actions(hero, _S["purchase_queues"][hero_idx])
     return render_template("town.html", hero=hero, actions=list(enumerate(actions)), flash=_pop_flash(),
@@ -601,6 +737,38 @@ def cmp_town_action():
     return redirect(url_for("cmp_town"))
 
 
+@app.route("/cmp/trainer")
+def cmp_trainer():
+    """Competitive counterpart to /cmp/town -- checkpointed 2026-08-24, Class Trainer split
+    from Town into its own turn-costing node type. Same shape as /trainer (solo), keyed by
+    _S["active_hero_idx"] instead of a fixed hero 0."""
+    hero_idx = _S["active_hero_idx"]
+    hero = _S["board"].heroes[hero_idx]
+    if not _S["cmp_trainer_entered"].get(hero_idx):
+        setup = BE.enter_trainer(hero, _S["class_names"][hero_idx])
+        if setup["mandatory_turn"]:
+            _flash("You've been granted your mandatory Level 2 upgrade!")
+        _S["cmp_trainer_entered"][hero_idx] = True
+    actions = BE.get_town_actions(hero, _S["purchase_queues"][hero_idx])
+    return render_template("town.html", hero=hero, actions=list(enumerate(actions)), flash=_pop_flash(),
+                            turn_label=_cmp_label(hero_idx), action_url=url_for("cmp_trainer_action"))
+
+
+@app.route("/cmp/trainer/action", methods=["POST"])
+def cmp_trainer_action():
+    hero_idx = _S["active_hero_idx"]
+    hero = _S["board"].heroes[hero_idx]
+    actions = BE.get_town_actions(hero, _S["purchase_queues"][hero_idx])
+    idx = int(request.form.get("idx", -1))
+    if not (0 <= idx < len(actions)):
+        return redirect(url_for("cmp_trainer"))
+    still_at_trainer = BE.apply_town_action(hero, actions[idx], _S["purchase_queues"][hero_idx])
+    if not still_at_trainer:
+        _S["cmp_town_pending"].pop(0)
+        return _cmp_after_town()
+    return redirect(url_for("cmp_trainer"))
+
+
 def _cmp_begin_declare():
     """Every field hero (not in Town) submits one Travel declaration this round, in priority-
     token order -- AI resolves instantly via the SAME board_engine._choose_field_action the CLI
@@ -608,7 +776,7 @@ def _cmp_begin_declare():
     submit a harmless return_to_town no-op (matches advance_board's own contract: every hero in
     board.heroes needs an entry, not just field-active ones)."""
     board = _S["board"]
-    field_idxs = [i for i, h in enumerate(board.heroes) if h.position[1] != "town"]
+    field_idxs = [i for i, h in enumerate(board.heroes) if h.position[1] not in ("town", "trainer")]
     _S["cmp_field_idxs"] = field_idxs
     _S["cmp_quest_pools"] = {i: _current_quest_pool(board.heroes[i]) for i in field_idxs}
     _S["cmp_claimed_this_round"] = set()
@@ -616,7 +784,9 @@ def _cmp_begin_declare():
     _S["cmp_declare_order"] = [i for i in order if i in field_idxs]
     for hero_idx in range(len(board.heroes)):
         if hero_idx not in field_idxs:
-            BE.declare_for_hero(board, hero_idx, {"type": "return_to_town"})
+            still_town = board.heroes[hero_idx].position[1] == "town"
+            BE.declare_for_hero(board, hero_idx,
+                                 {"type": "return_to_town" if still_town else "visit_trainer"})
     return _cmp_process_declare_queue()
 
 
@@ -627,7 +797,8 @@ def _cmp_process_declare_queue():
         hero_idx = _S["cmp_declare_order"][0]
         if _S["controllers"][hero_idx] == "ai":
             action = BE._choose_field_action(hero_idx, board, _S["class_names"], _S["cmp_quest_pools"],
-                                              rng, _S["cmp_claimed_this_round"])
+                                              rng, _S["cmp_claimed_this_round"],
+                                              purchase_queues=_S["purchase_queues"])
             if action["type"] == "declare_node":
                 _S["cmp_claimed_this_round"].add(action["node_name"])
             BE.declare_for_hero(board, hero_idx, action)
@@ -648,7 +819,8 @@ def cmp_declare():
         "travel.html", hero=hero, actions=list(enumerate(actions)), flash=_pop_flash(),
         turn_label=_cmp_label(hero_idx), action_url=url_for("cmp_declare_action"),
         declare_note="Declare your target for this round -- everyone's declarations resolve "
-                     "together once all heroes have chosen.",
+                     "together once all heroes have chosen.", map_data=_build_map_data(_S["board"], hero_idx),
+        action_dict=_build_action_dict(actions), coords=_load_map_coords(),
     )
 
 

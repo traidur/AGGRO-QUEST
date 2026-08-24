@@ -67,10 +67,16 @@ def _level2_swaps_for(class_name, acquired):
     if class_name in M.LEVEL2_MANDATORY and "mandatory" in acquired:
         _, old_name, new_name, new_card = M.LEVEL2_MANDATORY[class_name]
         swaps[old_name] = (new_name, new_card)
-        for i in range(len(M.LEVEL2_PURCHASED_ORDER[class_name])):
-            if f"skill_{i}" in acquired:
-                old_name, new_name, new_card = M.LEVEL2_PURCHASED_ORDER[class_name][i]
-                swaps[old_name] = (new_name, new_card)
+        # A class can have its mandatory upgrade locked before any purchased upgrades exist
+        # yet (checkpointed 2026-08-24, Runecaster's own in-progress leveling pass -- caught
+        # live as a real KeyError, not just a defensive guard added on spec): don't assume
+        # LEVEL2_PURCHASED_ORDER has an entry just because LEVEL2_MANDATORY does. Matches
+        # _build_purchase_queue's own identical guard for the same reason.
+        if class_name in M.LEVEL2_PURCHASED_ORDER:
+            for i in range(len(M.LEVEL2_PURCHASED_ORDER[class_name])):
+                if f"skill_{i}" in acquired:
+                    old_name, new_name, new_card = M.LEVEL2_PURCHASED_ORDER[class_name][i]
+                    swaps[old_name] = (new_name, new_card)
     return swaps
 
 
@@ -298,19 +304,45 @@ def commit_smoke_bomb_flee(hero):
     return {"outcome": "flee"}
 
 
+def _trainer_automatic_setup(hero, class_name):
+    """The free, automatic part of a Trainer visit -- the mandatory upgrade grant. Split out
+    2026-08-24 from _town_automatic_setup once the Class Trainer became its own turn-costing
+    node type, separate from Town: OPEN_QUESTIONS.md's "What a turn is" lists Town and Class
+    Trainer as parallel, independently-turn-costing node types ("Class Trainer: same structure
+    as Town... One turn total per visit"), but the code had bundled the mandatory grant (and,
+    until this same pass, purchased-skill buying) into Town's own single turn -- a real,
+    caught implementation gap against the always-intended rule, not a redesign. See
+    LEVELING_GUIDE.md and this session's own audit for the finding.
+
+    No zone-eligibility check here (unlike the old bundled version, which re-checked
+    `zone_id in M.TRAINER_ZONES` inline) -- this function is only ever called once a hero's
+    position is already `(zone_id, "trainer")`, which itself is only reachable through
+    apply_travel_action's visit_trainer handling, which in turn is only ever offered by
+    get_travel_actions when the current zone is already in M.TRAINER_ZONES. The eligibility
+    gate lives at the action-offering layer, same as every other Travel action's legality.
+
+    Mutates hero in place. Returns {"mandatory_turn": bool}."""
+    mandatory_turn = False
+    if (hero.xp >= M.LEVEL2_XP_THRESHOLD and class_name in M.LEVEL2_MANDATORY
+            and "mandatory" not in hero.acquired):
+        hero.acquired.add("mandatory")
+        mandatory_turn = True
+    return {"mandatory_turn": mandatory_turn}
+
+
 def _town_automatic_setup(hero, class_name, strategy, rng):
     """Everything about a Town visit that is NOT a discretionary player choice -- quest
-    turn-in/decay/refill, the leaving-town restock, Phase 1 quest pickup, and the free
-    mandatory-upgrade grant. Factored out of resolve_town_turn (2026-08-22) so both the
+    turn-in/decay/refill, the leaving-town restock, and Phase 1 quest pickup (the free
+    mandatory-upgrade grant moved to _trainer_automatic_setup, 2026-08-24 -- see its own
+    docstring for why). Factored out of resolve_town_turn (2026-08-22) so both the
     AI-automatic path (resolve_town_turn, unchanged) and the new human-facing macro seam
     (get_town_actions/apply_town_action) share the identical logic for this part -- only the
     Purchase Queue (genuinely discretionary: which upgrade, in what order, whether to stop)
-    differs between the two callers, matching how none of turn-in/restock/pickup/mandatory-
-    grant are real choices in the physical game either (you don't decline a completed
-    quest's reward, or decline being handed a new quest by the quest-giver).
+    differs between the two callers, matching how none of turn-in/restock/pickup are real
+    choices in the physical game either (you don't decline a completed quest's reward, or
+    decline being handed a new quest by the quest-giver).
 
-    Mutates hero in place. Returns a dict: {"quests_completed": int, "mandatory_turn": bool,
-    "gold_after_turnin": int}."""
+    Mutates hero in place. Returns a dict: {"quests_completed": int, "gold_after_turnin": int}."""
     zone_id, _node = hero.position
     pool = M.LEVEL2_QUESTS if hero.xp >= M.LEVEL2_XP_THRESHOLD else M.QUESTS
     for loot in pool:
@@ -358,29 +390,28 @@ def _town_automatic_setup(hero, class_name, strategy, rng):
         if pool is M.LEVEL2_QUESTS:
             hero.acquired.add("started_l2_quests")
 
-    mandatory_turn = False
-    if (zone_id in M.TRAINER_ZONES and hero.xp >= M.LEVEL2_XP_THRESHOLD
-            and class_name in M.LEVEL2_MANDATORY and "mandatory" not in hero.acquired):
-        hero.acquired.add("mandatory")
-        mandatory_turn = True
-
-    return {"quests_completed": quests_completed, "mandatory_turn": mandatory_turn,
-            "gold_after_turnin": gold_after_turnin}
+    return {"quests_completed": quests_completed, "gold_after_turnin": gold_after_turnin}
 
 
 def resolve_town_turn(hero, class_name, strategy, purchase_queue, purchase_policy, rng):
-    """Resolves one full Town turn -- "a hero may do as much business as they want in one
-    visit... one turn total per Town visit" (OPEN_QUESTIONS.md's "What a turn is," verbatim).
-    Faithful port of _trip_chain's Town bookkeeping (quest turn-in/decay/refill, the
-    leaving-town restock, Phase 1 Logistics, Phase 3 Purchase Queue), bundled into a single
-    call since all of it happens at one Town stop under BoardState -- the OLD code only split
-    it across the tail of one _trip_chain loop iteration (turn-in) and the head of the next
-    (restock/pickup/purchases) for implementation convenience, not because they're two
-    separate turns. Order matches the old code's own dependency chain exactly: turn-in first
-    (so its Gold is available to spend this same stop), then restock, then Logistics, then
-    Purchase Queue. This is the AI-automatic path -- see get_town_actions/apply_town_action
-    for the human-facing equivalent, which shares _town_automatic_setup for everything here
-    except the Purchase Queue walk.
+    """Resolves one full Town turn, plus a separate Trainer turn if the hero is standing in a
+    Trainer Zone and actually has Trainer business to do -- "Town... one turn total per visit"
+    and "Class Trainer: same structure as Town... One turn total per visit" are two PARALLEL
+    entries in OPEN_QUESTIONS.md's "What a turn is" (locked), each its own turn, not one
+    combined stop. An earlier version of this function bundled both into a single turn --
+    a real, caught implementation gap against the always-intended rule (found via direct user
+    audit, 2026-08-24), not a design change; see LEVELING_GUIDE.md and _trainer_automatic_
+    setup's own docstring for the full finding. Faithful port of _trip_chain's Town bookkeeping
+    otherwise (quest turn-in/decay/refill, the leaving-town restock, Phase 1 Logistics, Phase 3
+    Purchase Queue). This is the AI-automatic path -- see get_town_actions/apply_town_action
+    for the human-facing equivalent, which shares _town_automatic_setup/_trainer_automatic_
+    setup for everything here except the Purchase Queue walk.
+
+    The Trainer turn only fires if there's real business there (the mandatory grant becoming
+    eligible, or an affordable next skill) -- unlike Town, which is always the hero's
+    deliberate destination this stop, a hero has no reason to spend a turn at the Trainer's
+    counter with nothing to receive or buy, matching OPEN_QUESTIONS.md's already-locked
+    "opportunistic, not deliberate travel" stance on purchased upgrades specifically.
 
     One real, documented difference from _trip_chain: a brand-new hero there starts already
     holding an active_quests log (drawn before turn 0 even begins) -- here, active_quests
@@ -397,9 +428,9 @@ def resolve_town_turn(hero, class_name, strategy, purchase_queue, purchase_polic
     zone_id, _node = hero.position
     setup = _town_automatic_setup(hero, class_name, strategy, rng)
 
-    hero.gold, purchase_trainer_turn = M._walk_purchase_queue(
-        purchase_queue, hero.acquired, hero.bag, hero.locked, zone_id, hero.gold, purchase_policy,
-        skill_purchase_order=hero.skill_purchase_order or None)
+    town_queue = [item for item in purchase_queue if item["kind"] != "skill"]
+    hero.gold, _ = M._walk_purchase_queue(
+        town_queue, hero.acquired, hero.bag, hero.locked, zone_id, hero.gold, purchase_policy)
 
     # One turn, always -- "a hero may do as much business as they want in one visit... One
     # turn total per Town visit, no matter how much gets done there" (OPEN_QUESTIONS.md,
@@ -407,23 +438,56 @@ def resolve_town_turn(hero, class_name, strategy, purchase_queue, purchase_polic
     # nothing still counts (the hero still visited).
     hero.turns += 1
 
+    mandatory_turn = False
+    purchase_trainer_turn = False
+    if zone_id in M.TRAINER_ZONES:
+        trainer_setup = _trainer_automatic_setup(hero, class_name)
+        mandatory_turn = trainer_setup["mandatory_turn"]
+        trainer_queue = [item for item in purchase_queue if item["kind"] == "skill"]
+        hero.gold, purchase_trainer_turn = M._walk_purchase_queue(
+            trainer_queue, hero.acquired, hero.bag, hero.locked, zone_id, hero.gold, purchase_policy,
+            skill_purchase_order=hero.skill_purchase_order or None)
+        if mandatory_turn or purchase_trainer_turn:
+            hero.turns += 1
+
     return {"quests_completed": setup["quests_completed"],
-            "trainer_turn": setup["mandatory_turn"] or purchase_trainer_turn,
+            "trainer_turn": mandatory_turn or purchase_trainer_turn,
             "gold_after_turnin": setup["gold_after_turnin"]}
 
 
 def enter_town(hero, class_name, strategy, rng):
-    """Human-facing equivalent of resolve_town_turn's first half -- runs the automatic parts
-    of a Town visit (turn-in, restock, quest pickup, mandatory grant, see
-    _town_automatic_setup) and marks the ONE turn this whole visit costs (unconditional,
-    matching resolve_town_turn's own timing exactly -- charged on arrival, not per purchase,
-    since "one turn total per Town visit, no matter how much gets done there" is the locked
-    rule). Call this ONCE when a hero arrives at Town, then drive purchases via
-    get_town_actions/apply_town_action in a loop until leave_town is chosen.
+    """Human-facing equivalent of resolve_town_turn's Town half -- runs the automatic parts of
+    a Town visit (turn-in, restock, quest pickup, see _town_automatic_setup) and marks the ONE
+    turn this visit costs (unconditional, charged on arrival, not per purchase, since "one turn
+    total per Town visit, no matter how much gets done there" is the locked rule). Call this
+    ONCE when a hero arrives at Town, then drive purchases via get_town_actions/apply_town_
+    action in a loop until leave_town is chosen. Does NOT grant the mandatory upgrade -- see
+    enter_trainer, the Trainer's own separate turn/visit (checkpointed 2026-08-24).
 
     Mutates hero in place. Returns _town_automatic_setup's own dict (quests_completed,
-    mandatory_turn, gold_after_turnin)."""
+    gold_after_turnin)."""
     setup = _town_automatic_setup(hero, class_name, strategy, rng)
+    hero.turns += 1
+    return setup
+
+
+def enter_trainer(hero, class_name):
+    """Human-facing equivalent of resolve_town_turn's Trainer half -- runs the free, automatic
+    part of a Trainer visit (the mandatory upgrade grant, see _trainer_automatic_setup) and
+    marks the ONE turn this visit costs, separate from any Town turn (checkpointed 2026-08-24,
+    Class Trainer split from Town into its own turn-costing node type -- see
+    _trainer_automatic_setup's own docstring for the full finding). Call this ONCE when a
+    hero's position becomes (zone_id, "trainer") (via apply_travel_action's visit_trainer
+    handling), then drive purchases via get_town_actions/apply_town_action (the SAME functions
+    Town uses, filtered by position) in a loop until leave_trainer is chosen.
+
+    Unlike enter_town, this is always charged unconditionally too -- a human declaring
+    visit_trainer has already made the deliberate choice to spend the turn, same as a Town
+    visit; only the AI-automatic path (resolve_town_turn) skips the Trainer turn when there's
+    nothing to do there, since it isn't making a deliberate per-turn choice the way a human is.
+
+    Mutates hero in place. Returns _trainer_automatic_setup's own dict ({"mandatory_turn": bool})."""
+    setup = _trainer_automatic_setup(hero, class_name)
     hero.turns += 1
     return setup
 
@@ -451,14 +515,27 @@ def get_town_actions(hero, purchase_queue):
     Purchase Queue's one-time acquired-tracked items (Bag Upgrade, Skills): these are
     repeatable, same category as the Food/Potion restock, so they don't belong in
     purchase_queue/hero.acquired at all. use_charm is offered once per currently-decayed active
-    quest, if the hero holds an unlocked Preserving Charm."""
-    zone_id, _node = hero.position
+    quest, if the hero holds an unlocked Preserving Charm. Consumables/use_charm are Town-only
+    (checkpointed 2026-08-24, the Trainer's own business is upgrade cards, nothing else,
+    matching OPEN_QUESTIONS.md's "Class Trainer: same structure as Town -- buy as many upgrade
+    cards as affordable in one visit" -- upgrade cards, not general restock).
+
+    Shared with the Trainer seam (checkpointed 2026-08-24): this same function serves both,
+    filtered by hero.position's own node marker -- "town" shows Bag Upgrade + consumables +
+    use_charm + leave_town; "trainer" shows only Trainer-gated skill items + leave_trainer.
+    Matches item["requires_trainer"] directly against which one it is, rather than the old
+    (broken, undefined-variable) attempt at this same split -- Bag Upgrade and skills were
+    bundled into one menu here before this pass, a real caught implementation gap against the
+    always-intended "Trainer is its own turn-costing node, not folded into Town's shopping
+    list" rule (DESIGN_DOC.md Section VII), not a redesign."""
+    zone_id, node = hero.position
+    at_trainer = node == "trainer"
     actions = []
     skills_acquired_so_far = sum(1 for tag in hero.acquired if tag.startswith("skill_"))
     for item in purchase_queue:
         if item["tag"] in hero.acquired:
             continue
-        if item["requires_trainer"] and zone_id not in M.TRAINER_ZONES:
+        if item["requires_trainer"] != at_trainer:
             continue
         if item["requires_l2_started"] and "started_l2_quests" not in hero.acquired:
             continue
@@ -470,16 +547,17 @@ def get_town_actions(hero, purchase_queue):
             continue
         actions.append({"type": "buy", "tag": item["tag"], "kind": item["kind"], "cost": item["cost"]})
 
-    for item_name, cost in M.CONSUMABLE_ITEMS.items():
-        if hero.gold >= cost and M._bag_has_room(hero.bag, hero.locked):
-            actions.append({"type": "buy_consumable", "item_name": item_name, "cost": cost})
+    if not at_trainer:
+        for item_name, cost in M.CONSUMABLE_ITEMS.items():
+            if hero.gold >= cost and M._bag_has_room(hero.bag, hero.locked):
+                actions.append({"type": "buy_consumable", "item_name": item_name, "cost": cost})
 
-    if M._accessible_count(hero.bag, hero.locked, "preserving_charm") > 0:
-        for loot in hero.active_quests:
-            if hero.decay_stage.get(loot, 0) > 0:
-                actions.append({"type": "use_charm", "loot": loot})
+        if M._accessible_count(hero.bag, hero.locked, "preserving_charm") > 0:
+            for loot in hero.active_quests:
+                if hero.decay_stage.get(loot, 0) > 0:
+                    actions.append({"type": "use_charm", "loot": loot})
 
-    actions.append({"type": "leave_town"})
+    actions.append({"type": "leave_trainer" if at_trainer else "leave_town"})
     return actions
 
 
@@ -505,11 +583,16 @@ def apply_town_action(hero, action, purchase_queue):
     AI-automatic path; a human-facing driver has no equivalent "start of trip" hook other than
     this action, since get_travel_actions/apply_travel_action have no trip concept of their
     own (see this module's docstring on why BoardState only tracks turns, not trips) -- so it
-    belongs here, the one place every human trip actually begins."""
-    if action["type"] == "leave_town":
+    belongs here, the one place every human trip actually begins.
+
+    leave_trainer (checkpointed 2026-08-24) is the same position-clearing shape but does NOT
+    reset HP -- resting is a Town-specific amenity, not something that happens at the Trainer's
+    counter; only an actual Town visit implies resting between excursions."""
+    if action["type"] in ("leave_town", "leave_trainer"):
         zone_id, _node = hero.position
         hero.position = (zone_id, None)
-        hero.hp = hero.max_hp
+        if action["type"] == "leave_town":
+            hero.hp = hero.max_hp
         return False
 
     if action["type"] == "buy_consumable":
@@ -622,6 +705,8 @@ def get_travel_actions(hero, board, rng):
             actions.append({"type": "use_potion"})
 
     actions.append({"type": "return_to_town"})
+    if zone_or_border in M.TRAINER_ZONES:
+        actions.append({"type": "visit_trainer"})
     return actions
 
 
@@ -741,6 +826,17 @@ def apply_travel_action(hero, action, class_name, board, rng,
         M._remove_item(hero.bag, hero.locked, "potion", 1)
         hero.consumables_used["potion"] += 1
         return {"outcome": "healed"}
+
+    if action["type"] == "visit_trainer":
+        # Free (same "travel itself is free" rule as return_to_town), and only ever offered
+        # (get_travel_actions) when the hero's CURRENT zone is already in M.TRAINER_ZONES --
+        # visiting the Trainer never involves crossing to a different Zone, just a position-
+        # marker transition within the same one, matching return_to_town's own shape.
+        # Checkpointed 2026-08-24: Class Trainer split from Town into its own turn-costing
+        # node type -- see get_town_actions/_trainer_automatic_setup's own docstrings.
+        zone_or_border, _node = hero.position
+        hero.position = (zone_or_border, "trainer")
+        return {"outcome": "moved"}
 
     # return_to_town -- free, matches Golden Rule 1 ("travel itself is free"). If currently on
     # a Border Node, "returning to Town" means walking into whichever connected Zone is
@@ -1513,21 +1609,56 @@ def _route_toward_zone(actions, zone_or_border, target_zone):
     return None
 
 
-def _choose_field_action(hero_idx, board, class_names, quest_pools, rng, claimed_this_round):
+def _trainer_has_business(hero, class_name, purchase_queue):
+    """Whether a hero standing in a Trainer Zone has any real reason to declare visit_trainer
+    this round -- either the mandatory upgrade just became eligible, or an affordable skill is
+    next in their shuffled purchase order. Shared by _choose_field_action's opportunistic
+    Trainer-visit check and run_competitive_chain's Trainer-AI walk, so the two never disagree
+    about whether there's business to be done. purchase_queue may be None (no info available,
+    e.g. a direct unit-test call) -- treated as "no skill business," matching a class with no
+    Level 2 slate at all."""
+    if (class_name in M.LEVEL2_MANDATORY and hero.xp >= M.LEVEL2_XP_THRESHOLD
+            and "mandatory" not in hero.acquired):
+        return True
+    if purchase_queue is None:
+        return False
+    skills_acquired_so_far = sum(1 for tag in hero.acquired if tag.startswith("skill_"))
+    for item in purchase_queue:
+        if item["kind"] != "skill" or item["tag"] in hero.acquired:
+            continue
+        if hero.skill_purchase_order:
+            if (skills_acquired_so_far >= len(hero.skill_purchase_order)
+                    or item["index"] != hero.skill_purchase_order[skills_acquired_so_far]):
+                continue
+        if hero.gold >= item["cost"]:
+            return True
+    return False
+
+
+def _choose_field_action(hero_idx, board, class_names, quest_pools, rng, claimed_this_round,
+                          purchase_queues=None):
     """AI decision for one hero's Move-and-declare choice this round (task #65) -- a
     deliberately simple MVP router, not a port of decide_travel's own fuller logic (that
     function's output format predates the Travel-seam's action-dict vocabulary and mutates
     hero state as a side effect of "deciding," which doesn't compose cleanly with a barrier
     where other heroes' choices matter). Priority, matching OPEN_QUESTIONS.md's now-resolved
     "Competitive AI" entry: heal/bag-deadlock relief first (private, doesn't need contention
-    awareness); then an uncontested declare_node serving an incomplete quest (checking
-    claimed_this_round -- what higher-priority heroes have ALREADY declared this same round,
-    since advance_board doesn't care how pending_declarations got filled, only that it's
-    complete before resolving); then a contested one anyway if that's all there is; then Flight
-    Path if it reaches a quest-relevant Zone directly; then routing via _route_toward_zone
-    toward whichever Zone actually gets the hero closer to their quest (or, with no active
-    quests, toward the nearest zone that hands out quests at their XP tier); then
-    return_to_town as the last resort."""
+    awareness); then an opportunistic Trainer visit (checkpointed 2026-08-24 -- only if already
+    standing in a Trainer Zone AND there's real business there, per _trainer_has_business,
+    matching OPEN_QUESTIONS.md's locked "opportunistic, not deliberate travel" stance on
+    purchased upgrades, extended the same way to this newly-split-out node type); then an
+    uncontested declare_node serving an incomplete quest (checking claimed_this_round -- what
+    higher-priority heroes have ALREADY declared this same round, since advance_board doesn't
+    care how pending_declarations got filled, only that it's complete before resolving); then a
+    contested one anyway if that's all there is; then Flight Path if it reaches a quest-relevant
+    Zone directly; then routing via _route_toward_zone toward whichever Zone actually gets the
+    hero closer to their quest (or, with no active quests, toward the nearest zone that hands
+    out quests at their XP tier); then return_to_town as the last resort.
+
+    purchase_queues (checkpointed 2026-08-24): optional {hero_idx: purchase_queue} dict, passed
+    to _trainer_has_business. None (e.g. a direct unit-test call) disables the opportunistic
+    Trainer-visit check entirely rather than crashing -- matches _trainer_has_business's own
+    None handling."""
     hero = board.heroes[hero_idx]
     quest_pool = quest_pools[hero_idx]
     actions = get_travel_actions(hero, board, rng)
@@ -1537,6 +1668,13 @@ def _choose_field_action(hero_idx, board, class_names, quest_pools, rng, claimed
         heal = next((a for a in actions if a["type"] in ("use_food", "use_potion")), None)
         if heal:
             return heal
+
+    if isinstance(zone_or_border, int) and zone_or_border in M.TRAINER_ZONES:
+        purchase_queue = purchase_queues[hero_idx] if purchase_queues else None
+        if _trainer_has_business(hero, class_names[hero_idx], purchase_queue):
+            visit = next((a for a in actions if a["type"] == "visit_trainer"), None)
+            if visit:
+                return visit
 
     if not M._bag_has_room(hero.bag, hero.locked):
         # Real bug caught live tracing a 300-round run where gold kept growing but XP froze at
@@ -1679,19 +1817,34 @@ def run_competitive_chain(class_names_list, strategy, rng, max_rounds,
                     still_in_town = apply_town_action(hero, chosen, purchase_queues[hero_idx])
                     if not still_in_town:
                         break
+            elif hero.position[1] == "trainer":
+                # Checkpointed 2026-08-24: Class Trainer split from Town into its own turn-
+                # costing node type -- a hero can arrive here via a previous round's declared
+                # visit_trainer (see _choose_field_action's own opportunistic check below), and
+                # this is the AI-automatic Trainer walk, get_town_actions/apply_town_action
+                # shared with Town, filtered by this "trainer" position marker.
+                enter_trainer(hero, class_names[hero_idx])
+                while True:
+                    trainer_actions = get_town_actions(hero, purchase_queues[hero_idx])
+                    buyable = next((a for a in trainer_actions if a["type"] == "buy"), None)
+                    chosen = buyable if buyable else next(a for a in trainer_actions if a["type"] == "leave_trainer")
+                    still_at_trainer = apply_town_action(hero, chosen, purchase_queues[hero_idx])
+                    if not still_at_trainer:
+                        break
 
-        field_idxs = [i for i, h in enumerate(board.heroes) if h.position[1] != "town"]
+        field_idxs = [i for i, h in enumerate(board.heroes) if h.position[1] not in ("town", "trainer")]
         quest_pools = {i: (M.LEVEL2_QUESTS if board.heroes[i].xp >= M.LEVEL2_XP_THRESHOLD else M.QUESTS)
                        for i in field_idxs}
         claimed_this_round = set()
         for hero_idx in [i for i in _priority_order(board) if i in field_idxs]:
-            action = _choose_field_action(hero_idx, board, class_names, quest_pools, rng, claimed_this_round)
+            action = _choose_field_action(hero_idx, board, class_names, quest_pools, rng, claimed_this_round,
+                                           purchase_queues=purchase_queues)
             if action["type"] == "declare_node":
                 claimed_this_round.add(action["node_name"])
             declare_for_hero(board, hero_idx, action)
         for hero_idx in range(n):
             if hero_idx not in field_idxs:
-                declare_for_hero(board, hero_idx, {"type": "return_to_town"})
+                declare_for_hero(board, hero_idx, {"type": "return_to_town" if board.heroes[hero_idx].position[1] == "town" else "visit_trainer"})
 
         results = advance_board(board, class_names, rng, risk_tolerance_base, risk_only_as_last_resort)
 

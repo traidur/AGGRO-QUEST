@@ -2,59 +2,261 @@
 <html>
 <head>
     <title>QUEST — {{ class_name|capitalize }} vs {{ mob_name }}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Crimson+Pro:ital,wght@0,400;0,600;1,400&family=Barlow+Condensed:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='cards.css') }}">
     <style>
-        body { font-family: sans-serif; max-width: 640px; margin: 40px auto; }
-        table.pattern { border-collapse: collapse; margin-bottom: 20px; width: 100%; }
-        table.pattern td, table.pattern th { border: 1px solid #ccc; padding: 6px 10px; text-align: center; }
-        .hand-list { font-size: 14px; color: #555; margin-bottom: 20px; }
-        .round-row { margin-bottom: 14px; }
-        .round-row label { display: block; font-weight: bold; margin-bottom: 4px; }
-        select { font-size: 15px; padding: 6px; width: 100%; max-width: 320px; }
-        button { font-size: 16px; padding: 10px 18px; margin-top: 12px; cursor: pointer; }
-        .flash { background: #f8d7da; border: 1px solid #dc3545; border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; }
-        .turn-banner { background: #d1e7ff; border: 1px solid #4a90d9; border-radius: 6px;
-                        padding: 8px 12px; margin-bottom: 12px; font-weight: bold; }
+        .combat-arena { display: flex; flex-direction: column; gap: 30px; margin-bottom: 30px; }
+        .round-slot {
+            background: #1a1a1a; border: 2px dashed #444; border-radius: 8px; padding: 16px;
+            display: flex; justify-content: space-between; align-items: center; min-height: 120px;
+            cursor: pointer; transition: all 0.2s; position: relative;
+        }
+        .round-slot.filled { border: 2px solid var(--accent-gold); background: #222; }
+        .round-slot:hover { border-color: var(--text-main); }
+        .mob-intent { font-family: 'Cinzel', serif; color: #ff4444; font-size: 18px; text-align: right; z-index: 10; }
+        .mob-intent span { color: #69ccf0; margin-left: 10px; }
+        
+        .hand-container { display: flex; flex-wrap: wrap; gap: 30px; margin-bottom: 24px; justify-content: center; }
+        .card-wrapper {
+            cursor: pointer; transition: all 0.2s; box-shadow: 0 8px 16px rgba(0,0,0,0.5); border-radius: 8px;
+            position: relative;
+        }
+        .card-wrapper:hover { transform: translateY(-8px); box-shadow: 0 12px 24px rgba(200,160,100,0.4); }
+        .card-wrapper.used { opacity: 0.3; pointer-events: none; filter: grayscale(1); }
+        
+        /* Scale down the cards to fit in UI */
+        .card-wrapper > .card {
+            transform-origin: top left;
+            transform: scale(0.9);
+            margin-bottom: -33px; /* offset the scale */
+            margin-right: -24px;
+        }
+        .slotted-card-wrapper > .card {
+            transform-origin: top left;
+            transform: scale(0.55);
+            position: absolute; top: -15px; left: 140px;
+        }
+
+        #submit-btn { display: none; width: 100%; font-size: 20px; padding: 16px; }
+        #submit-btn.ready { display: block; }
     </style>
 </head>
 <body>
     {% if turn_label %}<div class="turn-banner">{{ turn_label }}</div>{% endif %}
     <h2>{{ class_name|capitalize }} vs {{ mob_name }}</h2>
     {% for msg in flash %}<div class="flash">{{ msg }}</div>{% endfor %}
-    <p>Your HP: <strong>{{ hero.hp|round(0,'floor')|int }}</strong> / {{ hero.max_hp|int }} — Mob HP: <strong>{{ mob_hp|int }}</strong></p>
+    
+    <div class="panel">
+        <p style="margin: 0;">HP: <strong>{{ hero.hp|round(0,'floor')|int }}/{{ hero.max_hp|int }}</strong> &nbsp;|&nbsp; Mob HP: <strong>{{ mob_hp|int }}</strong></p>
+    </div>
 
-    <table class="pattern">
-        <tr><th>Round</th><th>Mob ATK</th><th>Mob Block</th></tr>
-        {% for i, rnd in pattern %}
-        <tr><td>{{ i + 1 }}</td><td>{{ rnd[0] }}</td><td>{{ rnd[1] }}</td></tr>
-        {% endfor %}
-    </table>
-
-    <div class="hand-list">Your hand: {{ hand_options|map(attribute=2)|unique|list|join(', ') }}
-        — pick 3 of these 4 to play, in order. The mob's full pattern is already known above,
-        so plan your whole hand before submitting.</div>
-
-    <form method="POST" action="{{ action_url or '/combat_plan/submit' }}">
+    <form id="combat-form" method="POST" action="{{ action_url or '/combat_plan/submit' }}">
         {% if has_stance %}
-        <div class="round-row">
-            <label>Stance (locked for the whole fight)</label>
-            <select name="stance">
-                <option value="G">Guardian</option>
-                <option value="C">Crusader</option>
+        <div class="panel" style="display:flex; justify-content: space-between; align-items:center;">
+            <label style="margin:0; font-size:16px;">Warrior Stance:</label>
+            <select name="stance" style="width:200px; margin:0;">
+                <option value="G">Guardian (Shields Up)</option>
+                <option value="C">Champion (Heavy Swings)</option>
             </select>
         </div>
         {% endif %}
-        {% for round_num in range(3) %}
-        <div class="round-row">
-            <label>Round {{ round_num + 1 }}</label>
-            <select name="round_{{ round_num }}">
-                <option value="">-- choose a card --</option>
-                {% for idx, card_name, variant, label in hand_options %}
-                <option value="{{ idx }}|{{ variant }}">{{ label }}</option>
-                {% endfor %}
-            </select>
+
+        <div class="combat-arena">
+            {% for i, rnd in pattern %}
+            <div class="round-slot" id="slot-{{ i }}" onclick="clearSlot({{ i }})">
+                <div class="slot-content">
+                    <span style="color:#666; font-family:'Cinzel';">ROUND {{ i + 1 }}</span>
+                    <div class="slotted-card-wrapper" id="slotted-{{ i }}"></div>
+                </div>
+                <div class="mob-intent">
+                    ATK {{ rnd[0] }} <span>BLK {{ rnd[1] }}</span>
+                </div>
+                <input type="hidden" name="round_{{ i }}" id="input-{{ i }}" value="">
+            </div>
+            {% endfor %}
         </div>
-        {% endfor %}
-        <button type="submit">Commit and resolve</button>
+
+        <h3 style="font-size:18px; margin-bottom:12px; color:var(--text-muted); text-align:center;">Your Hand</h3>
+        <div class="hand-container">
+            {% for idx, card_name, variant, label, dict_json in hand_options %}
+            <div class="card-wrapper" id="card-{{ idx }}-{{ loop.index }}" onclick="playCard('{{ idx }}|{{ variant }}', '{{ label|replace("'", "\'") }}', this.id)">
+                <!-- JS WILL RENDER CARD HERE -->
+            </div>
+            {% endfor %}
+        </div>
+
+        <button type="submit" id="submit-btn">Execute Combat Plan</button>
     </form>
+
+    <script>
+        const CLASS_NAME = "{{ class_name }}";
+        const slots = [null, null, null]; // holds card DOM IDs
+        const cardHtmls = {};
+
+        function getTagClass(tag) {
+            if (tag.includes('STRIKE') || tag.includes('COMBO') || tag.includes('SUNDER') || tag.includes('KILLING BLOW') || tag.includes('FINISHER') || tag.includes('OPENER')) return 'tag-attack';
+            if (tag.includes('SACRED BALANCE') || tag.includes('INVOCATION') || tag.includes('HEAL')) return 'tag-holy';
+            if (tag.includes('SPELLWEAVE') || tag.includes('ECHO')) return 'tag-magic';
+            if (tag.includes('AT RANGE') || tag.includes('PET') || tag.includes('PERSISTENT') || tag.includes('SHAPESHIFT') || tag.includes('ECLIPSE')) return 'tag-nature';
+            if (tag.includes('DOT')) return 'tag-dark';
+            return 'tag-default';
+        }
+
+        function renderCardHTML(className, name, data, isBoosted) {
+            let rawText = data.text;
+            let rawTags = data.tags || [];
+            let tagsHtml = rawTags.map(t => `<span class="tag ${getTagClass(t)}">${t}</span>`).join(' ');
+            let typeBarHtml = rawTags.length > 0 ? `<div class="type-bar">${tagsHtml}</div>` : `<div class="type-bar"></div>`;
+            let htmlText = rawText.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
+            let aggroText = data.aggro.replace('Aggro ', '');
+
+            let artImgHtml = `<img src="/static/mobs/placeholder.jpg" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1;" onerror="this.style.display='none'" />`;
+            // Note: art paths are hardcoded since web server serves static files differently. 
+            // The simulator doesn't serve the pnp-tool public folder directly, so we just skip images for now 
+            // unless we mount it. Let's omit the image to save hassle, the cards will look like the pure-text prints.
+
+            let badgesHtml = '';
+            if (data.badges) {
+                let tlBadges = '';
+                if (data.badges.dmg) tlBadges += `<div class="art-badge">⚔️ ${data.badges.dmg}</div>`;
+                if (data.badges.delayed_dmg) tlBadges += `<div class="art-badge">⚔️ ${data.badges.delayed_dmg}</div>`;
+                if (tlBadges) badgesHtml += `<div class="badge-wrapper badge-wrapper-tl" style="z-index:2;">${tlBadges}</div>`;
+                
+                let trBadges = '';
+                if (data.badges.heal) trBadges += `<div class="art-badge">❤️ ${data.badges.heal}</div>`;
+                if (data.badges.delayed_heal) trBadges += `<div class="art-badge">❤️ ${data.badges.delayed_heal}</div>`;
+                if (trBadges) badgesHtml += `<div class="badge-wrapper badge-wrapper-tr" style="z-index:2;">${trBadges}</div>`;
+                
+                let blBadges = '';
+                if (data.badges.range) blBadges += `<div class="art-badge">🏹 RANGE</div>`;
+                if (blBadges) badgesHtml += `<div class="badge-wrapper badge-wrapper-bl" style="z-index:2;">${blBadges}</div>`;
+                
+                let brBadges = '';
+                if (data.badges.block) brBadges += `<div class="art-badge">🛡️ ${data.badges.block}</div>`;
+                if (data.badges.delayed_block) brBadges += `<div class="art-badge">🛡️ ${data.badges.delayed_block}</div>`;
+                if (brBadges) badgesHtml += `<div class="badge-wrapper badge-wrapper-br" style="z-index:2;">${brBadges}</div>`;
+            }
+
+            if (isBoosted) {
+                htmlText += "<br><br><b>(Costs 4 HP)</b>";
+            }
+
+            if (data.split) {
+                let aggroG = data.aggro_G !== undefined ? data.aggro_G : data.aggro.replace('Aggro ', '');
+                let cHtml = data.champion_text.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
+                let gHtml = data.guardian_text.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
+                
+                let badgesCHtml = '';
+                if (data.badges_C) {
+                    if (data.badges_C.dmg) badgesCHtml += `<div class="stance-badge badge-c-tl">⚔️ ${data.badges_C.dmg}</div>`;
+                    if (data.badges_C.block) badgesCHtml += `<div class="stance-badge badge-c-br">🛡️ ${data.badges_C.block}</div>`;
+                }
+                let badgesGHtml = '';
+                if (data.badges_G) {
+                    if (data.badges_G.dmg) badgesGHtml += `<div class="stance-badge badge-c-tl">⚔️ ${data.badges_G.dmg}</div>`;
+                    if (data.badges_G.block) badgesGHtml += `<div class="stance-badge badge-c-br">🛡️ ${data.badges_G.block}</div>`;
+                }
+
+                return `
+                    <div class="card cls-${className}">
+                    <div class="card-hdr">
+                        <div class="card-name">${name}</div>
+                        <div class="aggro-badge" title="Aggro">A: ${aggroText}</div>
+                    </div>
+                    ${typeBarHtml}
+                    <div class="card-body" style="padding-bottom: 2pt;">
+                        <div class="split-top" style="border-bottom: none; padding-bottom: 0;">
+                        ${badgesCHtml}
+                        <div class="stance-label">Champion</div>
+                        <div style="font-size:12px">${cHtml}</div>
+                        </div>
+                    </div>
+                    <div class="divider"></div>
+                    <div class="art-zone">${badgesHtml}</div>
+                    <div class="divider"></div>
+                    <div class="card-body" style="padding-top: 2pt;">
+                        <div class="split-bottom">
+                        ${badgesGHtml}
+                        <div class="mini-hdr" style="display: flex; gap: 8pt; align-items: center;">
+                            <span>${name}</span>
+                            <span class="mini-aggro">A: ${aggroG}</span>
+                        </div>
+                        <div class="stance-label">Guardian</div>
+                        <div style="font-size:12px">${gHtml}</div>
+                        </div>
+                    </div>
+                    <div class="card-ftr">
+                        <div class="ftr-divider"></div>
+                        <div class="ftr-class">${className}</div>
+                    </div>
+                    </div>
+                `;
+            } else {
+                return `
+                    <div class="card cls-${className}">
+                    <div class="card-hdr">
+                        <div class="card-name">${name}</div>
+                        <div class="aggro-badge" title="Aggro">A: ${aggroText}</div>
+                    </div>
+                    ${typeBarHtml}
+                    <div class="art-zone">${badgesHtml}</div>
+                    <div class="divider"></div>
+                    <div class="card-body">
+                        <div class="effect-text">${htmlText}</div>
+                    </div>
+                    <div class="card-ftr">
+                        <div class="ftr-divider"></div>
+                        <div class="ftr-class">${className}</div>
+                    </div>
+                    </div>
+                `;
+            }
+        }
+
+        // Initialize cards
+        {% for idx, card_name, variant, label, dict_json in hand_options %}
+            (function() {
+                const data = {{ dict_json|safe }};
+                const wrapper = document.getElementById("card-{{ idx }}-{{ loop.index }}");
+                const isBoosted = "{{ label }}".includes("Boosted");
+                const html = renderCardHTML(CLASS_NAME, "{{ card_name }}", data, isBoosted);
+                wrapper.innerHTML = html;
+                cardHtmls["card-{{ idx }}-{{ loop.index }}"] = html;
+            })();
+        {% endfor %}
+
+        function playCard(value, label, cardElementId) {
+            let slotIdx = slots.indexOf(null);
+            if (slotIdx === -1) return; 
+            slots[slotIdx] = cardElementId;
+            document.getElementById('input-' + slotIdx).value = value;
+            document.getElementById('slotted-' + slotIdx).innerHTML = cardHtmls[cardElementId];
+            document.getElementById('slot-' + slotIdx).classList.add('filled');
+            document.getElementById(cardElementId).classList.add('used');
+            checkReady();
+        }
+
+        function clearSlot(slotIdx) {
+            const cardElementId = slots[slotIdx];
+            if (!cardElementId) return; 
+            slots[slotIdx] = null;
+            document.getElementById('input-' + slotIdx).value = "";
+            document.getElementById('slotted-' + slotIdx).innerHTML = "";
+            document.getElementById('slot-' + slotIdx).classList.remove('filled');
+            document.getElementById(cardElementId).classList.remove('used');
+            checkReady();
+        }
+
+        function checkReady() {
+            const isReady = slots.indexOf(null) === -1;
+            const btn = document.getElementById('submit-btn');
+            if (isReady) {
+                btn.classList.add('ready');
+            } else {
+                btn.classList.remove('ready');
+            }
+        }
+    </script>
 </body>
 </html>

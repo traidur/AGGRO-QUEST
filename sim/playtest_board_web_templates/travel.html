@@ -1,48 +1,205 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>QUEST — Travel</title>
+    <title>QUEST — Travel Map</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Crimson+Pro:ital,wght@0,400;0,600;1,400&family=Barlow+Condensed:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <style>
-        body { font-family: sans-serif; max-width: 640px; margin: 40px auto; }
-        .stat-row { display: flex; gap: 24px; font-size: 16px; margin-bottom: 12px; }
-        .flash { background: #fff3cd; border: 1px solid #e0a800; border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; }
-        .action { display: block; width: 100%; text-align: left; padding: 10px 14px; margin-bottom: 8px;
-                  border: 1px solid #ccc; border-radius: 6px; background: #fff; cursor: pointer; font-size: 15px; }
-        .action:hover { background: #f5f5f5; }
-        .bag { color: #555; font-size: 14px; }
-        .turn-banner { background: #d1e7ff; border: 1px solid #4a90d9; border-radius: 6px;
-                        padding: 8px 12px; margin-bottom: 12px; font-weight: bold; }
+        .map-wrapper {
+            position: relative;
+            width: 800px;
+            height: 800px;
+            margin: 0 auto 30px auto;
+            background-image: url('{{ url_for('static', filename='map.jpg') }}');
+            background-size: cover;
+            background-position: center;
+            border: 4px solid var(--accent-gold);
+            border-radius: 8px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+        }
+
+        .map-pin {
+            position: absolute;
+            transform: translate(-50%, -50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            z-index: 10;
+        }
+
+        .map-node-btn {
+            background: rgba(17, 17, 17, 0.8);
+            border: 2px solid #555;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #ccc;
+            font-family: 'Cinzel', serif;
+            font-weight: bold;
+            font-size: 14px;
+            cursor: not-allowed;
+            transition: all 0.2s;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.5);
+            backdrop-filter: blur(2px);
+        }
+
+        .map-node-btn.town { border-radius: 8px; width: 60px; height: 30px; font-size: 12px; }
+
+        .map-node-btn.active {
+            border-color: var(--accent-gold);
+            color: var(--accent-gold);
+            cursor: pointer;
+            box-shadow: 0 0 15px rgba(199,156,110,0.6);
+            background: rgba(17, 17, 17, 0.95);
+        }
+        .map-node-btn.active:hover {
+            transform: scale(1.15);
+            background: var(--accent-gold);
+            color: #000;
+        }
+
+        .mob-label {
+            font-family: 'Crimson Pro', serif;
+            font-size: 14px;
+            font-weight: bold;
+            color: #fff;
+            background: rgba(0,0,0,0.7);
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-top: 4px;
+            white-space: nowrap;
+            pointer-events: none;
+        }
+
+        .meeple-container {
+            display: flex; gap: 4px; position: absolute; top: -15px;
+        }
+        .meeple {
+            background: var(--accent-blue); color: #000; font-family: 'Barlow Condensed', sans-serif;
+            font-weight: bold; font-size: 12px; width: 20px; height: 20px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.8);
+            border: 1px solid rgba(255,255,255,0.5);
+        }
+        
+        .meeple.p0 { background: #69CCF0; } /* Blue */
+        .meeple.p1 { background: #F58CBA; } /* Pink */
+        .meeple.p2 { background: #ABD473; } /* Green */
+        .meeple.p3 { background: #FFF569; } /* Yellow */
+
+        .global-actions { display: flex; gap: 10px; justify-content: center; margin-top: 20px; flex-wrap: wrap; }
     </style>
 </head>
 <body>
     {% if turn_label %}<div class="turn-banner">{{ turn_label }}</div>{% endif %}
-    <h2>At {{ hero.position[0] }}</h2>
+    <h2>World Map</h2>
     {% if declare_note %}<p><em>{{ declare_note }}</em></p>{% endif %}
     {% for msg in flash %}<div class="flash">{{ msg }}</div>{% endfor %}
+    
     <div class="stat-row">
         <div>HP: <strong>{{ hero.hp|round(0,'floor')|int }}/{{ hero.max_hp|int }}</strong></div>
         <div>Gold: <strong>{{ hero.gold }}</strong></div>
         <div>XP: <strong>{{ hero.xp }}</strong></div>
+        <div>Bag: {{ hero.bag }}</div>
     </div>
-    <div class="bag">Bag: {{ hero.bag }}</div>
-    <br>
-    {% for i, a in actions %}
-    <form method="POST" action="{{ action_url or '/travel/action' }}" style="display:inline;">
-        <input type="hidden" name="idx" value="{{ i }}">
-        <button class="action" type="submit">
-            {% if a.type == 'declare_node' %}Fight at {{ a.node_name }} — {{ a.mob_name }}
-            {% elif a.type == 'cross_border' %}Cross {{ a.border_name }} → Zone {{ a.target_zone }} (Scouted Pull)
-            {% elif a.type == 'enter_zone' %}Enter Zone {{ a.target_zone }}
-            {% elif a.type == 'flight_path' %}Flight Path → Zone {{ a.target_zone }} ({{ a.cost }}g)
-            {% elif a.type == 'use_scroll' %}Use Scroll of Vanquishing on {{ a.node_name }} ({{ a.mob_name }})
-            {% elif a.type == 'use_smoke_bomb' %}Use Smoke Bomb to bail on {{ a.node_name or a.border_name }}
-            {% elif a.type == 'use_food' %}Eat Food (full heal)
-            {% elif a.type == 'use_potion' %}Drink Potion
-            {% elif a.type == 'return_to_town' %}Return to Town
-            {% else %}{{ a }}
-            {% endif %}
-        </button>
+
+    <!-- Hidden form to submit travel actions when a map node is clicked -->
+    <form id="travel-form" method="POST" action="{{ action_url or '/travel/action' }}">
+        <input type="hidden" name="idx" id="travel-idx" value="-1">
     </form>
-    {% endfor %}
+
+    <div class="map-wrapper">
+        {% for z, zdata in map_data.items() %}
+            
+            <!-- Town -->
+            {% set t_coords = coords.get('town_' ~ z, {'x':50, 'y':50}) %}
+            {% set return_idx = action_dict.get('return_to_town') %}
+            <!-- Only glow if it's the valid town action -->
+            <!-- Wait, the backend logic says "return_to_town" always goes to nearest town. So clicking ANY active town should submit "return_to_town". -->
+            
+            <div class="map-pin" style="left: {{ t_coords.x }}%; top: {{ t_coords.y }}%;">
+                <div class="meeple-container">
+                    {% for h in zdata.town_heroes %}<div class="meeple p{{ h }}">P{{ h+1 }}</div>{% endfor %}
+                </div>
+                <div class="map-node-btn town {% if return_idx is not none %}active{% endif %}"
+                     {% if return_idx is not none %}onclick="document.getElementById('travel-idx').value='{{ return_idx }}'; document.getElementById('travel-form').submit();"{% endif %}>
+                    TOWN {{ z }}
+                </div>
+
+            </div>
+
+            
+            <!-- Trainer -->
+            {% if z in [2, 4] %}
+            {% set tr_coords = coords.get('trainer_' ~ z, {'x':50, 'y':50}) %}
+            {% set visit_idx = action_dict.get('visit_trainer') %}
+            <div class="map-pin" style="left: {{ tr_coords.x }}%; top: {{ tr_coords.y }}%;">
+                <div class="meeple-container">
+                    {% for h in zdata.trainer_heroes %}<div class="meeple p{{ h }}">P{{ h+1 }}</div>{% endfor %}
+                </div>
+                <div class="map-node-btn town {% if visit_idx is not none %}active{% endif %}" style="background: rgba(144, 40, 144, 0.9); border-color:#d88;"
+                     {% if visit_idx is not none %}onclick="document.getElementById('travel-idx').value='{{ visit_idx }}'; document.getElementById('travel-form').submit();"{% endif %}>
+                    TRAINER
+                </div>
+            </div>
+            {% endif %}
+            
+            <!-- Nodes -->
+            {% for node in zdata.nodes %}
+            {% set n_coords = coords.get(node.id, {'x':50, 'y':50}) %}
+            {% set action_idx = action_dict.get(node.id) %}
+            <div class="map-pin" style="left: {{ n_coords.x }}%; top: {{ n_coords.y }}%;">
+                <div class="meeple-container">
+                    {% for h in node.heroes %}<div class="meeple p{{ h }}">P{{ h+1 }}</div>{% endfor %}
+                </div>
+                <div class="map-node-btn {% if action_idx is not none %}active{% endif %}"
+                     {% if action_idx is not none %}onclick="document.getElementById('travel-idx').value='{{ action_idx }}'; document.getElementById('travel-form').submit();"{% endif %}>
+                    {{ node.id.replace('node_', '') }}
+                </div>
+                {% if node.mob %}<div class="mob-label">{{ node.mob }}</div>{% endif %}
+            </div>
+            {% endfor %}
+
+        {% endfor %}
+
+        <!-- Borders -->
+        {% for z, zdata in map_data.items() %}
+            {% for border in zdata.borders %}
+                {% if z < border.target %}
+                    {% set b_coords = coords.get(border.id, {'x':50, 'y':50}) %}
+                    {% set action_idx = action_dict.get(border.id) %}
+                    <div class="map-pin" style="left: {{ b_coords.x }}%; top: {{ b_coords.y }}%;">
+                        <div class="meeple-container">
+                            {% for h in border.heroes %}<div class="meeple p{{ h }}">P{{ h+1 }}</div>{% endfor %}
+                        </div>
+                        <div class="map-node-btn {% if action_idx is not none %}active{% endif %}" style="border-radius:0; transform:rotate(45deg); width:30px; height:30px;"
+                             {% if action_idx is not none %}onclick="document.getElementById('travel-idx').value='{{ action_idx }}'; document.getElementById('travel-form').submit();"{% endif %}>
+                            <div style="transform:rotate(-45deg); font-size:10px;">X</div>
+                        </div>
+                    </div>
+                {% endif %}
+            {% endfor %}
+        {% endfor %}
+    </div>
+
+    <!-- Global non-map actions (Consumables, Flight Paths, etc) -->
+    <div class="global-actions">
+        {% for i, a in actions %}
+            {% if a.type not in ['declare_node', 'cross_border', 'return_to_town', 'visit_trainer'] %}
+            <button class="action-btn" style="width:auto;" onclick="document.getElementById('travel-idx').value='{{ i }}'; document.getElementById('travel-form').submit();">
+                {% if a.type == 'flight_path' %}✈️ Flight Path → Zone {{ a.target_zone }} ({{ a.cost }}g)
+                {% elif a.type == 'use_scroll' %}📜 Use Scroll ({{ a.node_name }})
+                {% elif a.type == 'use_smoke_bomb' %}💨 Use Smoke Bomb
+                {% elif a.type == 'use_food' %}🍞 Eat Food
+                {% elif a.type == 'use_potion' %}🧪 Drink Potion
+                {% else %}{{ a.type }}
+                {% endif %}
+            </button>
+            {% endif %}
+        {% endfor %}
+    </div>
 </body>
 </html>

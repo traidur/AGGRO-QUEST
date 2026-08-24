@@ -81,6 +81,15 @@ Gold, trip chaining) — the macro loop is the real game; combat is the toll gat
    line is optimal near a specific threshold, not continuously. Real effect, real number to
    cite (roughly ~2.5x the naive count, not ~14x and not 1x) — but still nowhere near enough
    to change the conclusion above.
+10. **The simulator validates design decisions, it doesn't gate which ideas are worth
+    considering.** Caught concretely: a proposed PvP duel mechanic (hidden-info card reveal)
+    got evaluated primarily as "does the exact-solver architecture still work," and an
+    easier-to-simulate alternative got offered as if it were an equivalent substitute instead
+    of a real downgrade. A physical game doesn't need a program to brute-force optimal play to
+    be good and fair — hidden-information games work at real tables with zero computer
+    involved. If a mechanic is hard to validate the way everything else here is, say so and
+    figure out what alternative validation looks like — don't let solver convenience talk the
+    idea down or quietly swap in a blander mechanic in its place.
 
 ## Simulator gotchas
 
