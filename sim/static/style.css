@@ -134,6 +134,82 @@ table.pattern tr:last-child td { border-bottom: none; }
   letter-spacing: 1px;
 }
 
+/* Persistent left hero sidebar (2026-08-27) -- replaces the old per-page .stat-row + Class
+Guide modal + duplicated Bag/Quest-Log blocks with one shared partial (_hero_sidebar.html),
+included identically on Town/Travel/Combat. Fixed in the wide empty margin either side of the
+existing centered content column (confirmed by direct screenshot before building this, not
+assumed) -- costs nothing to the pages' own widths, no restructuring needed. Falls back to a
+normal top-of-page block below 1100px so it never overlaps the centered content on a narrow
+window (that column is 720-850px depending on page, so a 240px sidebar plus itself needs
+~1160-1330px of viewport width to sit in the margin cleanly). */
+.hero-sidebar {
+  position: fixed;
+  left: 20px;
+  top: 20px;
+  width: 240px;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  background: var(--panel-bg);
+  border: 2px solid var(--border-color);
+  border-radius: 10px;
+  padding: 16px;
+  z-index: 500;
+  font-family: 'Barlow Condensed', sans-serif;
+}
+@media (max-width: 1100px) {
+  .hero-sidebar {
+    position: static;
+    width: auto;
+    max-height: none;
+    margin: 0 0 20px 0;
+  }
+}
+.hero-sidebar-name {
+  font-family: 'Cinzel', serif; font-weight: 700; font-size: 20px; color: var(--accent-gold);
+  text-align: center; letter-spacing: 2px; text-transform: uppercase;
+  border-bottom: 1px solid var(--border-color); padding-bottom: 10px; margin-bottom: 12px;
+}
+.sidebar-section-hdr {
+  font-family: 'Cinzel', serif; font-size: 13px; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 1px; margin: 14px 0 6px 0;
+  border-bottom: 1px solid var(--border-color); padding-bottom: 4px;
+}
+.sidebar-stat-line {
+  display: flex; justify-content: space-between; font-size: 15px; padding: 2px 0;
+}
+.sidebar-stat-line strong { color: var(--accent-gold); }
+
+/* HP pip track -- one box per HP point (roster HP is 14-18, small enough to render as an
+actual physical track rather than an abstract bar), grouped in 5s like tally marks. Each
+.hp-group is its own flex box so a group of 5 wraps as one atomic unit -- .hp-track wraps
+GROUPS, never individual pips, so a group can never get split across two rows. */
+.hp-track { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
+.hp-group { display: flex; gap: 3px; }
+.hp-pip {
+  width: 14px; height: 14px; border: 1px solid #555; border-radius: 2px; background: #1a1a1a;
+}
+.hp-pip.filled { background: #d32f2f; border-color: #ff6b6b; }
+.hp-track-label { font-size: 14px; color: var(--text-muted); text-align: right; margin-bottom: 10px; }
+
+.guide-block { font-size: 13px; padding: 8px; border-radius: 4px; margin-bottom: 6px; }
+.guide-best { background: rgba(70, 150, 70, 0.15); border-left: 3px solid #4caf50; }
+.guide-worst { background: rgba(150, 50, 50, 0.15); border-left: 3px solid #f44336; }
+.guide-block strong { display: block; margin-bottom: 3px; font-size: 11px; letter-spacing: 1px; }
+
+.bag-grid {
+  display: grid; grid-template-columns: repeat(3, 55px); grid-auto-rows: 55px; gap: 8px;
+}
+.bag-grid .bag-slot { width: 55px; height: 55px; }
+
+.quest-log {
+  background: rgba(30, 20, 10, 0.9); border: 2px solid #5a3c22; border-radius: 6px;
+  padding: 10px; color: #e0d0b0; font-family: 'Cinzel', serif;
+}
+.quest-log h3 { margin: 0 0 5px 0; font-size: 14px; border-bottom: 1px solid #5a3c22; padding-bottom: 3px; }
+.quest-log ul { margin: 0; padding-left: 18px; font-family: 'Barlow Condensed', sans-serif; font-size: 14px; }
+.quest-log li { margin-bottom: 4px; }
+.quest-log .empty { font-family: 'Barlow Condensed', sans-serif; font-style: italic; color: #888; }
+
 .hand-list {
   background: #111;
   padding: 16px;
@@ -152,3 +228,95 @@ table.pattern tr:last-child td { border-bottom: none; }
   margin-bottom: 16px;
   border: 1px solid var(--border-color);
 }
+
+
+/* MMORPG Bag Styles */
+.bag-container {
+  display: flex;
+  gap: 8px;
+  padding: 10px;
+  background: rgba(30, 20, 10, 0.9);
+  border: 2px solid #5a3c22;
+  border-radius: 6px;
+  margin-top: 10px;
+}
+.bag-slot {
+  width: 50px;
+  height: 50px;
+  background: #111;
+  border: 2px inset #444;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.bag-slot img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.bag-slot.locked {
+  background: #331111;
+  border: 2px inset #220000;
+  position: relative;
+}
+.bag-slot.locked::after {
+  content: 'X';
+  color: #aa3333;
+  font-weight: bold;
+  font-size: 24px;
+}
+
+/* Mob card -- dark-theme port of pnp-tool/src/mobs.css's print-card layout, shared by
+combat_plan.html (planning) and combat_result.html (aftermath), 2026-08-27. Only tier/type
+(flavor, class-agnostic, safe as static data) ever come from get_mob_flavor(); name/HP/pattern
+are whatever `mob_name`/`mob_hp`/`pattern` the calling template already has -- the real, live
+sim data, never a second source of truth (same lesson the matchup-table fix established). */
+.mob-card {
+  width: 320px; margin: 0 auto 24px auto; background: var(--panel-bg);
+  border: 2px solid var(--border-color); border-radius: 10px; overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+}
+.mob-card.elite { border-color: #ff3333; }
+.mob-card-hdr {
+  display: flex; align-items: center; justify-content: center; height: 40px;
+  position: relative; background: linear-gradient(180deg, #2a2a2a 0%, #111 100%);
+  border-bottom: 2px solid var(--border-color);
+}
+.mob-card.elite .mob-card-hdr { background: linear-gradient(180deg, #4a0000 0%, #1a0000 100%); }
+.mob-card-name {
+  font-family: 'Cinzel', serif; font-weight: 700; font-size: 18px; color: #fff;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.8); letter-spacing: 1px;
+}
+.mob-card-tier {
+  position: absolute; top: 6px; left: 8px; background: rgba(0,0,0,0.5);
+  border: 1px solid rgba(255,255,255,0.3); border-radius: 4px; padding: 2px 6px;
+  font-size: 10px; font-weight: 700; color: rgba(255,255,255,0.9); text-transform: uppercase;
+}
+.mob-card-hp {
+  position: absolute; top: 8px; right: 8px; width: 38px; height: 38px;
+  background: #1a1a1a; border: 2px solid #d32f2f; border-radius: 50%;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.5); z-index: 10;
+}
+.mob-card-hp .lbl { font-size: 7px; font-weight: 700; color: #ff8888; }
+.mob-card-hp .val { font-size: 16px; font-weight: 700; font-family: 'Cinzel', serif; color: #fff; }
+.mob-card-art { height: 160px; position: relative; background: #0a0a0a; overflow: hidden; }
+.mob-card-art img { width: 100%; height: 100%; object-fit: cover; }
+.mob-card-type {
+  position: absolute; bottom: 6px; left: 6px; font-size: 11px; color: #ddd;
+  letter-spacing: 1px; font-weight: 700; text-transform: uppercase;
+  background: rgba(0,0,0,0.7); padding: 2px 6px; border-radius: 3px; border: 1px solid #555;
+}
+.mob-card-body { display: flex; gap: 6px; padding: 8px; }
+.mob-card-round {
+  flex: 1; background: #161616; border: 1px solid var(--border-color); border-radius: 4px;
+  overflow: hidden; text-align: center;
+}
+.mob-card-round .rnum {
+  background: #222; color: var(--text-muted); font-family: 'Cinzel', serif; font-size: 11px;
+  font-weight: 700; padding: 3px 0; border-bottom: 1px solid var(--border-color);
+}
+.mob-card-round .rstats { display: flex; justify-content: space-evenly; padding: 6px 0; }
+.mob-card-round .stat-dmg { color: #ff5555; font-weight: 700; }
+.mob-card-round .stat-blk { color: #4a90d9; font-weight: 700; }

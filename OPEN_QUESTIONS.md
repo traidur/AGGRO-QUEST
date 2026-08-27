@@ -254,6 +254,56 @@ Not discussed or checked against anything yet:
   does committing to the whole chain read as something else turn-wise (e.g. one committed
   "turn" that resolves 3 rounds of combat internally).
 
+### Gathering items at nodes — a second, distraction-flavored collection axis alongside questing, raised 2026-08-24, not evaluated or decided
+
+Raised 2026-08-24. Not yet scoped to specific items, zones, or a redemption cost table —
+recorded here so the idea and the reasoning behind its settled parts aren't lost, not because
+the whole thing is locked.
+
+**The core idea:** when a mob is dealt to a node (see "Zone-node mob dealing" above), a
+gathering item (ore, herb, skin, etc.) is also visibly dealt to that same node, for every hero
+present to see. Whoever defeats the mob there takes the gathering item. Collecting enough of a
+given item, plus some gold, lets a hero buy something at a discount back in Town — ore toward
+plate/mail armor, skins toward leather, herbs toward potions or similar, tying directly into the
+still-unbuilt weapons/armor system (tasks #25/#26). Gathering-item quality scales by Zone level,
+same escalation pattern the existing quest-loot tables already use.
+
+**Explicitly not a redundant copy of quest loot, by design, not by accident.** The shape (defeat
+mob at node -> collect token -> redeem at Town) rhymes with the existing quest-loot economy, but
+the stated intent is deliberate: questing is the core loop, gathering is optional "cherry on
+top" texture for players who want it, not a second primary resource competing for the same
+strategic weight. Whether that intent survives contact with an actual Bag-slot/inventory
+placement decision (still open, see below) is the thing that will really prove it out, not just
+the stated design goal.
+
+**Refresh rule, decided, and it's the mechanism that actually makes this a distinct system, not
+just quest loot with a different redemption target:** unlike mobs, which redeal fresh at every
+node at the start of every turn regardless of outcome, a gathering token is sticky -- it stays
+in place, unclaimed, until a hero actually defeats the mob guarding it. It's only redealt the
+turn *after* it was collected. This means a node ends up running two independently-cycling
+pieces of state at once (mob refreshes every turn; gathering token only refreshes on capture),
+which needs to be stated as an explicit rule once this is built, not left implicit. It also
+directly rules out an earlier version of the idea (the gathering item printed on the mob card
+itself, since multiple physical copies of a mob exist in the deck) -- a token tied to a specific
+mob card can't persist independently of that card being redealt every turn, so gathering items
+need their own zone-scoped pool, decoupled from mob identity entirely, sourced the same way the
+"Zone-node mob dealing" entry above already sources mobs.
+
+**Contested resource, decided:** goes to the priority hero, first-come-first-served -- reuses
+the same priority-token mechanism already built for contested mob nodes, not a new mechanism.
+
+**Not discussed or checked against anything yet:**
+- The actual redemption mechanic and its cost table -- "2 herb + 1 gold -> a discount" is
+  illustrative only, not a balanced proposal for any specific item or price.
+- Whether gathering items live in the existing Bag (competing with quest loot, consumables, and
+  Bag Upgrades for the same limited slots) or need their own inventory space entirely -- this is
+  probably the single biggest open question for whether "cherry on top, not a second primary
+  resource" actually holds up at the table, since Bag-slot competition is exactly what would
+  turn it into a second primary resource in practice.
+- How this ties into the weapons/armor system once that gets designed (task #25) and built
+  (task #26) -- gathering items are meant to feed it, but that system doesn't exist yet, so the
+  redemption side of this idea is blocked on it either way.
+
 ### Per-class matchup info for the hero tracker boards, and how it interacts with blind-refill risk
 
 **This information is meant to live on each hero's own tracker board** (the physical
@@ -295,6 +345,17 @@ needs an explicit printed callout anywhere, or whether it's fine left as emergen
 for players to discover at the table without the game commenting on it directly.
 
 ## Resolved
+
+### Town Quest Markets & Visible Breadcrumbing (Resolved 2026-08-27)
+
+Raised and resolved together to address a UX guidance gap. Level 1 quests do not replenish, and when a hero hits 6 XP, their log empties. Previously, the hero had to know out-of-band to travel to Zone 3 or 4 to get Level 2 quests.
+
+**The mechanic:** The Level 2 Quest Deck consists of 3 copies of each of the 8 unique quests (24 cards total). Town 3 and Town 4 each feature a physical "Quest Market" on their board space -- 3 face-up quests dealt from the deck at the start of the game.
+- **Unique Dealing (No Duplicates):** A single player's active log, and a single Town's market, can never contain duplicates. When dealing initial Level 1 quests to a player, or refilling a Level 2 Town Market, you "draw until unique." If a duplicate of a quest already in that specific log/market is drawn, it is immediately placed in the discard pile and a new card is drawn.
+- **The UX Breadcrumb:** These face-up cards are visible to Level 1 players from Turn 1. When their log empties, they see physical cards sitting in Zone 3/4 waiting to be claimed, pulling them naturally to the next tier.
+- **Strategic Routing:** Because quests vary in length and reward, a player can look at the markets and choose to travel to the Town that best fits their strategy.
+- **Player Contention:** Because the deck has 3 copies of each quest, two different players can draw the exact same quest (or two different Towns can display it). This naturally drives players to the exact same nodes, forcing physical competition. If two heroes arrive at the same Town to claim the same face-up quest, the Priority Token breaks the tie. The first player takes it; the second player takes what's left or draws blind.
+- **Refill:** The market is only refilled from the deck when a hero takes a quest. Discarded duplicates and completed quests go to a discard pile, which reshuffles into a new deck when empty.
 
 ### Competitive AI: does a hero weigh contested-Node risk before declaring, and against what information?
 

@@ -418,6 +418,28 @@ derived against the old, uncapped model and have not yet been re-swept against t
 one** -- treat both as unlocked/unvalidated until that happens; not done here since it was
 explicitly deprioritized in favor of understanding the behavioral shift first.
 
+## Bag Tetris rescale: BAG_SIZE 2->6, Food 1->3 slots, ITEM_STACK_CAP 3->1 (in progress, 2026-08-25)
+
+**This section's own numbers above (`ITEM_STACK_CAP` (3), the 2-slot base bag) describe the
+model as it stood 2026-08-22 -- accurate as a historical record of that measurement, but
+superseded by this change.** Do not treat "(3)" above as the current value.
+
+User-directed physical redesign: Food is now a bigger physical item that occupies 3 Bag slots
+(instead of 1), every other item (Potions, Quest Loot, other consumables) occupies exactly 1
+slot each (`ITEM_STACK_CAP` dropped 3->1, no more same-slot stacking), and the base Bag grew
+2->6 slots specifically to make this an exact rescale of the old economy, not a net change:
+old (1 food-slot + 1 stacking-slot holding up to 3 items) and new (3 food-slots + 3
+individual 1-cap item-slots) both cap out at 1 Food + 3 items total at the base bag size --
+confirmed directly, not assumed. Bag Upgrade's grant was corrected to match (append 3 slots,
+not 1) so each purchased upgrade is still worth the same +3 item capacity it always was,
+not the +1 a naive unscaled append would give post-rescale.
+
+**Still owed, not done here:** a real economic sweep of this change, same as the still-open
+Bag Upgrade/Potion price re-validation from the 2026-08-22 change above -- this section
+documents the mechanism and the equivalence math behind it, not a fresh `_bag_model_baseline`-
+style measurement. Treat the whole bag-tetris rescale as unvalidated against real trip data
+until that sweep happens.
+
 ## Not yet done
 
 - **Re-sweep Bag Upgrade price and Potion price** against the corrected Bag model above --

@@ -166,7 +166,7 @@ def resolve_node_pull(hero, class_name, node_name, mob_name, quest_pool, rng,
                     continue
                 if slot == "food":
                     hero.hp = hero.max_hp
-                    hero.bag[i] = None
+                    M._remove_food(hero.bag, i)
                     consumed = "food"
                     break
                 if M._is_potion_slot(slot):
@@ -330,17 +330,23 @@ def _trainer_automatic_setup(hero, class_name):
     return {"mandatory_turn": mandatory_turn}
 
 
-def _town_automatic_setup(hero, class_name, strategy, rng):
+def _town_automatic_setup(hero, class_name, strategy, rng, restock=True):
     """Everything about a Town visit that is NOT a discretionary player choice -- quest
-    turn-in/decay/refill, the leaving-town restock, and Phase 1 quest pickup (the free
-    mandatory-upgrade grant moved to _trainer_automatic_setup, 2026-08-24 -- see its own
-    docstring for why). Factored out of resolve_town_turn (2026-08-22) so both the
-    AI-automatic path (resolve_town_turn, unchanged) and the new human-facing macro seam
-    (get_town_actions/apply_town_action) share the identical logic for this part -- only the
-    Purchase Queue (genuinely discretionary: which upgrade, in what order, whether to stop)
-    differs between the two callers, matching how none of turn-in/restock/pickup are real
-    choices in the physical game either (you don't decline a completed quest's reward, or
-    decline being handed a new quest by the quest-giver).
+    turn-in/decay/refill, and Phase 1 quest pickup (the free mandatory-upgrade grant moved to
+    _trainer_automatic_setup, 2026-08-24 -- see its own docstring for why). Factored out of
+    resolve_town_turn (2026-08-22) so both the AI-automatic path (resolve_town_turn, unchanged)
+    and the new human-facing macro seam (get_town_actions/apply_town_action) share the
+    identical logic for this part -- only the Purchase Queue (genuinely discretionary: which
+    upgrade, in what order, whether to stop) differs between the two callers, matching how
+    turn-in/pickup aren't real choices in the physical game either (you don't decline a
+    completed quest's reward, or decline being handed a new quest by the quest-giver).
+
+    restock=True runs the automatic Food/Potion restock (M._leaving_town_setup) too -- the
+    right default for AI-driven trips, which have no other way to stay supplied. A human,
+    though, now has a real Buy Food/Buy Potion action (checkpointed 2026-08-26, replacing the
+    automatic restock for humans specifically, not removing it for the AI): enter_town passes
+    restock=False so a human's Bag only ever changes because they chose to spend Gold on it,
+    not invisibly on arrival. resolve_town_turn (AI path) keeps the default.
 
     Mutates hero in place. Returns a dict: {"quests_completed": int, "gold_after_turnin": int}."""
     zone_id, _node = hero.position
@@ -379,7 +385,8 @@ def _town_automatic_setup(hero, class_name, strategy, rng):
         quests_completed = len(turned_in)
 
     gold_after_turnin = hero.gold
-    hero.gold = M._leaving_town_setup(strategy, hero.bag, hero.locked, hero.gold)
+    if restock:
+        hero.gold = M._leaving_town_setup(strategy, hero.bag, hero.locked, hero.gold)
 
     # Re-read: xp may have just risen from a quest turned in above, crossing LEVEL2_XP_THRESHOLD
     # mid-call -- the same live-lookup discipline run_one_trip's own win_rate uses.
@@ -457,16 +464,19 @@ def resolve_town_turn(hero, class_name, strategy, purchase_queue, purchase_polic
 
 def enter_town(hero, class_name, strategy, rng):
     """Human-facing equivalent of resolve_town_turn's Town half -- runs the automatic parts of
-    a Town visit (turn-in, restock, quest pickup, see _town_automatic_setup) and marks the ONE
-    turn this visit costs (unconditional, charged on arrival, not per purchase, since "one turn
-    total per Town visit, no matter how much gets done there" is the locked rule). Call this
-    ONCE when a hero arrives at Town, then drive purchases via get_town_actions/apply_town_
-    action in a loop until leave_town is chosen. Does NOT grant the mandatory upgrade -- see
-    enter_trainer, the Trainer's own separate turn/visit (checkpointed 2026-08-24).
+    a Town visit (turn-in, quest pickup, see _town_automatic_setup) and marks the ONE turn this
+    visit costs (unconditional, charged on arrival, not per purchase, since "one turn total per
+    Town visit, no matter how much gets done there" is the locked rule). Call this ONCE when a
+    hero arrives at Town, then drive purchases (including Buy Food/Buy Potion, checkpointed
+    2026-08-26) via get_town_actions/apply_town_action in a loop until leave_town is chosen.
+    Does NOT grant the mandatory upgrade -- see enter_trainer, the Trainer's own separate
+    turn/visit (checkpointed 2026-08-24). Passes restock=False (unlike resolve_town_turn's
+    AI-automatic path) -- a human's Bag only changes here because they chose to spend Gold on
+    it, never invisibly on arrival.
 
     Mutates hero in place. Returns _town_automatic_setup's own dict (quests_completed,
     gold_after_turnin)."""
-    setup = _town_automatic_setup(hero, class_name, strategy, rng)
+    setup = _town_automatic_setup(hero, class_name, strategy, rng, restock=False)
     hero.turns += 1
     return setup
 
@@ -549,7 +559,11 @@ def get_town_actions(hero, purchase_queue):
 
     if not at_trainer:
         for item_name, cost in M.CONSUMABLE_ITEMS.items():
-            if hero.gold >= cost and M._bag_has_room(hero.bag, hero.locked):
+            if hero.gold >= cost:
+                if item_name == "food" and not M._can_fit_food(hero.bag, hero.locked):
+                    continue
+                elif item_name != "food" and not M._bag_has_room(hero.bag, hero.locked):
+                    continue
                 actions.append({"type": "buy_consumable", "item_name": item_name, "cost": cost})
 
         if M._accessible_count(hero.bag, hero.locked, "preserving_charm") > 0:
@@ -597,7 +611,10 @@ def apply_town_action(hero, action, purchase_queue):
 
     if action["type"] == "buy_consumable":
         hero.gold -= action["cost"]
-        M._add_item(hero.bag, hero.locked, action["item_name"])
+        if action["item_name"] == "food":
+            M._add_food(hero.bag, hero.locked)
+        else:
+            M._add_item(hero.bag, hero.locked, action["item_name"])
         return True
 
     if action["type"] == "use_charm":
@@ -609,8 +626,14 @@ def apply_town_action(hero, action, purchase_queue):
     hero.gold -= item["cost"]
     hero.acquired.add(item["tag"])
     if item["kind"] == "bag":
-        hero.bag.append(None)
-        hero.locked.append(False)
+        # Appends 3 slots, not 1 (checkpointed 2026-08-25, bag-tetris rescale): under the old
+        # 2-slot/ITEM_STACK_CAP=3 model, one Bag Upgrade added a whole second stacking slot
+        # worth +3 item capacity. Under the new BAG_SIZE=6/ITEM_STACK_CAP=1 model, a single
+        # appended slot is only worth +1 item capacity -- appending 3 preserves the same
+        # per-upgrade capacity gain the base bag's own 2->6 rescale already established.
+        for _ in range(3):
+            hero.bag.append(None)
+            hero.locked.append(False)
     return True
 
 
@@ -816,7 +839,7 @@ def apply_travel_action(hero, action, class_name, board, rng,
                 continue
             if slot == "food":
                 hero.hp = hero.max_hp
-                hero.bag[i] = None
+                M._remove_food(hero.bag, i)
                 hero.consumables_used["food"] += 1
                 break
         return {"outcome": "healed"}
@@ -1063,7 +1086,7 @@ def resolve_border_crossing(hero, class_name, border_name, target_zone, mob_name
                     continue
                 if slot == "food":
                     hero.hp = hero.max_hp
-                    hero.bag[i] = None
+                    M._remove_food(hero.bag, i)
                     hero.consumables_used["food"] += 1
                     break
                 if M._is_potion_slot(slot):
@@ -1137,7 +1160,7 @@ def decide_travel(hero, class_name, quest_pool, fallback_target_zones, risk_tole
             food_index = next((i for i, s in enumerate(hero.bag) if not hero.locked[i] and s == "food"), None)
             if food_index is not None:
                 hero.hp = hero.max_hp
-                hero.bag[food_index] = None
+                M._remove_food(hero.bag, food_index)
                 hero.consumables_used["food"] += 1
             else:
                 potion_index = next((i for i, s in enumerate(hero.bag)
@@ -1541,7 +1564,7 @@ def run_solo_chain(class_name, strategy, rng, max_turns, risk_tolerance=M.RISK_T
     max_hp = float(getattr(mod, M.HP_ATTR[class_name]))
     hero = HeroBoardState(class_name=class_name, hp=max_hp, max_hp=max_hp, position=(1, "town"),
                            bag=[None] * M.BAG_SIZE, locked=[False] * M.BAG_SIZE)
-    hero.bag[0] = "food"  # matches _trip_chain's own starting loadout
+    M._add_food(hero.bag, hero.locked)  # matches _trip_chain's own starting loadout
     if class_name in M.LEVEL2_PURCHASED_ORDER:
         hero.skill_purchase_order = list(range(len(M.LEVEL2_PURCHASED_ORDER[class_name])))
         rng.shuffle(hero.skill_purchase_order)
@@ -1797,7 +1820,7 @@ def run_competitive_chain(class_names_list, strategy, rng, max_rounds,
         max_hp = float(getattr(mod, M.HP_ATTR[class_name]))
         hero = HeroBoardState(class_name=class_name, hp=max_hp, max_hp=max_hp, position=(1, "town"),
                                bag=[None] * M.BAG_SIZE, locked=[False] * M.BAG_SIZE)
-        hero.bag[0] = "food"
+        M._add_food(hero.bag, hero.locked)
         if class_name in M.LEVEL2_PURCHASED_ORDER:
             hero.skill_purchase_order = list(range(len(M.LEVEL2_PURCHASED_ORDER[class_name])))
             rng.shuffle(hero.skill_purchase_order)

@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>QUEST — Combat Result</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Crimson+Pro:ital,wght@0,400;0,600;1,400&family=Barlow+Condensed:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .round-card {
+            background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 8px;
+            padding: 16px 20px; margin-bottom: 14px; display: flex; justify-content: space-between;
+            align-items: center; gap: 20px;
+        }
+        .round-card .round-num {
+            font-family: 'Cinzel', serif; color: var(--text-muted); font-size: 14px; min-width: 70px;
+        }
+        .round-card .played {
+            font-family: 'Cinzel', serif; color: var(--accent-gold); font-size: 18px; flex: 1;
+        }
+        .round-card .mob-side { text-align: right; color: #ff8888; font-family: 'Barlow Condensed', sans-serif; }
+        .round-card .mob-side .blocked { color: #4a90d9; }
+        .round-card .tally {
+            display: flex; gap: 16px; font-family: 'Barlow Condensed', sans-serif; font-size: 15px;
+            color: var(--text-muted); border-top: 1px dashed var(--border-color); margin-top: 10px;
+            padding-top: 8px;
+        }
+        .round-card .tally b { color: var(--text-main); }
+        .outcome-banner {
+            font-family: 'Cinzel', serif; font-size: 32px; text-align: center; padding: 20px;
+            border-radius: 8px; margin: 20px 0; letter-spacing: 2px;
+        }
+        .outcome-win { background: rgba(70, 150, 70, 0.2); border: 2px solid #4caf50; color: #7fdb7f; }
+        .outcome-loss { background: rgba(150, 50, 50, 0.2); border: 2px solid #f44336; color: #ff8888; }
+        .outcome-fled { background: rgba(150, 130, 50, 0.2); border: 2px solid #c79c6e; color: var(--accent-gold); }
+    </style>
+</head>
+<body>
+    {% include "_hero_sidebar.html" %}
+    <h2>{{ class_name|capitalize }} vs {{ mob_name }}</h2>
+
+    {% set flavor = get_mob_flavor(mob_name) %}
+    <div class="mob-card{% if flavor.tier == 'Elite' %} elite{% endif %}">
+        <div class="mob-card-hdr">
+            <div class="mob-card-tier">{{ flavor.tier or 'Mob' }}</div>
+            <div class="mob-card-name">{{ mob_name }}</div>
+            <div class="mob-card-hp"><div class="lbl">HP</div><div class="val">{{ mob_hp|int }}</div></div>
+        </div>
+        <div class="mob-card-art">
+            <img src="{{ url_for('static', filename='mobs/' ~ mob_name|lower ~ '.jpg') }}"
+                 onerror="this.style.display='none'" alt="{{ mob_name }}">
+            {% if flavor.type and flavor.type != 'melee' %}<div class="mob-card-type">🎯 {{ flavor.type }}</div>{% endif %}
+        </div>
+        <div class="mob-card-body">
+            {% for i, rnd in pattern %}
+            <div class="mob-card-round">
+                <div class="rnum">RND {{ i + 1 }}</div>
+                <div class="rstats">
+                    <span class="stat-dmg">⚔️ {{ rnd[0] }}</span>
+                    <span class="stat-blk">🛡️ {{ rnd[1] }}</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    {% for row in rows %}
+    <div class="round-card">
+        <div class="round-num">ROUND {{ row.round_num }}</div>
+        <div class="played">
+            {{ row.card }}{% if row.variant %} <span style="color: var(--text-muted); font-size: 14px;">({{ row.variant }})</span>{% endif %}
+            {% if row.stance %}<span style="color: var(--text-muted); font-size: 14px;"> — {{ 'Guardian' if row.stance == 'G' else 'Champion' }}</span>{% endif %}
+        </div>
+        <div>
+            <div class="mob-side">Mob: ATK {{ row.mob_atk }} <span class="blocked">BLK {{ row.mob_blk }}</span></div>
+            <div class="tally">
+                <span>Dealt: <b>{{ row.dmg_dealt|round(0,'floor')|int }}</b></span>
+                <span>Blocked: <b>{{ row.block|round(0,'floor')|int }}</b></span>
+                {% if row.heal %}<span>Healed: <b>{{ row.heal|round(0,'floor')|int }}</b></span>{% endif %}
+                <span>Taken: <b>{{ row.dmg_taken|round(0,'floor')|int }}</b></span>
+            </div>
+            <div class="tally">
+                <span>Your HP: <b>{{ row.hp_after|round(0,'floor')|int }}</b></span>
+                <span>Mob HP: <b>{{ row.mob_hp_after|round(0,'floor')|int }}</b></span>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+
+    {% if outcome == "win" %}
+    <div class="outcome-banner outcome-win">VICTORY</div>
+    {% elif outcome == "loss" %}
+    <div class="outcome-banner outcome-loss">DEFEATED</div>
+    {% else %}
+    <div class="outcome-banner outcome-fled">SURVIVED — NOT FINISHED</div>
+    {% endif %}
+
+    <form method="POST" action="/combat_plan/continue">
+        <button type="submit">Continue</button>
+    </form>
+</body>
+</html>

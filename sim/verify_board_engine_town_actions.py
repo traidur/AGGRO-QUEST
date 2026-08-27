@@ -26,16 +26,32 @@ def _walk_queue_order_greedy(hero, purchase_queue):
     """Drives get_town_actions/apply_town_action in STRICT queue order, stopping at the first
     item that isn't currently offered (not affordable or not eligible) -- reproduces
     _walk_purchase_queue's policy="save" behavior exactly using only the new human-facing
-    primitives, to prove they're capable of it bit-for-bit when driven the same way."""
+    primitives, to prove they're capable of it bit-for-bit when driven the same way.
+    
+    Since Town and Trainer are now separate nodes, this driver must physically visit both
+    (if eligible) to match _walk_purchase_queue's bundled abstraction."""
+    zone_id = hero.position[0]
     for item in purchase_queue:
         if item["tag"] in hero.acquired:
             continue
+            
+        # Switch to the correct node for this item
+        if item["requires_trainer"]:
+            if zone_id in M.TRAINER_ZONES:
+                hero.position = (zone_id, "trainer")
+            else:
+                hero.position = (zone_id, "town")  # can't visit trainer here, stay at town so it's ineligible
+        else:
+            hero.position = (zone_id, "town")
+            
         actions = BE.get_town_actions(hero, purchase_queue)
         matching = next((a for a in actions if a.get("tag") == item["tag"]), None)
         if matching is None:
             break  # this item isn't currently offered -- matches "save" stopping here
         BE.apply_town_action(hero, matching, purchase_queue)
+    
     # Explicit leave_town, matching a real driver's final action -- doesn't change state.
+    hero.position = (zone_id, "town")
     actions = BE.get_town_actions(hero, purchase_queue)
     leave = next(a for a in actions if a["type"] == "leave_town")
     BE.apply_town_action(hero, leave, purchase_queue)
@@ -61,7 +77,7 @@ def run_direct_checks(verbose=True):
     actions = BE.get_town_actions(hero, purchase_queue)
     check("no skill purchase offered outside a Trainer Zone",
           not any(a.get("kind") == "skill" for a in actions), actions)
-    hero.position = (2, "town")
+    hero.position = (2, "trainer")
     actions = BE.get_town_actions(hero, purchase_queue)
     check("skill purchase offered inside a Trainer Zone",
           any(a.get("kind") == "skill" for a in actions), actions)

@@ -79,6 +79,8 @@ def run_scripted_session(class_name, seed, max_steps=120, verbose=False):
             elif phase == "combat_plan":
                 resp = client.get("/combat_plan")  # ensure hand/pending state is populated
                 resp = _submit_combat_plan(client, rng)
+            elif phase == "combat_result":
+                resp = client.post("/combat_plan/continue", data={}, follow_redirects=True)
             else:
                 return False, f"unexpected phase {phase!r} at step {step}"
 

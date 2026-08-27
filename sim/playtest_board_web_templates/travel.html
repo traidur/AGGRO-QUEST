@@ -2,20 +2,44 @@
 <html>
 <head>
     <title>QUEST — Travel Map</title>
+    
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Crimson+Pro:ital,wght@0,400;0,600;1,400&family=Barlow+Condensed:wght@400;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='cards.css') }}">
+
+    
+    
     <style>
-        .map-wrapper {
+        body {
+            max-width: 100% !important;
+            margin: 0 !important;
+            padding: 40px 0 !important;
+            display: flex !important;
+            justify-content: center !important;
+            background: radial-gradient(circle at top center, #2a2a2a 0%, var(--bg-color) 100%);
+        }
+        #travel-container {
+            width: 850px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        #travel-container > h2,
+        #travel-container > .turn-banner {
+            width: 100%;
+            text-align: center;
+        }
+
+.map-wrapper {
             position: relative;
             width: 800px;
             height: 800px;
-            margin: 0 auto 30px auto;
-            background-image: url('{{ url_for('static', filename='map.jpg') }}');
-            background-size: cover;
-            background-position: center;
-            border: 4px solid var(--accent-gold);
+            margin: 0 auto;
+            background: url("{{ url_for('static', filename='map.jpg') }}") no-repeat center center;
+            background-size: 100% 100%;
+            border: 4px solid #332211;
             border-radius: 8px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+            box-shadow: 0 0 20px rgba(0,0,0,0.8);
         }
 
         .map-pin {
@@ -24,89 +48,106 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            z-index: 10;
+            pointer-events: none; /* Let clicks pass through to the button */
         }
 
         .map-node-btn {
-            background: rgba(17, 17, 17, 0.8);
-            border: 2px solid #555;
-            border-radius: 50%;
+            pointer-events: auto;
             width: 40px;
             height: 40px;
+            background: rgba(40, 40, 40, 0.9);
+            border: 2px solid #5a3c22;
+            border-radius: 50%;
+            color: #e0d0b0;
+            font-family: 'Cinzel', serif;
+            font-weight: bold;
+            font-size: 12px;
             display: flex;
             align-items: center;
             justify-content: center;
-            color: #ccc;
-            font-family: 'Cinzel', serif;
-            font-weight: bold;
-            font-size: 14px;
             cursor: not-allowed;
+            opacity: 0.6;
             transition: all 0.2s;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.5);
-            backdrop-filter: blur(2px);
+            text-align: center;
+            line-height: 1;
         }
-
-        .map-node-btn.town { border-radius: 8px; width: 60px; height: 30px; font-size: 12px; }
+        
+        .map-node-btn.town {
+            width: 50px;
+            height: 50px;
+            border-radius: 8px;
+            background: rgba(20, 60, 20, 0.9);
+            border-color: #558855;
+        }
 
         .map-node-btn.active {
-            border-color: var(--accent-gold);
-            color: var(--accent-gold);
             cursor: pointer;
-            box-shadow: 0 0 15px rgba(199,156,110,0.6);
-            background: rgba(17, 17, 17, 0.95);
+            opacity: 1.0;
+            border-color: #ffd700;
+            box-shadow: 0 0 10px #ffd700, inset 0 0 5px rgba(255, 215, 0, 0.5);
         }
+        
         .map-node-btn.active:hover {
-            transform: scale(1.15);
-            background: var(--accent-gold);
-            color: #000;
+            transform: scale(1.1);
+            background: rgba(60, 60, 60, 0.9);
+        }
+
+        .map-node-btn.town.active:hover {
+            background: rgba(40, 100, 40, 0.9);
         }
 
         .mob-label {
-            font-family: 'Crimson Pro', serif;
-            font-size: 14px;
-            font-weight: bold;
-            color: #fff;
-            background: rgba(0,0,0,0.7);
+            position: absolute;
+            top: 100%;
+            margin-top: 4px;
+            background: rgba(0, 0, 0, 0.8);
+            color: #ffaaaa;
+            font-family: 'Barlow Condensed', sans-serif;
             padding: 2px 6px;
             border-radius: 4px;
-            margin-top: 4px;
+            font-size: 14px;
             white-space: nowrap;
-            pointer-events: none;
         }
 
         .meeple-container {
-            display: flex; gap: 4px; position: absolute; top: -15px;
+            display: flex;
+            gap: 4px;
+            position: absolute;
+            top: -20px;
         }
+
         .meeple {
-            background: var(--accent-blue); color: #000; font-family: 'Barlow Condensed', sans-serif;
-            font-weight: bold; font-size: 12px; width: 20px; height: 20px; border-radius: 50%;
-            display: flex; align-items: center; justify-content: center;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.8);
-            border: 1px solid rgba(255,255,255,0.5);
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            border: 1px solid #000;
+            color: #000;
+            font-size: 10px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.5);
         }
-        
-        .meeple.p0 { background: #69CCF0; } /* Blue */
-        .meeple.p1 { background: #F58CBA; } /* Pink */
-        .meeple.p2 { background: #ABD473; } /* Green */
+
+        .meeple.p0 { background: #FF6B6B; } /* Red */
+        .meeple.p1 { background: #4ECDC4; } /* Teal */
+        .meeple.p2 { background: #A8E6CF; } /* Mint */
         .meeple.p3 { background: #FFF569; } /* Yellow */
 
         .global-actions { display: flex; gap: 10px; justify-content: center; margin-top: 20px; flex-wrap: wrap; }
     </style>
 </head>
 <body>
+<div id="travel-container">
+
+    {% include "_hero_sidebar.html" %}
+
     {% if turn_label %}<div class="turn-banner">{{ turn_label }}</div>{% endif %}
     <h2>World Map</h2>
     {% if declare_note %}<p><em>{{ declare_note }}</em></p>{% endif %}
     {% for msg in flash %}<div class="flash">{{ msg }}</div>{% endfor %}
-    
-    <div class="stat-row">
-        <div>HP: <strong>{{ hero.hp|round(0,'floor')|int }}/{{ hero.max_hp|int }}</strong></div>
-        <div>Gold: <strong>{{ hero.gold }}</strong></div>
-        <div>XP: <strong>{{ hero.xp }}</strong></div>
-        <div>Bag: {{ hero.bag }}</div>
-    </div>
 
-    <!-- Hidden form to submit travel actions when a map node is clicked -->
     <form id="travel-form" method="POST" action="{{ action_url or '/travel/action' }}">
         <input type="hidden" name="idx" id="travel-idx" value="-1">
     </form>
@@ -117,15 +158,14 @@
             <!-- Town -->
             {% set t_coords = coords.get('town_' ~ z, {'x':50, 'y':50}) %}
             {% set return_idx = action_dict.get('return_to_town') %}
-            <!-- Only glow if it's the valid town action -->
-            <!-- Wait, the backend logic says "return_to_town" always goes to nearest town. So clicking ANY active town should submit "return_to_town". -->
+            {% set is_active_town = (return_idx is not none and z == hero.position[0]) %}
             
             <div class="map-pin" style="left: {{ t_coords.x }}%; top: {{ t_coords.y }}%;">
                 <div class="meeple-container">
                     {% for h in zdata.town_heroes %}<div class="meeple p{{ h }}">P{{ h+1 }}</div>{% endfor %}
                 </div>
-                <div class="map-node-btn town {% if return_idx is not none %}active{% endif %}"
-                     {% if return_idx is not none %}onclick="document.getElementById('travel-idx').value='{{ return_idx }}'; document.getElementById('travel-form').submit();"{% endif %}>
+                <div class="map-node-btn town {% if is_active_town %}active{% endif %}"
+                     {% if is_active_town %}onclick="document.getElementById('travel-idx').value='{{ return_idx }}'; document.getElementById('travel-form').submit();"{% endif %}>
                     TOWN {{ z }}
                 </div>
 
@@ -136,12 +176,13 @@
             {% if z in [2, 4] %}
             {% set tr_coords = coords.get('trainer_' ~ z, {'x':50, 'y':50}) %}
             {% set visit_idx = action_dict.get('visit_trainer') %}
+            {% set is_active_trainer = (visit_idx is not none and z == hero.position[0]) %}
             <div class="map-pin" style="left: {{ tr_coords.x }}%; top: {{ tr_coords.y }}%;">
                 <div class="meeple-container">
                     {% for h in zdata.trainer_heroes %}<div class="meeple p{{ h }}">P{{ h+1 }}</div>{% endfor %}
                 </div>
-                <div class="map-node-btn town {% if visit_idx is not none %}active{% endif %}" style="background: rgba(144, 40, 144, 0.9); border-color:#d88;"
-                     {% if visit_idx is not none %}onclick="document.getElementById('travel-idx').value='{{ visit_idx }}'; document.getElementById('travel-form').submit();"{% endif %}>
+                <div class="map-node-btn town {% if is_active_trainer %}active{% endif %}" style="background: rgba(144, 40, 144, 0.9); border-color:#d88;"
+                     {% if is_active_trainer %}onclick="document.getElementById('travel-idx').value='{{ visit_idx }}'; document.getElementById('travel-form').submit();"{% endif %}>
                     TRAINER
                 </div>
             </div>
@@ -201,5 +242,7 @@
             {% endif %}
         {% endfor %}
     </div>
+
+</div>
 </body>
 </html>

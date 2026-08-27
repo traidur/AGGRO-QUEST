@@ -48,6 +48,17 @@ try:
 except Exception as e:
     print(f"Warning: could not load cards_text.json: {e}")
 
+# tier/type flavor only (e.g. "Standard"/"Elite", "melee"/"ranged") -- static and safe to read
+# from this file since it's cosmetic and doesn't vary by class. ATK/BLK/HP numbers are NEVER
+# read from here -- those come live from the real sim data passed into the template each time,
+# the same lesson the matchup-table fix (2026-08-26) already established for this exact risk.
+_MOBS_TEXT = {}
+try:
+    with open(os.path.join(os.path.dirname(__file__), "../pnp-tool/src/mobs_text.json"), "r", encoding="utf-8") as f:
+        _MOBS_TEXT = {m["name"]: m for m in json.load(f)}
+except Exception as e:
+    print(f"Warning: could not load mobs_text.json: {e}")
+
 import argparse
 import random
 
@@ -57,6 +68,7 @@ import board_engine as BE
 import board_state as B
 import combat_engine as E
 import macro_sim as M
+import class_mob_matchup_chart as MC
 from board_state import HeroBoardState
 
 app = Flask(__name__, template_folder="playtest_board_web_templates")
@@ -65,6 +77,58 @@ app = Flask(__name__, template_folder="playtest_board_web_templates")
 # "local single-player tool, no sessions needed" convention). _S holds everything needed to
 # resume rendering the current page after any request; see reset_session() for the full shape.
 _S = {}
+
+
+def get_item_name(slot):
+    if not slot: return None
+    if isinstance(slot, str): return slot
+    if isinstance(slot, dict) and "items" in slot:
+        return list(slot["items"].keys())[0]
+    return None
+
+def get_item_count(slot):
+    if not slot: return 0
+    if isinstance(slot, str): return 1
+    if isinstance(slot, dict) and "items" in slot:
+        return list(slot["items"].values())[0]
+    return 1
+
+
+def _matchup_summary(per_mob):
+    """per_mob: {mob_name: (cost_pct, win_pct)} for one class -- collapses to the
+    best_1/best_2/worst_1/worst_2 shape the Class Guide modal renders."""
+    by_cost = sorted(per_mob.items(), key=lambda kv: kv[1][0])
+    (b1, (b1c, _)), (b2, (b2c, _)) = by_cost[0], by_cost[1]
+    (w2, (w2c, _)), (w1, (w1c, _)) = by_cost[-2], by_cost[-1]
+    return {"best_1": b1, "best_1_cost": round(b1c, 1), "best_2": b2, "best_2_cost": round(b2c, 1),
+            "worst_1": w1, "worst_1_cost": round(w1c, 1), "worst_2": w2, "worst_2_cost": round(w2c, 1)}
+
+
+# Computed once at import time (real solver output, not hand-typed -- checkpointed 2026-08-26,
+# replacing a frozen, already-stale hardcoded block a prior pass had baked in directly here).
+# See class_mob_matchup_chart.py's own docstring for why "fully upgraded kit" rather than any
+# one hero's exact current deck, and why Level 1 vs Level 2 needs two separate tables at all.
+_MATCHUP_BY_LEVEL = {
+    level: {cls.lower(): _matchup_summary(per_mob) for cls, per_mob in MC.matchup_table(level=level).items()}
+    for level in (1, 2)
+}
+
+
+def get_class_matchup(class_name, xp):
+    level = 2 if xp >= M.LEVEL2_XP_THRESHOLD else 1
+    return _MATCHUP_BY_LEVEL[level].get(class_name, {})
+
+
+@app.context_processor
+def inject_globals():
+    return dict(
+        quest_locations={v[1]: k.replace('_', ' ').title() for k, v in M.NODES.items()},
+        get_class_matchup=get_class_matchup,
+        get_mob_flavor=lambda mob_name: _MOBS_TEXT.get(mob_name, {}),
+        get_item_name=get_item_name,
+        get_item_count=get_item_count
+    )
+
 
 
 def reset_session():
@@ -249,6 +313,37 @@ def _validate_sequence(class_name, hand, mob_name, hero_hp, sequence, stance_seq
                 f"playable once the mob is low enough -- try a different order.")
 
 
+def _build_combat_log(class_name, hand, mob_name, hero_hp, sequence, stance_sequence):
+    """Same dry-run shape as _validate_sequence (a throwaway PullState, never the real hero) --
+    called only after _validate_sequence has already confirmed the plan is legal, so this one
+    never raises. Reconstructs a round-by-round display log purely from combat_engine's own
+    get_legal_actions/apply_action output (dmg_dealt, dmg_taken, block, heal, resulting_hp,
+    resulting_mob_hp) -- never recomputes or approximates any of it. Safe to run as a SEPARATE
+    pass from the real resolution that follows it (rather than trying to extract a log from
+    that real call) because combat has zero RNG once hand+mob+sequence are fixed -- this dry
+    run is guaranteed to produce numbers identical to the real one, the same determinism
+    _validate_sequence already relies on. Returns (rows, final_outcome)."""
+    pattern, mob_hp = M._pattern_hp_for_mob(class_name, mob_name)
+    state = E.new_pull_with_hp(class_name, mob_name, hand, pattern, mob_hp, hero_hp)
+    decide_fn = make_sequence_decide_fn(sequence, stance_sequence)
+    rows = []
+    while state.outcome is None:
+        actions = E.get_legal_actions(state)
+        action = decide_fn(state, actions)
+        round_pattern = pattern[state.round_num]
+        state = E.apply_action(state, action)
+        rows.append(dict(
+            round_num=state.round_num, card=action["card"],
+            variant=action["variant"] if action["variant"] != action["card"] else None,
+            stance=action.get("stance"),
+            mob_atk=round_pattern[0], mob_blk=round_pattern[1],
+            raw_dmg=action["raw_dmg"], block=action["block"], heal=action["heal"],
+            dmg_dealt=action["dmg_dealt"], dmg_taken=action["dmg_taken"],
+            hp_after=state.hero_hp, mob_hp_after=state.mob_hp_remaining,
+        ))
+    return rows, state.outcome
+
+
 def _outcome_message(kind, result):
     outcome = result.get("outcome")
     mob = result.get("mob_name", "the foe")
@@ -278,7 +373,7 @@ def _new_hero(class_name, rng):
     max_hp = float(getattr(mod, M.HP_ATTR[class_name]))
     hero = HeroBoardState(class_name=class_name, hp=max_hp, max_hp=max_hp, position=(1, "town"),
                            bag=[None] * M.BAG_SIZE, locked=[False] * M.BAG_SIZE)
-    hero.bag[0] = "food"
+    M._add_food(hero.bag, hero.locked)
     if class_name in M.LEVEL2_PURCHASED_ORDER:
         hero.skill_purchase_order = list(range(len(M.LEVEL2_PURCHASED_ORDER[class_name])))
         rng.shuffle(hero.skill_purchase_order)
@@ -561,6 +656,11 @@ def combat_plan_submit():
     if error:
         _flash(error)
         return redirect(url_for("combat_plan"))
+
+    # Built BEFORE the real resolution below, from a separate throwaway dry run -- see
+    # _build_combat_log's own docstring for why that's safe (zero RNG once the plan is fixed).
+    log_rows, log_outcome = _build_combat_log(class_name, hand, pending["mob_name"], hero.hp,
+                                               sequence, stance_sequence)
     decide_fn = make_sequence_decide_fn(sequence, stance_sequence)
 
     if kind == "declare":
@@ -592,19 +692,34 @@ def combat_plan_submit():
     _S["pending_hand"] = None
     _S["pending_border"] = None
 
+    next_flashes = []
     if result.get("outcome") == "died":
         death_node = result.get("death_marker", pending.get("node_name") if pending else None)
         BE.apply_death_post_processing(hero, _current_quest_pool(hero), death_node)
-        _flash(_outcome_message(kind, result))
-        _S["phase"] = "town"
-        return redirect(url_for("town"))
+        next_flashes.append(_outcome_message(kind, result))
+        _S["pending_next_phase"] = "town"
+    else:
+        if kind in ("recovery_node", "recovery_border"):
+            hero.alive = True
+            next_flashes.append("You've recovered your gear.")
+        next_flashes.append(_outcome_message(kind, result))
+        _S["pending_next_phase"] = "travel"
+    _S["pending_next_flashes"] = next_flashes
 
-    if kind in ("recovery_node", "recovery_border"):
-        hero.alive = True
-        _flash("You've recovered your gear.")
-    _flash(_outcome_message(kind, result))
-    _S["phase"] = "travel"
-    return redirect(url_for("travel"))
+    mob_pattern, mob_hp_total = M._pattern_hp_for_mob(class_name, pending["mob_name"])
+    _S["phase"] = "combat_result"
+    return render_template("combat_result.html", class_name=class_name, mob_name=pending["mob_name"],
+                            rows=log_rows, outcome=log_outcome, hero=hero,
+                            pattern=list(enumerate(mob_pattern)), mob_hp=mob_hp_total)
+
+
+@app.route("/combat_plan/continue", methods=["POST"])
+def combat_plan_continue():
+    next_phase = _S.pop("pending_next_phase")
+    for msg in _S.pop("pending_next_flashes", []):
+        _flash(msg)
+    _S["phase"] = next_phase
+    return redirect(url_for(next_phase))
 
 
 # ---------------------------------------------------------------------------

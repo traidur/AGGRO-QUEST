@@ -8,15 +8,13 @@
 
 </head>
 <body>
+
+    {% include "_hero_sidebar.html" %}
+
     {% if turn_label %}<div class="turn-banner">{{ turn_label }}</div>{% endif %}
     <h2>Town — Zone {{ hero.position[0] }}</h2>
     {% for msg in flash %}<div class="flash">{{ msg }}</div>{% endfor %}
-    <div class="stat-row">
-        <div>Gold: <strong>{{ hero.gold }}</strong></div>
-        <div>XP: <strong>{{ hero.xp }}</strong></div>
-        <div>HP: <strong>{{ hero.hp|round(0,'floor')|int }}/{{ hero.max_hp|int }}</strong></div>
-    </div>
-    <div class="quests">Active quests: {{ hero.active_quests|join(', ') if hero.active_quests else '(none)' }}</div>
+
     <br>
     {% for i, a in actions %}
     <form method="POST" action="{{ action_url or '/town/action' }}" style="display:inline;">

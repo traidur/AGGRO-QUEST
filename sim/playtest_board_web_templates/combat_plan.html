@@ -43,12 +43,34 @@
     </style>
 </head>
 <body>
+    {% include "_hero_sidebar.html" %}
     {% if turn_label %}<div class="turn-banner">{{ turn_label }}</div>{% endif %}
     <h2>{{ class_name|capitalize }} vs {{ mob_name }}</h2>
     {% for msg in flash %}<div class="flash">{{ msg }}</div>{% endfor %}
-    
-    <div class="panel">
-        <p style="margin: 0;">HP: <strong>{{ hero.hp|round(0,'floor')|int }}/{{ hero.max_hp|int }}</strong> &nbsp;|&nbsp; Mob HP: <strong>{{ mob_hp|int }}</strong></p>
+
+    {% set flavor = get_mob_flavor(mob_name) %}
+    <div class="mob-card{% if flavor.tier == 'Elite' %} elite{% endif %}">
+        <div class="mob-card-hdr">
+            <div class="mob-card-tier">{{ flavor.tier or 'Mob' }}</div>
+            <div class="mob-card-name">{{ mob_name }}</div>
+            <div class="mob-card-hp"><div class="lbl">HP</div><div class="val">{{ mob_hp|int }}</div></div>
+        </div>
+        <div class="mob-card-art">
+            <img src="{{ url_for('static', filename='mobs/' ~ mob_name|lower ~ '.jpg') }}"
+                 onerror="this.style.display='none'" alt="{{ mob_name }}">
+            {% if flavor.type and flavor.type != 'melee' %}<div class="mob-card-type">🎯 {{ flavor.type }}</div>{% endif %}
+        </div>
+        <div class="mob-card-body">
+            {% for i, rnd in pattern %}
+            <div class="mob-card-round">
+                <div class="rnum">RND {{ i + 1 }}</div>
+                <div class="rstats">
+                    <span class="stat-dmg">⚔️ {{ rnd[0] }}</span>
+                    <span class="stat-blk">🛡️ {{ rnd[1] }}</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
     </div>
 
     <form id="combat-form" method="POST" action="{{ action_url or '/combat_plan/submit' }}">
@@ -80,7 +102,7 @@
         <h3 style="font-size:18px; margin-bottom:12px; color:var(--text-muted); text-align:center;">Your Hand</h3>
         <div class="hand-container">
             {% for idx, card_name, variant, label, dict_json in hand_options %}
-            <div class="card-wrapper" id="card-{{ idx }}-{{ loop.index }}" onclick="playCard('{{ idx }}|{{ variant }}', '{{ label|replace("'", "\'") }}', this.id)">
+            <div class="card-wrapper" id="card-{{ idx }}-{{ loop.index }}" onclick="playCard(this.getAttribute('data-value'), this.getAttribute('data-label'), this.id)" data-value="{{ idx }}|{{ variant }}" data-label="{{ label }}">
                 <!-- JS WILL RENDER CARD HERE -->
             </div>
             {% endfor %}

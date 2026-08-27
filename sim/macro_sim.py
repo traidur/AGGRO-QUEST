@@ -338,7 +338,7 @@ LEVEL2_QUESTS = {
 FOOD_COST = 4
 POTION_COST = 3
 POTION_HEAL = 8
-ITEM_STACK_CAP = 3  # a non-Food Bag slot (Potions, Quest Loot tokens, and any future
+ITEM_STACK_CAP = 1  # a non-Food Bag slot (Potions, Quest Loot tokens, and any future
 # Town-purchasable consumable) holds up to this many total items, any mix -- one unified rule
 # instead of a separate cap per item type (locked 2026-08-22, replacing the old Potion-only
 # POTION_STACK_SIZE=2 and the old uncapped/closable loot-slot model at the same time -- both
@@ -368,8 +368,15 @@ CONSUMABLE_ITEMS = {
     "scroll_of_vanquishing": SCROLL_COST,
     "smoke_bomb": SMOKE_BOMB_COST,
     "preserving_charm": PRESERVING_CHARM_COST,
+    "food": FOOD_COST,
+    "potion": POTION_COST,
 }  # Gold-purchasable at Town, repeatable (unlike the Purchase Queue's one-time acquired-tracked
-# items) -- Bag-slot-gated, same as Food/Potion restock. Whetstone isn't listed yet (task #61).
+# items) -- Bag-slot-gated. food/potion added 2026-08-26 (checkpointed with the user): a human
+# player must be able to deliberately buy Food/Potion as a real action, not just receive it as
+# an AI-only automatic leaving-town restock (M._leaving_town_setup, still the only mechanism
+# for AI-driven trips, and still a real backstop for a human who forgets -- the "already_have"
+# check there means buying manually just makes the automatic restock a no-op, never a double
+# purchase). Whetstone isn't listed yet (task #61).
 
 BAG_UPGRADE_COST = 12  # repriced 16 -> 12 (LEVELING_GUIDE.md's "Purchased-upgrade pricing,
 # locked" section, 2026-08-20) -- checked against real Gold-at-Level-2 data: a player has
@@ -378,7 +385,7 @@ BAG_UPGRADE_COST = 12  # repriced 16 -> 12 (LEVELING_GUIDE.md's "Purchased-upgra
 # choice. This constant itself was still 16 here despite the doc saying it had been repriced --
 # fixed 2026-08-21 while building the Class Trainer, which needed a correct SKILL_COST/
 # BAG_UPGRADE_COST relationship to make purchase decisions against.
-BAG_SIZE = 2
+BAG_SIZE = 6
 SKILL_COST = 8  # flat price for every purchased (non-mandatory) Level 2 upgrade, at the Class
 # Trainer -- LEVELING_GUIDE.md's "Purchased-upgrade pricing, locked" section.
 LEVEL2_XP_THRESHOLD = 6  # repriced 12 -> 6 (locked 2026-08-21, alongside the Level 1 quest
@@ -512,6 +519,10 @@ LEVEL2_PURCHASED_ORDER = {
     "runecaster": [
         ("Lightning Bolt", "Lightning Bolt [Lv 2]", dict(dmg=4, heal=0, block=0, grants_range=False,
          chain_bonus_if_prev="Chain Lightning", chain_bonus_dmg=1, echo_dmg=0, echo_heal=0, aggro=2)),
+        ("Earth Strike Rune", "Earth Strike Rune [Lv 2]", dict(dmg=2, heal=1, block=0, grants_range=False,
+         chain_bonus_if_prev=None, chain_bonus_dmg=0, echo_dmg=2, echo_heal=1, aggro=0)),
+        ("Windstrike", "Windstrike [Lv 2]", dict(dmg=6, heal=0, block=0, grants_range=False,
+         chain_bonus_if_prev=None, chain_bonus_dmg=0, echo_dmg=0, echo_heal=0, aggro=3)),
     ],
 }
 RISK_TOLERANCE = 0.15  # fraction of hands allowed to be lethal, when this pull would complete a quest
@@ -643,6 +654,29 @@ def _open_item_slot_index(bag, locked):
             return i
     return None
 
+
+
+def _can_fit_food(bag, locked):
+    return sum(1 for i, b in enumerate(bag) if b is None and not locked[i]) >= 3
+
+def _add_food(bag, locked):
+    empty = [i for i, b in enumerate(bag) if b is None and not locked[i]]
+    if len(empty) >= 3:
+        bag[empty[0]] = "food"
+        bag[empty[1]] = "food_filler"
+        bag[empty[2]] = "food_filler"
+        return True
+    return False
+
+def _remove_food(bag, index):
+    bag[index] = None
+    removed = 0
+    for i in range(len(bag)):
+        if bag[i] == "food_filler":
+            bag[i] = None
+            removed += 1
+            if removed == 2:
+                break
 
 def _bag_has_room(bag, locked):
     """Is there an item slot with room, or an empty unlocked slot to open one?"""
@@ -838,7 +872,7 @@ def run_one_trip(class_name, strategy, rng, bag=None, locked=None, active_quests
         bag = [None] * bag_size
         locked = [False] * bag_size
         if strategy == "food_only":
-            bag[0] = "food"
+            _add_food(bag, locked)
         elif strategy == "potion_only":
             bag[0] = "potion"
 
@@ -901,7 +935,7 @@ def run_one_trip(class_name, strategy, rng, bag=None, locked=None, active_quests
                     continue
                 if slot == "food":
                     hp = max_hp
-                    bag[i] = None
+                    _remove_food(bag, i)
                     consumables_used["food"] += 1
                     break
                 if _is_potion_slot(slot):
@@ -979,7 +1013,7 @@ def run_one_trip(class_name, strategy, rng, bag=None, locked=None, active_quests
                 food_index = next((i for i, s in enumerate(bag) if not locked[i] and s == "food"), None)
                 if food_index is not None:
                     hp = max_hp
-                    bag[food_index] = None
+                    _remove_food(bag, food_index)
                     consumables_used["food"] += 1
                 else:
                     potion_index = next((i for i, s in enumerate(bag) if not locked[i] and _is_potion_slot(s)),
@@ -1135,7 +1169,7 @@ def run_one_trip(class_name, strategy, rng, bag=None, locked=None, active_quests
                     continue
                 if slot == "food":
                     hp = max_hp
-                    bag[i] = None  # Food itself frees its own slot on use
+                    _remove_food(bag, i)  # Food frees 3 slots
                     consumed = "food"
                     break
                 if _is_potion_slot(slot):
@@ -1187,29 +1221,31 @@ def _leaving_town_setup(strategy, bag, locked, gold):
     reduced) gold."""
     if strategy == "food_only":
         already_have = any(not locked[i] and bag[i] == "food" for i in range(len(bag)))
-        if not already_have and gold >= FOOD_COST:
-            empty_index = next((i for i in range(len(bag)) if not locked[i] and bag[i] is None), None)
-            if empty_index is not None:
-                bag[empty_index] = "food"
-                gold -= FOOD_COST
+        if not already_have and gold >= FOOD_COST and _can_fit_food(bag, locked):
+            _add_food(bag, locked)
+            gold -= FOOD_COST
     elif strategy == "food_stockpile":
-        # food_only, but actually uses bag capacity beyond 2 slots -- added 2026-08-21
+        # food_only, but actually uses bag capacity beyond the base bag -- added 2026-08-21
         # specifically to test whether the Bag Upgrade's measured value was being understated
         # by food_only's fixed "always cap at exactly 1 consumable, leave everything else for
         # loot" rule, a definition written back when the bag was permanently 2 slots and never
-        # revisited once it could grow. Keeps 1 slot always reserved for loot (same balance the
-        # original 2-slot design had: 1 consumable, 1 loot), and uses any additional slots for
-        # a second Food as a safety buffer, rather than leaving them idle when nothing's
-        # currently open for loot. A no-op, byte-identical to food_only, at the unupgraded
-        # 2-slot bag size (max_food = max(1, 2-1) = 1).
+        # revisited once it could grow. Keeps 1 slot's worth of loot capacity always reserved
+        # (same balance the original 2-slot design had: 1 consumable, 1 loot), and uses any
+        # additional slots for a second Food as a safety buffer, rather than leaving them idle
+        # when nothing's currently open for loot.
+        #
+        # Rescaled 2026-08-25 alongside the bag-tetris migration (Food now costs 3 slots,
+        # ITEM_STACK_CAP dropped 3->1): reserved_for_loot_slots is 3, not 1, because 1 old-style
+        # loot slot (cap 3) is worth 3 new-style loot slots (cap 1 each) -- same "same balance"
+        # property the base bag rescale already established (1 food + 3 items either way), just
+        # applied here too. max_food now counts whole 3-slot Food units, not raw slot count. A
+        # no-op, byte-identical to food_only, at the unupgraded 6-slot bag size
+        # (max_food = max(1, (6-3)//3) = 1).
         food_count = sum(1 for i in range(len(bag)) if not locked[i] and bag[i] == "food")
-        reserved_for_loot = 1
-        max_food = max(1, len(bag) - reserved_for_loot)
-        while food_count < max_food and gold >= FOOD_COST:
-            empty_index = next((i for i in range(len(bag)) if not locked[i] and bag[i] is None), None)
-            if empty_index is None:
-                break
-            bag[empty_index] = "food"
+        reserved_for_loot_slots = 3
+        max_food = max(1, (len(bag) - reserved_for_loot_slots) // 3)
+        while food_count < max_food and gold >= FOOD_COST and _can_fit_food(bag, locked):
+            _add_food(bag, locked)
             gold -= FOOD_COST
             food_count += 1
     elif strategy == "potion_only":
@@ -1307,8 +1343,11 @@ def _walk_purchase_queue(queue, acquired, bag, locked, current_position, gold, p
         gold -= item["cost"]
         acquired.add(item["tag"])
         if item["kind"] == "bag":
-            bag.append(None)
-            locked.append(False)
+            # Appends 3 slots, not 1 -- see board_engine.apply_town_action's identical fix
+            # (checkpointed 2026-08-25, bag-tetris rescale) for why.
+            for _ in range(3):
+                bag.append(None)
+                locked.append(False)
         else:
             trainer_turn = True
             if skills_acquired_so_far is not None:
@@ -1344,11 +1383,33 @@ def _trip_chain(class_name, strategy, rng, risk_tolerance=RISK_TOLERANCE,
     # and active_quests is empty; the turn-in branch below then draws a fresh log from
     # LEVEL2_QUESTS instead, with normal shuffled-refill replenishment from that point on.
     active_quests = rng.sample(list(QUESTS.keys()), ACTIVE_QUEST_COUNT)
-    quest_bag = []  # only used once the hero has moved on to LEVEL2_QUESTS -- the Level 1
-    # batch above deliberately has no bag/refill of its own.
+    quest_bag = list(LEVEL2_QUESTS.keys()) * 3
+    rng.shuffle(quest_bag)
+    quest_discard = []
+
+    def _draw_unique(target_list, count):
+        nonlocal quest_bag, quest_discard
+        drawn = 0
+        while drawn < count:
+            if not quest_bag:
+                quest_bag = quest_discard
+                quest_discard = []
+                rng.shuffle(quest_bag)
+            if not quest_bag:
+                break  # completely empty ecosystem
+            candidate = quest_bag.pop(0)
+            if candidate in target_list:
+                quest_discard.append(candidate)
+            else:
+                target_list.append(candidate)
+                drawn += 1
+
+    town_markets = {3: [], 4: []}
+    _draw_unique(town_markets[3], 3)
+    _draw_unique(town_markets[4], 3)
     bag = [None] * bag_size
     locked = [False] * bag_size
-    bag[0] = "food"  # free starting Food, matching DESIGN_DOC.md's locked starting loadout --
+    _add_food(bag, locked)  # free starting Food, matching DESIGN_DOC.md's locked starting loadout --
     # previously missing here, so trip 1 of every chain silently started with an empty bag
     corpse_node = None  # set on death; the next trip's first pull is forced there to recover it
     # Every one-time milestone the hero can reach, unified into one set (locked 2026-08-21,
@@ -1400,9 +1461,14 @@ def _trip_chain(class_name, strategy, rng, risk_tolerance=RISK_TOLERANCE,
         # Town turn, no extra turn cost, same as the very first batch at the start of the game.
         valid_quest_zones = LEVEL2_QUEST_ZONES if xp >= LEVEL2_XP_THRESHOLD else LEVEL1_QUEST_ZONES
         if not active_quests and current_position in valid_quest_zones:
-            active_quests = rng.sample(list(pool.keys()), min(ACTIVE_QUEST_COUNT, len(pool)))
             if pool is LEVEL2_QUESTS:
+                active_quests = []
+                while len(active_quests) < ACTIVE_QUEST_COUNT and town_markets[current_position]:
+                    active_quests.append(town_markets[current_position].pop(0))
+                _draw_unique(town_markets[current_position], 3 - len(town_markets[current_position]))
                 acquired.add("started_l2_quests")
+            else:
+                active_quests = rng.sample(list(pool.keys()), min(ACTIVE_QUEST_COUNT, len(pool)))
 
         # Mandatory upgrade: free, but still requires physically visiting a Trainer Zone to
         # receive -- reaching Level 2 XP while standing elsewhere does NOT grant it immediately.
@@ -1461,6 +1527,13 @@ def _trip_chain(class_name, strategy, rng, risk_tolerance=RISK_TOLERANCE,
         pending_mandatory = (class_name in LEVEL2_MANDATORY and xp >= LEVEL2_XP_THRESHOLD
                               and "mandatory" not in acquired)
         fallback_target_zones = TRAINER_ZONES if pending_mandatory else valid_quest_zones
+        if fallback_target_zones == LEVEL2_QUEST_ZONES and not active_quests:
+            avg_req_3 = sum(LEVEL2_QUESTS[q]["required"] for q in town_markets[3]) / len(town_markets[3]) if town_markets[3] else float('inf')
+            avg_req_4 = sum(LEVEL2_QUESTS[q]["required"] for q in town_markets[4]) / len(town_markets[4]) if town_markets[4] else float('inf')
+            if avg_req_3 < avg_req_4:
+                fallback_target_zones = {3}
+            elif avg_req_4 < avg_req_3:
+                fallback_target_zones = {4}
         # Mob difficulty is a property of the PLACE (Zone 3/4's NODES/ZONE_TIER entries say
         # LEVEL2_TIER natively, same as Zone 1/2's say "standard"), never the hero's XP -- an
         # earlier version of this session wrongly tied it to LEVEL2_XP_THRESHOLD directly and
@@ -1542,16 +1615,12 @@ def _trip_chain(class_name, strategy, rng, risk_tolerance=RISK_TOLERANCE,
             else:
                 # LEVEL2_QUESTS: normal shuffled-refill replenishment, same shape the
                 # Level 1 pool itself used before compression.
+                for loot in turned_in:
+                    quest_discard.append(loot)
                 newly_active = []
-                for _ in range(len(turned_in)):
-                    if not quest_bag:
-                        # exclude both still-incomplete quests AND anything already drawn
-                        # earlier in this same refill batch -- otherwise a mid-batch reshuffle
-                        # can hand back a quest that was just placed into the log a moment ago
-                        quest_bag = [loot for loot in LEVEL2_QUESTS
-                                     if loot not in still_incomplete and loot not in newly_active]
-                        rng.shuffle(quest_bag)
-                    newly_active.append(quest_bag.pop(0))
+                while len(newly_active) < len(turned_in) and town_markets[current_position]:
+                    newly_active.append(town_markets[current_position].pop(0))
+                _draw_unique(town_markets[current_position], 3 - len(town_markets[current_position]))
                 active_quests = still_incomplete + newly_active
             quests_completed_this_trip = len(turned_in)
 
@@ -1559,26 +1628,33 @@ def _trip_chain(class_name, strategy, rng, risk_tolerance=RISK_TOLERANCE,
                trainer_turn_this_trip)
 
 
-def run_to_bag_upgrade(class_name, strategy, rng, gold_goal=BAG_UPGRADE_COST, max_trips=200,
+def run_to_bag_upgrade(class_name, strategy, rng, gold_goal=BAG_UPGRADE_COST, max_turns=1000,
                         risk_tolerance=RISK_TOLERANCE, risk_tolerance_base=RISK_TOLERANCE_BASE,
                         risk_only_as_last_resort=True):
-    """Chains full trip-cycles until gold_goal is reached (or max_trips runs out)."""
+    """Chains full trip-cycles until gold_goal is reached (or max_turns runs out)."""
     trip_log = []
+    total_pulls = 0
+    trainer_turns = 0
     for trip_num, result, gold, xp, decay_stage, corpse_node, quests_completed, trainer_turn in _trip_chain(
             class_name, strategy, rng, risk_tolerance=risk_tolerance,
             risk_tolerance_base=risk_tolerance_base,
             risk_only_as_last_resort=risk_only_as_last_resort):
         trip_log.append(result)
+        total_pulls += result["pulls"]
+        if trainer_turn:
+            trainer_turns += 1
+        town_turns = trip_num
+        total_turns = total_pulls + town_turns + trainer_turns
         if gold >= gold_goal:
-            return dict(trips=trip_num, gold=gold, xp=xp, log=trip_log)
-        if trip_num >= max_trips:
-            return dict(trips=None, gold=gold, xp=xp, log=trip_log)
+            return dict(turns=total_turns, gold=gold, xp=xp, log=trip_log)
+        if total_turns >= max_turns:
+            return dict(turns=None, gold=gold, xp=xp, log=trip_log)
 
 
-def decay_stress_test(class_name, strategy, rng, chain_trips=20, risk_tolerance=RISK_TOLERANCE,
+def decay_stress_test(class_name, strategy, rng, max_turns=100, risk_tolerance=RISK_TOLERANCE,
                        risk_tolerance_base=RISK_TOLERANCE_BASE, risk_only_as_last_resort=True,
                        mob_level=1):
-    """Chains a fixed number of trips (not stopping at a gold goal) and
+    """Chains full trips (not stopping at a gold goal) until total_turns >= max_turns, and
     tracks the worst decay_stage reached by any quest, the total quests
     completed over the whole chain, and whether the hero ever died.
 
@@ -1586,14 +1662,12 @@ def decay_stress_test(class_name, strategy, rng, chain_trips=20, risk_tolerance=
     docstring. Default 1, a no-op unless explicitly set to 2 for the Level 2 test pool.
 
     total_turns (OPEN_QUESTIONS.md's "What a turn is" entry, locked 2026-08-20): the real,
-    comparable unit of play, since a trip's own length varies a lot per class/run and makes
-    "Gold after N trips" an unfair cross-class comparison. A turn is either a pull (quest node,
+    comparable unit of play. A turn is either a pull (quest node,
     corpse recovery, or a Border Node toll -- all already counted in result["pulls"] per trip)
     or a Town visit (exactly one per trip in this chain -- a hero may do unlimited business in
     one Town stop, per the locked rule, so it's always worth exactly 1 turn regardless of how
     much happens there). Class Trainer visits aren't counted -- the simulator doesn't model
-    in-trip skill purchases as an actual action yet, only as a static leveled_kit swap applied
-    outside this loop entirely."""
+    in-trip skill purchases as an actual action yet, only as a static leveled_kit swap applied"""
     worst_decay_stage = 0
     died_count = 0
     total_quests_completed = 0
@@ -1610,16 +1684,16 @@ def decay_stress_test(class_name, strategy, rng, chain_trips=20, risk_tolerance=
             trainer_turns += 1
         if result["died"]:
             died_count += 1
-        if trip_num >= chain_trips:
-            town_turns = trip_num  # one Town visit per trip in the chain
-            total_turns = total_pulls + town_turns + trainer_turns
+        town_turns = trip_num  # one Town visit per trip in the chain
+        total_turns = total_pulls + town_turns + trainer_turns
+        if total_turns >= max_turns:
             return dict(gold=gold, xp=xp, worst_decay_stage=worst_decay_stage,
                         final_decay_stage=decay_stage, died_count=died_count,
                         total_quests_completed=total_quests_completed,
-                        avg_quests_per_trip=total_quests_completed / chain_trips,
-                        ended_with_corpse=corpse_node is not None,
-                        total_pulls=total_pulls, town_turns=town_turns, trainer_turns=trainer_turns,
-                        total_turns=total_turns,
+                        avg_quests_per_turn=total_quests_completed / total_turns if total_turns else 0,
+                        ended_with_corpse=(corpse_node is not None),
+                        total_pulls=total_pulls, town_turns=town_turns,
+                        trainer_turns=trainer_turns, total_turns=total_turns,
                         gold_per_turn=gold / total_turns if total_turns else 0.0)
 
 

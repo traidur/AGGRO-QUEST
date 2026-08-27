@@ -1,0 +1,85 @@
+<!-- Persistent left hero sidebar -- included identically on Town/Travel/Combat plan/Combat
+result (2026-08-27). Needs `hero` in scope (every caller already passes it); get_class_matchup/
+get_item_name/get_item_count/quest_locations come from inject_globals so no caller needs to
+pass them explicitly. Replaces the old per-page .stat-row + Class Guide modal + duplicated
+Bag/Quest-Log blocks -- one copy instead of four. -->
+<div class="hero-sidebar">
+    <div class="hero-sidebar-name">{{ hero.class_name }}</div>
+
+    {% set hp_shown = hero.hp|round(0,'floor')|int %}
+    {% set max_hp_shown = hero.max_hp|int %}
+    <div class="hp-track">
+        {% for group_start in range(0, max_hp_shown, 5) %}
+        <div class="hp-group">
+            {% for i in range(group_start, group_start + 5) %}
+                {% if i < max_hp_shown %}
+                <div class="hp-pip{% if i < hp_shown %} filled{% endif %}"></div>
+                {% endif %}
+            {% endfor %}
+        </div>
+        {% endfor %}
+    </div>
+    <div class="hp-track-label">HP {{ hp_shown }}/{{ max_hp_shown }}</div>
+
+    <div class="sidebar-stat-line"><span>Gold</span><strong>{{ hero.gold }}</strong></div>
+    <div class="sidebar-stat-line"><span>XP</span><strong>{{ hero.xp }}</strong></div>
+    <div class="sidebar-stat-line"><span>Turn</span><strong>{{ hero.turns }}</strong></div>
+
+    {% set match = get_class_matchup(hero.class_name, hero.xp) %}
+    {% if match %}
+    <div class="sidebar-section-hdr">Class Guide</div>
+    <div class="guide-block guide-best">
+        <strong>BEST AGAINST</strong>
+        {{ match.best_1 }} ({{ match.best_1_cost }}%)<br>
+        {{ match.best_2 }} ({{ match.best_2_cost }}%)
+    </div>
+    <div class="guide-block guide-worst">
+        <strong>WORST AGAINST</strong>
+        {{ match.worst_1 }} ({{ match.worst_1_cost }}%)<br>
+        {{ match.worst_2 }} ({{ match.worst_2_cost }}%)
+    </div>
+    {% endif %}
+
+    <div class="sidebar-section-hdr">Bag</div>
+    <div class="bag-grid">
+        {% for i in range(hero.bag|length) %}
+            {% if hero.locked[i] %}
+                <div class="bag-slot locked" title="Locked Slot"></div>
+            {% elif hero.bag[i] %}
+                {% set item_name = get_item_name(hero.bag[i]) %}
+                {% set item_count = get_item_count(hero.bag[i]) %}
+                {% if item_name != "food_filler" %}
+                <div class="bag-slot" title="{{ item_name.replace('_', ' ')|title }}{% if item_count > 1 %} (x{{ item_count }}){% endif %}"
+                     style="position: relative; {% if item_name == 'food' %}grid-column: span 3; width: 100%;{% endif %}">
+                    <img src="{{ url_for('static', filename=item_name ~ '.jpg') }}"
+                         onerror="this.onerror=null; this.src='{{ url_for('static', filename='quest_loot.jpg') }}';"
+                         alt="{{ item_name }}" style="width: 100%; height: 100%; object-fit: cover;">
+                    {% if item_count > 1 %}
+                    <div style="position: absolute; bottom: 1px; right: 1px; background: rgba(0,0,0,0.8); color: white; border-radius: 50%; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; border: 1px solid #c79c6e;">{{ item_count }}</div>
+                    {% endif %}
+                </div>
+                {% endif %}
+            {% else %}
+                <div class="bag-slot empty" title="Empty Slot"></div>
+            {% endif %}
+        {% endfor %}
+    </div>
+
+    <div class="sidebar-section-hdr">Quest Log</div>
+    <div class="quest-log">
+        {% if hero.active_quests %}
+            <ul>
+            {% for quest in hero.active_quests %}
+                <li>
+                    {{ quest.replace('_', ' ')|title }} &mdash; <span style="color:#aaccff;">Head to {{ quest_locations[quest] }}</span>
+                    {% if hero.decay_stage.get(quest, 0) > 0 %}
+                        <span style="color:#ff4444; font-size:11px;"> (Stage {{ hero.decay_stage[quest] }})</span>
+                    {% endif %}
+                </li>
+            {% endfor %}
+            </ul>
+        {% else %}
+            <div class="empty">(No active quests)</div>
+        {% endif %}
+    </div>
+</div>

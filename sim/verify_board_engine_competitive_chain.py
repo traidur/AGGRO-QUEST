@@ -29,19 +29,27 @@ def run_direct_checks(verbose=True):
     # 1. get_travel_actions offers use_food/use_potion when bag-deadlocked even at full HP --
     # the real fix that unblocked a hero stuck cycling Town<->field forever (Food occupying a
     # whole slot, loot filled to cap in the other, but HP too high to trigger the old gate).
+    # Bag fixtures built via the real M._add_food/M._add_item helpers (not hand-typed literals)
+    # so they respect the bag-tetris rescale (checkpointed 2026-08-25: Food takes 3 slots,
+    # ITEM_STACK_CAP=1, BAG_SIZE=6) rather than silently assuming the old 2-slot/cap-3 shape.
     import board_state as B
     from board_state import HeroBoardState
     rng = random.Random(1)
     level_decks = {1: B.LevelDeck.new(1, rng), 2: B.LevelDeck.new(2, rng)}
     board = B.BoardState(mode="solo", heroes=[], zones={}, level_decks=level_decks)
     hero = HeroBoardState(class_name="warrior", hp=18.0, max_hp=18.0, position=(1, None),
-                           bag=[{"items": {"Pilfered Goods": 3}}, "food"], locked=[False, False], gold=0)
+                           bag=[None] * M.BAG_SIZE, locked=[False] * M.BAG_SIZE, gold=0)
+    M._add_food(hero.bag, hero.locked)
+    for loot in ("Pilfered Goods", "Syndicate Ledger", "Contraband Crates"):
+        M._add_item(hero.bag, hero.locked, loot)  # saturates every remaining slot (cap=1 each)
     actions = BE.get_travel_actions(hero, board, rng)
     check("use_food offered at full HP when bag-deadlocked",
           any(a["type"] == "use_food" for a in actions), actions)
 
     hero2 = HeroBoardState(class_name="warrior", hp=18.0, max_hp=18.0, position=(1, None),
-                            bag=[{"items": {"Pilfered Goods": 1}}, "food"], locked=[False, False], gold=0)
+                            bag=[None] * M.BAG_SIZE, locked=[False] * M.BAG_SIZE, gold=0)
+    M._add_food(hero2.bag, hero2.locked)
+    M._add_item(hero2.bag, hero2.locked, "Pilfered Goods")  # 1 of 3 remaining slots -- room left
     actions2 = BE.get_travel_actions(hero2, board, rng)
     check("use_food NOT offered at full HP when bag has room (no regression)",
           not any(a["type"] == "use_food" for a in actions2), actions2)

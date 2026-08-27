@@ -1386,7 +1386,7 @@ Level-2 player typically has on hand -- matches the "Three skills (24G)" pacing 
 Gold-accumulation work (~4.5-6.1 trips, ~33-40 XP by then), meaning a full purchased slate is a
 real mid-game goal, not something bought all at once the moment Level 2 unlocks.
 
-## Seventh class worked example: Runecaster (in progress, 2026-08-24)
+## Seventh class worked example: Runecaster (mandatory + 3 purchased locked, 2026-08-24)
 
 First of the three classes (Runecaster, Druid, Necromancer) that had no Level 2 slate at all
 before this pass -- `sim/board_engine.py`'s `_level2_swaps_for` and `sim/macro_sim.py`'s
@@ -1496,6 +1496,192 @@ Runecaster hero with 100 Gold standing at a Trainer with the mandatory upgrade a
 can see and buy `skill_0`, and the resulting kit correctly swaps in both `Tidal Ward [Lv 2]`
 and `Lightning Bolt [Lv 2]` together.
 
+**Second purchased upgrade: Earth Strike Rune.** Diagnosed against the correct mandatory-only
+baseline (Tidal Ward alone, not contaminated with Lightning Bolt) -- came out as the next real
+candidate at a 26.9% cut. Base card: `dmg=2, heal=1, block=0, echo_dmg=1, echo_heal=1, aggro=0`.
+
+Single-lever sweep against the mandatory-only baseline first found two independently-strong,
+near-identical candidates -- dmg-lean (dmg 2->3, heal 1->2) and echo-lean (echo_dmg 1->2, heal
+1->2), both equilibrium-clear in isolation. But checking the *real* three-upgrade combined
+slate directly (mandatory + Lightning Bolt + either candidate) -- not assumed additive, per
+"Margins, not gaps" above -- showed pulls margin blowing out to +1.09/+1.17, well past every
+other class's complete, final locked slate (Paladin's three-upgrade total: +0.55; Ranger's
+four-upgrade total: +0.26; Wizard's three-upgrade total: +0.25, itself already flagged as an
+overshoot) -- with a purchased-upgrade slot still potentially open beyond this one. Traced to a
+specific, avoidable double-dip: Tidal Ward's whole job is the heal lever (heal 1->2), and
+Earth Strike Rune's heal bump stacked a second lift onto that same lever rather than adding a
+genuinely new one.
+
+Re-swept with heal held at 1 (unchanged) and only dmg and/or echo_dmg moved:
+
+| Variant | cost margin | win margin | pulls margin |
+|---|---|---|---|
+| dmg 2->3 only (3/1/1/1) | -1.6 | +0.6 | +0.22 |
+| echo_dmg 1->2 only (2/1/2/1) | -1.3 | +0.6 | +0.19 |
+| both dmg+echo_dmg (3/1/2/1) | -0.6 | +1.6 | +0.31 |
+
+All three equilibrium-clear, and the single-lever variants land pulls margin right in the same
+band as other classes' *complete* slates (+0.19/+0.22 vs. Ranger's +0.26, Wizard's already-
+flagged +0.25) -- confirming the heal double-dip, not Earth Strike Rune itself, was the actual
+problem. The combined-both-levers variant was set aside deliberately even though it's not
+equilibrium-broken -- spending two levers on one card repeats the same shape of problem just
+caught (front-loading generosity, no headroom left for a possible future purchased upgrade).
+
+**Locked, by explicit user choice: Earth Strike Rune -> Earth Strike Rune [Lv 2], echo_dmg
+1->2, every other field unchanged (dmg stays 2, heal stays 1).** Echo-lean chosen over the
+numerically near-identical dmg-lean option because it reinforces the card's own identity
+mechanic (Echo) rather than being a generic damage bump -- same principle as Colossal Swing
+leaning into Champion rather than a flat buff. Combined three-upgrade slate (mandatory +
+Lightning Bolt + this card), measured directly through the real `board_engine._level2_swaps_for`
+wiring rather than a hand-built swap: cost -1.3, win +0.6, pulls +0.17, equilibrium clear on all
+6 Standard mobs.
+
+**Checking whether a third purchased upgrade was actually warranted, not assumed.** Re-ran
+`unplayed_card_diagnostic_genuine` against the fully-locked 3-swap kit before picking a fourth
+card. Result was the opposite of what triggered the first two upgrades: the two already-buffed
+cards plus the mandatory (Lightning Bolt [Lv 2] 39.1%, Earth Strike Rune [Lv 2] 21.7%, Tidal
+Ward [Lv 2] 17.4%) were still the *most* unplayed cards in the deck, while the three untouched
+originals (Chain Lightning 8.7%, Call of the Glacier 8.7%, Windstrike 4.3%) were already the
+*least* unplayed -- i.e. already pulling their weight, the inverse of the signal that justified
+upgrading Lightning Bolt/Earth Strike Rune in the first place. By that diagnostic alone, none of
+the three remaining cards needed a buff -- same shape as Warrior's Vanguard Shield staying
+unupgraded. The fourth upgrade below was **explicitly requested by the user as a deliberate
+finishing touch** (bring win margin up slightly, minimize everything else, to land Runecaster at
+1 mandatory + 3 purchased like Warrior/Paladin/Wizard), not diagnosed as a gap that needed
+closing -- worth being honest that this slate's fourth card has a different justification than
+its first two.
+
+Single-lever `dmg` sweeps on all three untouched cards, against the locked 3-swap baseline,
+looking specifically for the smallest cost/pulls footprint per unit of win-margin movement (not
+just equilibrium-clear):
+
+| Candidate | cost margin | win margin | pulls margin | delta vs. 3-swap baseline (cost/win/pulls) |
+|---|---|---|---|---|
+| Chain Lightning dmg 6->7 | +0.2 | +0.6 | +0.50 | +1.5 / +0.0 / +0.33 |
+| Chain Lightning dmg 6->8 | +1.8 | +0.6 | +0.98 | +3.1 / +0.0 / +0.81 |
+| Call of the Glacier dmg 3->4 | -0.1 | +1.9 | +0.38 | +1.2 / +1.3 / +0.21 |
+| Call of the Glacier dmg 3->5 | +1.3 | +2.2 | +1.04 | +2.6 / +1.6 / +0.87 |
+| **Windstrike dmg 5->6** | **-0.6** | **+1.2** | **+0.29** | **+0.7 / +0.6 / +0.12** |
+| Windstrike dmg 5->7 | +0.6 | +1.2 | +0.65 | +1.9 / +0.6 / +0.48 |
+
+Chain Lightning is a dead lever for a win-margin ask specifically -- win margin doesn't move at
+all even at +2 dmg. Traced, not just observed: Chain Lightning is Lightning Bolt's combo target
+(`chain_bonus_if_prev="Chain Lightning"`), so the hands where it gets picked are usually already
+winning; extra flat damage there overkills or trims HP cost instead of flipping any win/loss
+outcome, which is exactly why cost/pulls move while win sits flat. Call of the Glacier at dmg=4
+moves win the most but drags cost and pulls along more than double what Windstrike does per unit
+of win gained.
+
+**Locked, by explicit user choice: Windstrike -> Windstrike [Lv 2], dmg 5->6, every other field
+unchanged.** Smallest footprint of the equilibrium-clear options for a win-focused ask. Final
+four-upgrade slate (mandatory + all 3 purchased), measured directly through the real
+`board_engine._level2_swaps_for` wiring: cost -0.6, win +1.2, pulls +0.29, equilibrium clear on
+all 6 Standard mobs -- pulls margin lands alongside Ranger's (+0.26) and Wizard's (+0.25) own
+final locked slates, no overshoot despite this card not having a diagnosed-weakness justification
+the way the first two did.
+
+## Tier 2/3 mechanic candidates for future upgrade cards -- raised 2026-08-24, not evaluated or decided
+
+Six mechanics were proposed as a brainstorm for what Level 3+ upgrade cards might need,
+explicitly **not balanced or locked design proposals for any specific class** -- every numeric
+example below is illustrative only, kept for the record so the ideas and the reasoning behind
+them aren't lost, not because anything here is queued for a build. Focus (a "the next card you
+play triggers twice" multiplier) was raised alongside the other five but is deliberately left
+out of this writeup by explicit user choice -- see the critique below for why it was also the
+one flagged as riskiest on independent review, before that choice was made.
+
+**Stated intent behind all of them:** Tier 2/3 mobs will need uneven attack curves, heavier
+armor, and bigger HP pools than anything Level 1/2 content has had to survive, and the strict
+3-card/3-round structure means a class can't just answer that with bigger flat numbers forever
+-- these are meant as new *levers*, not bigger versions of existing ones.
+
+**Cross-cutting review, not mechanic-specific:** none of the five below need new solver
+architecture -- the exact 3-round brute-force search (`best_line_for_hand`) stays exact for all
+of them, since each is representable as a new field on `RoundState`/`RoundOutcome`, the same
+shape Weave/Echo/Sacred Balance already use. Genuinely new mechanics, though, not reskins --
+per "How to generate a valid upgrade card" above, each one that actually gets built should
+expect its own dedicated diagnose/sweep/equilibrium-check pass, on the order of Runecaster's
+Echo (this project's own "hardest port" precedent), not a quick numbers pass. One real,
+unaddressed question the original writeup doesn't answer: do any of these compose on the same
+card (a card that's both Thorns *and* Retain Block, say), or is each mechanic exclusive to its
+own card -- a real decision with real solver implications, not obvious either way.
+
+### 1. Retain Block (carry-over defense)
+
+Unspent Block doesn't clear at end of round -- it carries into the next round. Meant to solve
+mobs with spiky, uneven attack curves (e.g. 0/2/12 ATK across three rounds) that the strict
+3-card limit can't answer with a single card's worth of Block in the spike round; lets a player
+bank defense during a mob's quiet rounds instead.
+
+**Not actually new territory for this codebase** -- Ranger's Beast Bond: Wolf already does
+persistent multi-round Block, called out in `SOTG.md`'s own class-roster table as "unique in
+this codebase." A generalized version of this would extend an already-working, already-tuned
+pattern rather than invent one from scratch. The real risk is the same one Tidal Ward already
+hit twice this session (see its own worked example above): a banking mechanic generous enough
+can create a "cannot die" equilibrium, since the player fully controls *when* to bank -- needs
+the identical `equilibrium_check` discipline every other Block lever in this guide has gotten,
+not a new category of scrutiny.
+
+### 2. Thorns (Block retaliation)
+
+The mob takes damage equal to however much of its own ATK this card's Block absorbed. Meant to
+turn defense into scaling offense against high-HP, high-damage Tier 2/3 mobs, rewarding
+sequencing a Thorns card against the mob's heaviest hit specifically.
+
+Mechanically clean and a genuinely new decision axis this roster doesn't have yet: value that
+scales with *which mob's round* you play it against, rather than a flat number regardless of
+matchup (every one of the current 54 cards deals the same damage no matter what's across the
+table). Fully solvable and planable given this system's "no hidden info" design (the mob's
+whole 3-round pattern is already known before any card is played), but it's a real texture
+shift worth being deliberate about -- great against a 6-ATK round, close to dead against a
+0-ATK one, a genuinely higher matchup-variance card than anything currently in the roster.
+
+### 3. Weaken (ATK reduction)
+
+Reduces the mob's printed ATK for the following round(s). Meant as *un-evadable* mitigation --
+`grants_range` is a hard counter to melee mobs specifically and does nothing against Scout or a
+hypothetical ranged/AOE Tier 2+ attack.
+
+This directly answers a gap this project has already diagnosed and named, not a new problem:
+`CLASS_BALANCE_GUIDE.md`/`OPEN_QUESTIONS.md` already flag that 5 of 9 classes have zero
+`grants_range` cards and fall off a cliff against sustained ranged pressure, since evasion is
+melee-only by construction. A universal (not mob-type-conditional) ATK-reduction lever is close
+to the natural fix for exactly that already-documented hole. Structurally similar in shape to
+Runecaster's Echo (a value that applies to a *future* round rather than the current one), just
+simpler -- a live modifier applied to next round's printed ATK before damage-taken is computed,
+not a whole second damage/heal instance.
+
+### 4. Shatter Block (armor destruction)
+
+Reduces the mob's Block to 0 for the rest of the pull. Meant to answer heavy Tier 2/3 armor
+specifically for classes built around several low-damage cards (Druid, Rogue), where a couple
+points of mob Block can delete their entire win condition.
+
+The direct, hand-wide escalation of `armor_pierce` (the per-card version), which this project
+already swept extensively -- see "a cross-class armor-pierce retrospective" above, which found
+real, class-dependent value concentrated exactly in low-per-card-damage classes. Not new
+territory, the permanent version of something already validated at single-card scale. Given
+mob Block values are small across the roster (0-2 typical, max ATK anywhere including Elites is
+6), the total value unlocked by zeroing it for two remaining rounds is bounded, not an obviously
+runaway lever -- though it still needs its own real sweep before any number gets attached.
+
+### 5. Multi-Strike (event generation)
+
+One card resolves as two or more separate damage instances instead of one lump sum -- each hit
+gets blocked individually, so it's deliberately weak against mob armor but scales sharply with
+flat damage buffs applied to "all hits."
+
+Smaller engineering lift than the original writeup implies -- doesn't need a real multi-hit
+`RoundOutcome`, just the sum of N separately-blocked mini-hits computed inside one
+`resolve_round` call, mathematically equivalent, one net number out, no change to the existing
+one-outcome-per-round contract. The real design question is about standalone value, not
+engineering: unbuffed, it's provably *worse* than a flat card of equal face value the instant
+mob Block is nonzero (each hit eats Block separately, a flat card only eats it once) -- so its
+entire value proposition depends on drawing its synergy partner (a flat "+dmg to all hits" card)
+in the same hand. Not a new *kind* of problem for this roster -- Chain Lightning/Lightning Bolt
+and Vanguard Shield/Blade are both already-accepted "weak alone, strong with its specific
+partner" pairs -- just a sharper version of an existing, tolerated pattern.
+
 ## Explicitly open
 
 - **How many Gold-purchased upgrades a player can take beyond the mandatory one** -- capped at
@@ -1509,7 +1695,9 @@ and `Lightning Bolt [Lv 2]` together.
 - Tier 2/3 mob content and hero levels 3-6 entirely -- blocked on this same guide's rule being
   applied through Level 2 first, then re-deriving Tier 2 mobs against whatever Level 3-4 hero
   stats result (see `OPEN_QUESTIONS.md`'s mob-tier discussion for why mob derivation has to
-  follow hero power, not precede it).
+  follow hero power, not precede it). "Tier 2/3 mechanic candidates for future upgrade cards"
+  above has five raised-but-undecided mechanic ideas for what those upgrades might need, kept
+  for the record, not queued for a build.
 - The real deck-level swap-in mechanism (how a player actually acquires/chooses an upgrade card
   at the table) -- this guide covers the *numbers*, not the acquisition UX.
 - Elite trio re-validation for multi-hero Party Pull math -- every number in this guide's
