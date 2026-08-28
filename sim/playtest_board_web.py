@@ -415,8 +415,8 @@ def town():
         if setup["quests_completed"]:
             _flash(f"Turned in {setup['quests_completed']} quest(s).")
         _S["town_entered"] = True
-    actions = BE.get_town_actions(hero, _S["purchase_queues"][0])
-    return render_template("town.html", hero=hero, actions=list(enumerate(actions)),
+    actions = BE.get_town_actions(hero, _S["purchase_queues"][0], _S["board"])
+    return render_template("town.html", hero=hero, actions=list(enumerate(actions)), board=_S["board"],
                             flash=_pop_flash())
 
 
@@ -425,12 +425,12 @@ def town_action():
     if _S["board"] is None:
         return redirect(url_for("index"))
     hero = _S["board"].heroes[0]
-    actions = BE.get_town_actions(hero, _S["purchase_queues"][0])
+    actions = BE.get_town_actions(hero, _S["purchase_queues"][0], _S["board"])
     idx = int(request.form.get("idx", -1))
     if not (0 <= idx < len(actions)):
         return redirect(url_for("town"))
     action = actions[idx]
-    still_in_town = BE.apply_town_action(hero, action, _S["purchase_queues"][0])
+    still_in_town = BE.apply_town_action(hero, action, _S["purchase_queues"][0], _S["board"], _S["rng"])
     if not still_in_town:
         _S["town_entered"] = False
         if hero.corpse_node is not None:
@@ -459,8 +459,8 @@ def trainer():
         if setup["mandatory_turn"]:
             _flash("You've been granted your mandatory Level 2 upgrade!")
         _S["trainer_entered"] = True
-    actions = BE.get_town_actions(hero, _S["purchase_queues"][0])
-    return render_template("town.html", hero=hero, actions=list(enumerate(actions)),
+    actions = BE.get_town_actions(hero, _S["purchase_queues"][0], _S["board"])
+    return render_template("town.html", hero=hero, actions=list(enumerate(actions)), board=_S["board"],
                             flash=_pop_flash(), action_url=url_for("trainer_action"))
 
 
@@ -469,12 +469,12 @@ def trainer_action():
     if _S["board"] is None:
         return redirect(url_for("index"))
     hero = _S["board"].heroes[0]
-    actions = BE.get_town_actions(hero, _S["purchase_queues"][0])
+    actions = BE.get_town_actions(hero, _S["purchase_queues"][0], _S["board"])
     idx = int(request.form.get("idx", -1))
     if not (0 <= idx < len(actions)):
         return redirect(url_for("trainer"))
     action = actions[idx]
-    still_at_trainer = BE.apply_town_action(hero, action, _S["purchase_queues"][0])
+    still_at_trainer = BE.apply_town_action(hero, action, _S["purchase_queues"][0], _S["board"], _S["rng"])
     if not still_at_trainer:
         _S["trainer_entered"] = False
         _S["phase"] = "travel"
@@ -535,7 +535,7 @@ def travel():
         return redirect(url_for("index"))
     hero = _S["board"].heroes[0]
     actions = BE.get_travel_actions(hero, _S["board"], _S["rng"])
-    return render_template("travel.html", hero=hero, actions=list(enumerate(actions)), flash=_pop_flash(),
+    return render_template("travel.html", board=_S["board"], hero=hero, actions=list(enumerate(actions)), flash=_pop_flash(), board=_S["board"],
                             map_data=_build_map_data(_S["board"], 0), action_dict=_build_action_dict(actions),
                             coords=_load_map_coords())
 
@@ -801,11 +801,11 @@ def _cmp_begin_round():
             else:
                 BE.enter_town(hero, _S["class_names"][hero_idx], _S["strategy"], _S["rng"], _S["board"])
             while True:
-                actions = BE.get_town_actions(hero, _S["purchase_queues"][hero_idx])
+                actions = BE.get_town_actions(hero, _S["purchase_queues"][hero_idx], _S["board"])
                 buyable = next((a for a in actions if a["type"] == "buy"), None)
                 leave_type = "leave_trainer" if at_trainer else "leave_town"
                 chosen = buyable if buyable else next(a for a in actions if a["type"] == leave_type)
-                if not BE.apply_town_action(hero, chosen, _S["purchase_queues"][hero_idx]):
+                if not BE.apply_town_action(hero, chosen, _S["purchase_queues"][hero_idx], _S["board"], _S["rng"]):
                     break
         else:
             town_pending.append(hero_idx)
@@ -834,8 +834,8 @@ def cmp_town():
         if setup["quests_completed"]:
             _flash(f"Turned in {setup['quests_completed']} quest(s).")
         _S["cmp_town_entered"][hero_idx] = True
-    actions = BE.get_town_actions(hero, _S["purchase_queues"][hero_idx])
-    return render_template("town.html", hero=hero, actions=list(enumerate(actions)), flash=_pop_flash(),
+    actions = BE.get_town_actions(hero, _S["purchase_queues"][hero_idx], _S["board"])
+    return render_template("town.html", hero=hero, actions=list(enumerate(actions)), board=_S["board"], flash=_pop_flash(),
                             turn_label=_cmp_label(hero_idx), action_url=url_for("cmp_town_action"))
 
 
@@ -843,11 +843,11 @@ def cmp_town():
 def cmp_town_action():
     hero_idx = _S["active_hero_idx"]
     hero = _S["board"].heroes[hero_idx]
-    actions = BE.get_town_actions(hero, _S["purchase_queues"][hero_idx])
+    actions = BE.get_town_actions(hero, _S["purchase_queues"][hero_idx], _S["board"])
     idx = int(request.form.get("idx", -1))
     if not (0 <= idx < len(actions)):
         return redirect(url_for("cmp_town"))
-    still_in_town = BE.apply_town_action(hero, actions[idx], _S["purchase_queues"][hero_idx])
+    still_in_town = BE.apply_town_action(hero, actions[idx], _S["purchase_queues"][hero_idx], _S["board"], _S["rng"])
     if not still_in_town:
         _S["cmp_town_pending"].pop(0)
         return _cmp_after_town()
@@ -866,8 +866,8 @@ def cmp_trainer():
         if setup["mandatory_turn"]:
             _flash("You've been granted your mandatory Level 2 upgrade!")
         _S["cmp_trainer_entered"][hero_idx] = True
-    actions = BE.get_town_actions(hero, _S["purchase_queues"][hero_idx])
-    return render_template("town.html", hero=hero, actions=list(enumerate(actions)), flash=_pop_flash(),
+    actions = BE.get_town_actions(hero, _S["purchase_queues"][hero_idx], _S["board"])
+    return render_template("town.html", hero=hero, actions=list(enumerate(actions)), board=_S["board"], flash=_pop_flash(),
                             turn_label=_cmp_label(hero_idx), action_url=url_for("cmp_trainer_action"))
 
 
@@ -875,11 +875,11 @@ def cmp_trainer():
 def cmp_trainer_action():
     hero_idx = _S["active_hero_idx"]
     hero = _S["board"].heroes[hero_idx]
-    actions = BE.get_town_actions(hero, _S["purchase_queues"][hero_idx])
+    actions = BE.get_town_actions(hero, _S["purchase_queues"][hero_idx], _S["board"])
     idx = int(request.form.get("idx", -1))
     if not (0 <= idx < len(actions)):
         return redirect(url_for("cmp_trainer"))
-    still_at_trainer = BE.apply_town_action(hero, actions[idx], _S["purchase_queues"][hero_idx])
+    still_at_trainer = BE.apply_town_action(hero, actions[idx], _S["purchase_queues"][hero_idx], _S["board"], _S["rng"])
     if not still_at_trainer:
         _S["cmp_town_pending"].pop(0)
         return _cmp_after_town()
@@ -932,8 +932,7 @@ def cmp_declare():
     hero_idx = _S["active_hero_idx"]
     hero = _S["board"].heroes[hero_idx]
     actions = BE.get_travel_actions(hero, _S["board"], _S["rng"])
-    return render_template(
-        "travel.html", hero=hero, actions=list(enumerate(actions)), flash=_pop_flash(),
+    return render_template("travel.html", board=_S["board"], hero=hero, actions=list(enumerate(actions)), flash=_pop_flash(),
         turn_label=_cmp_label(hero_idx), action_url=url_for("cmp_declare_action"),
         declare_note="Declare your target for this round -- everyone's declarations resolve "
                      "together once all heroes have chosen.", map_data=_build_map_data(_S["board"], hero_idx),

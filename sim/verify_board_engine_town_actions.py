@@ -110,7 +110,7 @@ def run_direct_checks(verbose=True):
     BE.apply_town_action(hero4, bag_action, purchase_queue)
     check("bag_upgrade purchase spends gold to 0", hero4.gold == 0, hero4.gold)
     check("bag_upgrade purchase marks acquired", "bag_upgrade" in hero4.acquired, hero4.acquired)
-    check("bag_upgrade purchase grows the bag", len(hero4.bag) == 3 and len(hero4.locked) == 3,
+    check("bag_upgrade purchase grows the bag", len(hero4.bag) == 5 and len(hero4.locked) == 5,
           (hero4.bag, hero4.locked))
 
     # 5. leave_town costs no extra turn (enter_town already charged the one turn for the

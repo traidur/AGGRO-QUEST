@@ -84,7 +84,7 @@ def aggregate_sanity_check(class_name, strategy="food_only", trials=100, old_cha
     the exact turn count the old side actually took, so both sides cover the same amount of
     real simulated playtime rather than merely a similar one. Expects the ratio in a similar
     ballpark, not exact."""
-    old = M.decay_stress_test(class_name, strategy, random.Random(seed), chain_trips=old_chain_trips)
+    old = M.decay_stress_test(class_name, strategy, random.Random(seed), max_turns=old_chain_trips)
     old_gold_per_turn = old["gold_per_turn"]
     max_turns = old["total_turns"]
 

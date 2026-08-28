@@ -140,7 +140,7 @@ def aggregate_sanity_check(class_name, strategy="food_only", trials=20, old_chai
     old_gpt = []
     old_turns_by_seed = []
     for s in range(trials):
-        r = M.decay_stress_test(class_name, strategy, random.Random(s + seed), chain_trips=old_chain_trips)
+        r = M.decay_stress_test(class_name, strategy, random.Random(s + seed), max_turns=old_chain_trips)
         old_deaths += r["died_count"]
         old_gpt.append(r["gold_per_turn"])
         old_turns_by_seed.append(r["total_turns"])

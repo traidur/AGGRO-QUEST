@@ -27,6 +27,7 @@ import copy
 import random
 
 import board_engine as BE
+import board_state as B
 import macro_sim as M
 from board_state import HeroBoardState
 
@@ -90,6 +91,20 @@ def verify_class(class_name, strategy="food_only", trials=20, num_calls=3, verbo
         hero = HeroBoardState(class_name=class_name, hp=max_hp, max_hp=max_hp,
                                position=(1, "town"), bag=[], locked=[])
 
+        # Town Quest Markets (checkpointed 2026-08-27/28) need a real board -- resolve_town_turn
+        # now requires one. Built once per seed, matching how _trip_chain's own town_markets/
+        # quest_bag/quest_discard live for the whole chain, not reset per Town visit. Flagged
+        # honestly, not silently claimed as airtight: this board's market is its OWN independent
+        # random draw sequence, not a captured snapshot of _trip_chain's real one (unlike
+        # bag/gold/active_quests above, which ARE real captured state) -- so a k-window that
+        # actually exercises Level 2 quest turn-in/refill could still show a real mismatch here,
+        # not because resolve_town_turn is wrong, but because the two Quest Market
+        # implementations aren't synchronized by this test. Every other field this test checks
+        # (Level 1 turn-in, Trainer turn, non-quest-market gold/xp bookkeeping) stays a genuine
+        # bit-for-bit check.
+        board = B.BoardState(mode="solo", heroes=[hero], zones={}, level_decks={})
+        board.setup_quests(random.Random(seed + 20_000_000))
+
         for k in range(len(calls) - 1):
             hero.bag = copy.deepcopy(calls[k]["out_bag"])
             hero.locked = list(calls[k]["out_locked"])
@@ -98,7 +113,7 @@ def verify_class(class_name, strategy="food_only", trials=20, num_calls=3, verbo
             pos = calls[k]["out_current_position"]
             hero.position = (pos, "town") if isinstance(pos, int) else (pos, None)
 
-            turn_result = BE.resolve_town_turn(hero, class_name, strategy, purchase_queue, "save", replay_rng)
+            turn_result = BE.resolve_town_turn(hero, class_name, strategy, purchase_queue, "save", replay_rng, board)
 
             expected = (calls[k + 1]["in_gold"], chain_log[k]["xp"], chain_log[k]["quests_completed"],
                         chain_log[k + 1]["trainer_turn"])

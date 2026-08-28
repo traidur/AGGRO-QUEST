@@ -49,7 +49,7 @@ def eval_pool_decay(members, trials, seed=42):
     results = {}
     for cls in CLASSES:
         rng = random.Random(seed)
-        totals = [M.decay_stress_test(cls, 'food_only', rng, chain_trips=20)['worst_decay_stage']
+        totals = [M.decay_stress_test(cls, 'food_only', rng, max_turns=20)['worst_decay_stage']
                   for _ in range(trials)]
         results[cls] = sum(totals) / len(totals)
     return results

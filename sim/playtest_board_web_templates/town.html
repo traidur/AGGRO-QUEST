@@ -15,12 +15,28 @@
     <h2>Town — Zone {{ hero.position[0] }}</h2>
     {% for msg in flash %}<div class="flash">{{ msg }}</div>{% endfor %}
 
+    {% if board and hero.position[0] in [3, 4] and hero.position[1] != 'trainer' %}
+        <div class="market-section" style="border: 1px solid #ccc; padding: 10px; margin-bottom: 20px; background: #fafafa;">
+            <h3 style="margin-top: 0;">Town {{ hero.position[0] }} Quest Market</h3>
+            {% if board.town_markets[hero.position[0]] %}
+                <ul style="list-style-type: square; margin-bottom: 0;">
+                {% for quest in board.town_markets[hero.position[0]] %}
+                    <li><strong>{{ quest }}</strong></li>
+                {% endfor %}
+                </ul>
+            {% else %}
+                <em>Market is empty.</em>
+            {% endif %}
+        </div>
+    {% endif %}
+
     <br>
     {% for i, a in actions %}
     <form method="POST" action="{{ action_url or '/town/action' }}" style="display:inline;">
         <input type="hidden" name="idx" value="{{ i }}">
         <button class="action-btn" type="submit">
             {% if a.type == 'leave_town' %}Leave Town
+            {% elif a.type == 'take_quest' %}Take Quest: {{ a.quest_name }}
             {% elif a.type == 'buy' %}Buy {{ a.tag }} ({{ a.kind }}) — {{ a.cost }}g
             {% elif a.type == 'buy_consumable' %}Buy {{ a.item_name }} — {{ a.cost }}g
             {% elif a.type == 'use_charm' %}Use Preserving Charm on {{ a.loot }} (reset decay)

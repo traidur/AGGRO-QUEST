@@ -330,7 +330,7 @@ def _trainer_automatic_setup(hero, class_name):
     return {"mandatory_turn": mandatory_turn}
 
 
-def _town_automatic_setup(hero, class_name, strategy, rng, board, restock=True):
+def _town_automatic_setup(hero, class_name, strategy, rng, board, restock=True, refill_quests=True):
     """Everything about a Town visit that is NOT a discretionary player choice -- quest
     turn-in/decay/refill, and Phase 1 quest pickup (the free mandatory-upgrade grant moved to
     _trainer_automatic_setup, 2026-08-24 -- see its own docstring for why). Factored out of
@@ -347,6 +347,10 @@ def _town_automatic_setup(hero, class_name, strategy, rng, board, restock=True):
     automatic restock for humans specifically, not removing it for the AI): enter_town passes
     restock=False so a human's Bag only ever changes because they chose to spend Gold on it,
     not invisibly on arrival. resolve_town_turn (AI path) keeps the default.
+
+    refill_quests=False skips the automatic Level 2 quest fill. Used by human-facing drivers
+    (enter_town) because Level 2 quests are physically pulled from a face-up 3-card market,
+    making which quest to pull a discretionary player choice handled via take_quest actions.
 
     Mutates hero in place. Returns a dict: {"quests_completed": int, "gold_after_turnin": int}."""
     zone_id, _node = hero.position
@@ -377,9 +381,17 @@ def _town_automatic_setup(hero, class_name, strategy, rng, board, restock=True):
             for loot in turned_in:
                 board.quest_discard.append(loot)
             newly_active = []
-            while len(newly_active) < len(turned_in) and board.town_markets[zone_id]:
-                newly_active.append(board.town_markets[zone_id].pop(0))
-            board.draw_unique_quest(board.town_markets[zone_id], 3 - len(board.town_markets[zone_id]), rng)
+            # board.town_markets only has entries for zones 3/4 -- a hero can turn in an
+            # already-active Level 2 quest at ANY Town (zones 1/2 included), which crashed with
+            # KeyError until this guard (found live, 2026-08-28, same gap as macro_sim.py's
+            # _trip_chain -- see that function's own comment for the full finding). No market
+            # here means no refill opens at THIS turn-in; deliberately not deciding whether a
+            # non-market Town should refill from somewhere else instead.
+            market = board.town_markets.get(zone_id) if refill_quests else None
+            if market is not None:
+                while len(newly_active) < len(turned_in) and market:
+                    newly_active.append(market.pop(0))
+                board.draw_unique_quest(market, 3 - len(market), rng)
             hero.active_quests = still_incomplete + newly_active
         quests_completed = len(turned_in)
 
@@ -393,11 +405,12 @@ def _town_automatic_setup(hero, class_name, strategy, rng, board, restock=True):
     valid_quest_zones = M.LEVEL2_QUEST_ZONES if hero.xp >= M.LEVEL2_XP_THRESHOLD else M.LEVEL1_QUEST_ZONES
     if not hero.active_quests and zone_id in valid_quest_zones:
         if pool is M.LEVEL2_QUESTS:
-            hero.active_quests = []
-            while len(hero.active_quests) < M.ACTIVE_QUEST_COUNT and board.town_markets[zone_id]:
-                hero.active_quests.append(board.town_markets[zone_id].pop(0))
-            board.draw_unique_quest(board.town_markets[zone_id], 3 - len(board.town_markets[zone_id]), rng)
-            hero.acquired.add("started_l2_quests")
+            if refill_quests:
+                hero.active_quests = []
+                while len(hero.active_quests) < M.ACTIVE_QUEST_COUNT and board.town_markets[zone_id]:
+                    hero.active_quests.append(board.town_markets[zone_id].pop(0))
+                board.draw_unique_quest(board.town_markets[zone_id], 3 - len(board.town_markets[zone_id]), rng)
+                hero.acquired.add("started_l2_quests")
         else:
             hero.active_quests = rng.sample(list(pool.keys()), min(M.ACTIVE_QUEST_COUNT, len(pool)))
 
@@ -480,7 +493,7 @@ def enter_town(hero, class_name, strategy, rng, board):
 
     Mutates hero in place. Returns _town_automatic_setup's own dict (quests_completed,
     gold_after_turnin)."""
-    setup = _town_automatic_setup(hero, class_name, strategy, rng, board, restock=False)
+    setup = _town_automatic_setup(hero, class_name, strategy, rng, board, restock=False, refill_quests=False)
     hero.turns += 1
     return setup
 
@@ -506,7 +519,7 @@ def enter_trainer(hero, class_name):
     return setup
 
 
-def get_town_actions(hero, purchase_queue):
+def get_town_actions(hero, purchase_queue, board=None):
     """Legal Town actions available RIGHT NOW: any Purchase Queue item that's currently
     eligible (right location for a Trainer-gated skill, Level-2-quests-started for the Bag
     Upgrade, not already owned) AND affordable this instant, plus leave_town (always legal).
@@ -562,6 +575,10 @@ def get_town_actions(hero, purchase_queue):
         actions.append({"type": "buy", "tag": item["tag"], "kind": item["kind"], "cost": item["cost"]})
 
     if not at_trainer:
+        if board and zone_id in (3, 4) and len(hero.active_quests) < M.ACTIVE_QUEST_COUNT:
+            for quest in board.town_markets.get(zone_id, []):
+                actions.append({"type": "take_quest", "quest_name": quest})
+
         for item_name, cost in M.CONSUMABLE_ITEMS.items():
             if hero.gold >= cost:
                 if item_name == "food" and not M._can_fit_food(hero.bag, hero.locked):
@@ -579,7 +596,7 @@ def get_town_actions(hero, purchase_queue):
     return actions
 
 
-def apply_town_action(hero, action, purchase_queue):
+def apply_town_action(hero, action, purchase_queue, board=None, rng=None):
     """Resolves one Town action from get_town_actions. Mutates hero in place. Returns True if
     the hero is still at Town (call get_town_actions again for the next choice), False if
     they just left (leave_town) -- no separate turn cost either way, matching enter_town's own
@@ -612,6 +629,16 @@ def apply_town_action(hero, action, purchase_queue):
         if action["type"] == "leave_town":
             hero.hp = hero.max_hp
         return False
+
+    if action["type"] == "take_quest":
+        zone_id, _node = hero.position
+        quest = action["quest_name"]
+        if board and quest in board.town_markets.get(zone_id, []):
+            board.town_markets[zone_id].remove(quest)
+            hero.active_quests.append(quest)
+            board.draw_unique_quest(board.town_markets[zone_id], 3 - len(board.town_markets[zone_id]), rng)
+            hero.acquired.add("started_l2_quests")
+        return True
 
     if action["type"] == "buy_consumable":
         hero.gold -= action["cost"]
@@ -1737,9 +1764,21 @@ def _choose_field_action(hero_idx, board, class_names, quest_pools, rng, claimed
         # just bounces off return_to_town forever, since pickup never triggers from the wrong
         # zone -- a real bug caught live tracing a stuck 150-round run, not a hypothetical.
         valid_quest_zones = M.LEVEL2_QUEST_ZONES if hero.xp >= M.LEVEL2_XP_THRESHOLD else M.LEVEL1_QUEST_ZONES
-        if isinstance(zone_or_border, int) and zone_or_border in valid_quest_zones:
+        # Level 2 only: "already in a valid zone" used to always mean "return_to_town is enough,"
+        # assuming a fresh quest was guaranteed there -- true under the old unlimited-resample
+        # model, false now that Level 2 quests come from a real, sometimes-empty Town Market.
+        # Real bug found live 2026-08-28: a hero stuck in a zone whose market had nothing to
+        # offer just cycled return_to_town forever, since nothing here ever considered the OTHER
+        # quest zone instead. reachable_zones is only the zones whose market actually has
+        # something -- falls back to the full set if BOTH are empty (genuine, rare total
+        # exhaustion) so this never produces an impossible empty choice.
+        reachable_zones = valid_quest_zones
+        if hero.xp >= M.LEVEL2_XP_THRESHOLD:
+            stocked = {z for z in valid_quest_zones if board.town_markets.get(z)}
+            reachable_zones = stocked or valid_quest_zones
+        if isinstance(zone_or_border, int) and zone_or_border in reachable_zones:
             return next(a for a in actions if a["type"] == "return_to_town")
-        target_zone = min(valid_quest_zones, key=lambda z: M._hop_distance(zone_or_border, z))
+        target_zone = min(reachable_zones, key=lambda z: M._hop_distance(zone_or_border, z))
         if isinstance(zone_or_border, int):
             flight = next((a for a in actions if a["type"] == "flight_path"), None)
             if flight and flight["target_zone"] == target_zone:
@@ -1840,10 +1879,11 @@ def run_competitive_chain(class_names_list, strategy, rng, max_rounds,
             if hero.position[1] == "town":
                 enter_town(hero, class_names[hero_idx], strategy, rng, board)
                 while True:
-                    town_actions = get_town_actions(hero, purchase_queues[hero_idx])
+                    town_actions = get_town_actions(hero, purchase_queues[hero_idx], board)
                     buyable = next((a for a in town_actions if a["type"] == "buy"), None)
-                    chosen = buyable if buyable else next(a for a in town_actions if a["type"] == "leave_town")
-                    still_in_town = apply_town_action(hero, chosen, purchase_queues[hero_idx])
+                    take = next((a for a in town_actions if a["type"] == "take_quest"), None)
+                    chosen = take if take else (buyable if buyable else next(a for a in town_actions if a["type"] == "leave_town"))
+                    still_in_town = apply_town_action(hero, chosen, purchase_queues[hero_idx], board, rng)
                     if not still_in_town:
                         break
             elif hero.position[1] == "trainer":
@@ -1854,10 +1894,10 @@ def run_competitive_chain(class_names_list, strategy, rng, max_rounds,
                 # shared with Town, filtered by this "trainer" position marker.
                 enter_trainer(hero, class_names[hero_idx])
                 while True:
-                    trainer_actions = get_town_actions(hero, purchase_queues[hero_idx])
+                    trainer_actions = get_town_actions(hero, purchase_queues[hero_idx], board)
                     buyable = next((a for a in trainer_actions if a["type"] == "buy"), None)
                     chosen = buyable if buyable else next(a for a in trainer_actions if a["type"] == "leave_trainer")
-                    still_at_trainer = apply_town_action(hero, chosen, purchase_queues[hero_idx])
+                    still_at_trainer = apply_town_action(hero, chosen, purchase_queues[hero_idx], board, rng)
                     if not still_at_trainer:
                         break
 

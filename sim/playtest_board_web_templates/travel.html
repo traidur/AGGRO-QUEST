@@ -225,6 +225,35 @@
             {% endfor %}
         {% endfor %}
     </div>
+    
+    {% if board %}
+    <div style="display: flex; gap: 20px; justify-content: center; margin-top: 20px;">
+        <div style="border: 1px solid #ccc; padding: 10px; background: #fafafa; border-radius: 4px; width: 300px;">
+            <h4 style="margin: 0 0 10px 0; text-align: center;">Town 3 Market</h4>
+            {% if board.town_markets.get(3) %}
+                <ul style="margin: 0; padding-left: 20px;">
+                {% for quest in board.town_markets[3] %}
+                    <li>{{ quest }}</li>
+                {% endfor %}
+                </ul>
+            {% else %}
+                <em style="display: block; text-align: center;">Empty</em>
+            {% endif %}
+        </div>
+        <div style="border: 1px solid #ccc; padding: 10px; background: #fafafa; border-radius: 4px; width: 300px;">
+            <h4 style="margin: 0 0 10px 0; text-align: center;">Town 4 Market</h4>
+            {% if board.town_markets.get(4) %}
+                <ul style="margin: 0; padding-left: 20px;">
+                {% for quest in board.town_markets[4] %}
+                    <li>{{ quest }}</li>
+                {% endfor %}
+                </ul>
+            {% else %}
+                <em style="display: block; text-align: center;">Empty</em>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
 
     <!-- Global non-map actions (Consumables, Flight Paths, etc) -->
     <div class="global-actions">

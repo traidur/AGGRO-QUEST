@@ -1528,12 +1528,22 @@ def _trip_chain(class_name, strategy, rng, risk_tolerance=RISK_TOLERANCE,
                               and "mandatory" not in acquired)
         fallback_target_zones = TRAINER_ZONES if pending_mandatory else valid_quest_zones
         if fallback_target_zones == LEVEL2_QUEST_ZONES and not active_quests:
-            avg_req_3 = sum(LEVEL2_QUESTS[q]["required"] for q in town_markets[3]) / len(town_markets[3]) if town_markets[3] else float('inf')
-            avg_req_4 = sum(LEVEL2_QUESTS[q]["required"] for q in town_markets[4]) / len(town_markets[4]) if town_markets[4] else float('inf')
-            if avg_req_3 < avg_req_4:
-                fallback_target_zones = {3}
-            elif avg_req_4 < avg_req_3:
-                fallback_target_zones = {4}
+            # Only compare markets when there's something real to compare. An empty market used
+            # to read as float('inf') ("infinitely bad"), permanently biasing away from that
+            # zone forever -- real bug found live 2026-08-28: a zone whose market emptied under
+            # heavy concurrent load never got revisited again for the rest of a 150-round run,
+            # since nothing here ever gave it another chance even once its supply recovered. A
+            # real player doesn't carry a permanent grudge against a Town they haven't checked
+            # recently -- if either market is empty, leave both zones eligible and let normal
+            # distance-based routing decide instead of asserting a preference from a comparison
+            # that can't honestly be made yet.
+            if town_markets[3] and town_markets[4]:
+                avg_req_3 = sum(LEVEL2_QUESTS[q]["required"] for q in town_markets[3]) / len(town_markets[3])
+                avg_req_4 = sum(LEVEL2_QUESTS[q]["required"] for q in town_markets[4]) / len(town_markets[4])
+                if avg_req_3 < avg_req_4:
+                    fallback_target_zones = {3}
+                elif avg_req_4 < avg_req_3:
+                    fallback_target_zones = {4}
         # Mob difficulty is a property of the PLACE (Zone 3/4's NODES/ZONE_TIER entries say
         # LEVEL2_TIER natively, same as Zone 1/2's say "standard"), never the hero's XP -- an
         # earlier version of this session wrongly tied it to LEVEL2_XP_THRESHOLD directly and
@@ -1613,14 +1623,25 @@ def _trip_chain(class_name, strategy, rng, risk_tolerance=RISK_TOLERANCE,
                 # requires a real visit rather than granting on the XP threshold alone).
                 active_quests = still_incomplete
             else:
-                # LEVEL2_QUESTS: normal shuffled-refill replenishment, same shape the
-                # Level 1 pool itself used before compression.
+                # LEVEL2_QUESTS: refills from this Town's own Quest Market. Real gap found live
+                # (2026-08-28, auditing the Town Quest Market feature): town_markets only has
+                # entries for zones 3/4 (TRAINER_ZONES/LEVEL2_QUEST_ZONES), but a hero can turn
+                # in an already-active Level 2 quest at ANY Town, including zones 1/2 -- this
+                # crashed with KeyError the instant that happened. Guarded here to the minimum
+                # fix that stops the crash without inventing a new mechanic: no market means no
+                # refill slot opens at THIS turn-in, the hero just carries fewer active quests
+                # until they next visit an actual market zone. Whether a non-market Town should
+                # refill from somewhere else instead (nearest market? no refill ever, by design?)
+                # is a real open question this guard deliberately does not decide -- flagged for
+                # the user, not resolved here.
                 for loot in turned_in:
                     quest_discard.append(loot)
                 newly_active = []
-                while len(newly_active) < len(turned_in) and town_markets[current_position]:
-                    newly_active.append(town_markets[current_position].pop(0))
-                _draw_unique(town_markets[current_position], 3 - len(town_markets[current_position]))
+                market = town_markets.get(current_position)
+                if market is not None:
+                    while len(newly_active) < len(turned_in) and market:
+                        newly_active.append(market.pop(0))
+                    _draw_unique(market, 3 - len(market))
                 active_quests = still_incomplete + newly_active
             quests_completed_this_trip = len(turned_in)
 
@@ -1732,7 +1753,7 @@ def compare_strategies(class_name, trials=500, seed=42, risk_tolerance=RISK_TOLE
 DECAY_LABELS = ["Gold", "Silver", "Bronze", "nothing"]
 
 
-def risk_exposure_report(class_name, strategy="food_only", trials=300, seed=42, chain_trips=20,
+def risk_exposure_report(class_name, strategy="food_only", trials=300, seed=42, max_turns=20,
                           risk_tolerance=RISK_TOLERANCE, risk_tolerance_base=RISK_TOLERANCE_BASE,
                           risk_only_as_last_resort=True):
     """The throughput-side complement to condensed_trip.py's defense_floor_sweep. Instruments
@@ -1770,10 +1791,15 @@ def risk_exposure_report(class_name, strategy="food_only", trials=300, seed=42, 
     orig = globals()["_pull_exceeds_risk"]
     log = []
 
-    def wrapped(mod_, has_stance_, mob_name, class_name_, hp, rt):
-        result = orig(mod_, has_stance_, mob_name, class_name_, hp, rt)
+    def wrapped(mod_, has_stance_, mob_name, class_name_, hp, rt, mob_pattern_hp=None):
+        result = orig(mod_, has_stance_, mob_name, class_name_, hp, rt, mob_pattern_hp=mob_pattern_hp)
         if rt == risk_tolerance and not result:
-            pattern, mob_hp = T.MOBS[mob_name][class_name_]
+            # mob_pattern_hp is the real (pattern, mob_hp) for a Level 2 pull -- reading it here
+            # matches _pull_exceeds_risk's own fallback exactly (real bug found live: this used
+            # to always read T.MOBS[mob_name][class_name_], the Level 1 Standard-tier lookup,
+            # even for a Level 2 mob passed in via mob_pattern_hp, silently logging the wrong
+            # mob's stats for every Level 2 gamble).
+            pattern, mob_hp = mob_pattern_hp if mob_pattern_hp is not None else T.MOBS[mob_name][class_name_]
             hands = mod_.ALL_HANDS
             lethal = sum(1 for hand in hands if T._best_line(mod_, has_stance_, hand, pattern, mob_hp, hp)[2] <= 0)
             log.append((mob_name, hp, lethal / len(hands)))
@@ -1786,11 +1812,11 @@ def risk_exposure_report(class_name, strategy="food_only", trials=300, seed=42, 
         quests_totals = []
         decay_counts = [0] * len(DECAY_LABELS)
         for _ in range(trials):
-            r = decay_stress_test(class_name, strategy, rng, chain_trips=chain_trips,
+            r = decay_stress_test(class_name, strategy, rng, max_turns=max_turns,
                                    risk_tolerance=risk_tolerance, risk_tolerance_base=risk_tolerance_base,
                                    risk_only_as_last_resort=risk_only_as_last_resort)
             deaths += r["died_count"]
-            quests_totals.append(r["avg_quests_per_trip"])
+            quests_totals.append(r["avg_quests_per_turn"])
             decay_counts[r["worst_decay_stage"]] += 1
     finally:
         globals()["_pull_exceeds_risk"] = orig
@@ -1806,7 +1832,7 @@ def risk_exposure_report(class_name, strategy="food_only", trials=300, seed=42, 
                 avg_hp=(sum(x[1] for x in log) / n) if n else None,
                 avg_lethal_frac=(sum(x[2] for x in log) / n) if n else None,
                 deaths=deaths, trials=trials, deaths_per_run=deaths / trials,
-                avg_quests_per_trip=sum(quests_totals) / len(quests_totals),
+                avg_quests_per_turn=sum(quests_totals) / len(quests_totals),
                 decay_pct={DECAY_LABELS[i]: 100 * c / trials for i, c in enumerate(decay_counts)},
                 per_mob=per_mob_summary)
 
@@ -1827,7 +1853,7 @@ RISK_PERSONAS = {
 }
 
 
-def persona_comparison_report(class_name, strategy="food_only", trials=300, seed=42, chain_trips=20,
+def persona_comparison_report(class_name, strategy="food_only", trials=300, seed=42, max_turns=20,
                                personas=None):
     """Runs risk_exposure_report once per named persona in RISK_PERSONAS (or a custom dict of
     {name: risk_tolerance}), instead of trusting the single, unvalidated RISK_TOLERANCE=0.15 as
@@ -1836,11 +1862,11 @@ def persona_comparison_report(class_name, strategy="food_only", trials=300, seed
     if personas is None:
         personas = RISK_PERSONAS
     return {name: risk_exposure_report(class_name, strategy, trials=trials, seed=seed,
-                                        chain_trips=chain_trips, risk_tolerance=tolerance)
+                                        max_turns=max_turns, risk_tolerance=tolerance)
             for name, tolerance in personas.items()}
 
 
-def persona_roster_report(class_names=None, strategy="food_only", trials=300, seed=42, chain_trips=20,
+def persona_roster_report(class_names=None, strategy="food_only", trials=300, seed=42, max_turns=20,
                            personas=None):
     """persona_comparison_report across multiple classes at once, printed as a side-by-side
     table per persona -- the actual tool to run when checking whether an apparent outlier class
@@ -1850,13 +1876,13 @@ def persona_roster_report(class_names=None, strategy="food_only", trials=300, se
         class_names = list(CARD_SOURCE.keys())
     if personas is None:
         personas = RISK_PERSONAS
-    all_results = {c: persona_comparison_report(c, strategy, trials, seed, chain_trips, personas)
+    all_results = {c: persona_comparison_report(c, strategy, trials, seed, max_turns, personas)
                     for c in class_names}
     for persona_name, tolerance in personas.items():
         print(f"=== Persona: {persona_name} (risk_tolerance={tolerance}) ===")
         for c in class_names:
             r = all_results[c][persona_name]
-            print(f"  {c:12s} deaths/run={r['deaths_per_run']:.2f}  quests/trip={r['avg_quests_per_trip']:.2f}"
+            print(f"  {c:12s} deaths/run={r['deaths_per_run']:.2f}  quests/turn={r['avg_quests_per_turn']:.2f}"
                   f"  nothing-tier={r['decay_pct']['nothing']:.1f}%  gambles_taken={r['gambles_taken']:5d}"
                   f"  avg_lethal_frac={100*r['avg_lethal_frac']:.2f}%")
         print()
@@ -1864,7 +1890,7 @@ def persona_roster_report(class_names=None, strategy="food_only", trials=300, se
 
 
 def compare_card_change(class_name, card_name, field_changes, strategy="food_only",
-                         trials=300, seed=42, chain_trips=20):
+                         trials=300, seed=42, max_turns=20):
     """The actual fix for the Ranger/Rogue incident: runs the clean defense-floor sweep
     (condensed_trip.py) and the throughput-side risk exposure report (this module) both
     before and after applying field_changes to CARDS[card_name], then prints an explicit
@@ -1883,13 +1909,13 @@ def compare_card_change(class_name, card_name, field_changes, strategy="food_onl
 
     try:
         before_floor = T.defense_floor_sweep(mod, has_stance, class_name, max_hp)
-        before_risk = risk_exposure_report(class_name, strategy, trials=trials, seed=seed, chain_trips=chain_trips)
+        before_risk = risk_exposure_report(class_name, strategy, trials=trials, seed=seed, max_turns=max_turns)
 
         for k, v in field_changes.items():
             mod.CARDS[card_name][k] = v
 
         after_floor = T.defense_floor_sweep(mod, has_stance, class_name, max_hp)
-        after_risk = risk_exposure_report(class_name, strategy, trials=trials, seed=seed, chain_trips=chain_trips)
+        after_risk = risk_exposure_report(class_name, strategy, trials=trials, seed=seed, max_turns=max_turns)
     finally:
         for k, v in original.items():
             mod.CARDS[card_name][k] = v
@@ -1910,7 +1936,7 @@ def compare_card_change(class_name, card_name, field_changes, strategy="food_onl
         print(f"  at HP={hp} vs {mob}: {100*b:.1f}% -> {100*a:.1f}% lethal-frac (WORSE)")
     print(f"Deaths/run: {before_risk['deaths_per_run']:.2f} -> {after_risk['deaths_per_run']:.2f}"
           f"  ({death_delta:+.2f})")
-    print(f"Quests/trip: {before_risk['avg_quests_per_trip']:.2f} -> {after_risk['avg_quests_per_trip']:.2f}")
+    print(f"Quests/turn: {before_risk['avg_quests_per_turn']:.2f} -> {after_risk['avg_quests_per_turn']:.2f}")
     print(f"Nothing-tier: {before_risk['decay_pct']['nothing']:.1f}% -> {after_risk['decay_pct']['nothing']:.1f}%")
     print(f"Gambles taken: {before_risk['gambles_taken']} -> {after_risk['gambles_taken']}"
           f"  ({gamble_delta*100:+.1f}%)")
@@ -1928,19 +1954,19 @@ def compare_card_change(class_name, card_name, field_changes, strategy="food_onl
                 before_risk=before_risk, after_risk=after_risk, regressions=regressions)
 
 
-def decay_report(class_name, trials=500, seed=42, chain_trips=20, risk_tolerance=RISK_TOLERANCE,
+def decay_report(class_name, trials=500, seed=42, max_turns=20, risk_tolerance=RISK_TOLERANCE,
                   risk_tolerance_base=RISK_TOLERANCE_BASE, risk_only_as_last_resort=True):
     """Distribution of the worst decay_stage any quest reached over a
-    fixed chain_trips-long run, per strategy, plus how often a death
+    fixed max_turns-long run, per strategy, plus how often a death
     happened at all (only possible when risk_tolerance > 0)."""
     strategies = ["none", "food_only", "potion_only"]
-    print(f"=== {class_name.capitalize()}: worst bounty decay reached over {chain_trips} trips ({trials} trials, risk_tolerance={risk_tolerance}/{risk_tolerance_base}) ===")
+    print(f"=== {class_name.capitalize()}: worst bounty decay reached over {max_turns} turns ({trials} trials, risk_tolerance={risk_tolerance}/{risk_tolerance_base}) ===")
     for strategy in strategies:
         rng = random.Random(seed)
         counts = [0] * len(DECAY_LABELS)
         deaths = 0
         for _ in range(trials):
-            result = decay_stress_test(class_name, strategy, rng, chain_trips=chain_trips,
+            result = decay_stress_test(class_name, strategy, rng, max_turns=max_turns,
                                         risk_tolerance=risk_tolerance,
                                         risk_tolerance_base=risk_tolerance_base,
                                         risk_only_as_last_resort=risk_only_as_last_resort)
@@ -1950,25 +1976,25 @@ def decay_report(class_name, trials=500, seed=42, chain_trips=20, risk_tolerance
         print(f"  {strategy:12s} {breakdown}   avg deaths/run: {deaths/trials:.2f}")
 
 
-def productivity_report(class_name, trials=500, seed=42, chain_trips=20, risk_tolerance=RISK_TOLERANCE,
+def productivity_report(class_name, trials=500, seed=42, max_turns=20, risk_tolerance=RISK_TOLERANCE,
                          risk_tolerance_base=RISK_TOLERANCE_BASE, risk_only_as_last_resort=True):
-    """Average quests completed per trip, out of ACTIVE_QUEST_COUNT (3)
-    possible, over a chain_trips-long run -- the direct "how productive is
-    a typical trip" number, as distinct from single-trip completion rate
+    """Average quests completed per turn, out of ACTIVE_QUEST_COUNT (3)
+    possible, over a max_turns-long run -- the direct "how productive is
+    a typical run" number, as distinct from single-trip completion rate
     (all-3-or-nothing) or decay (a distributional worst-case)."""
     strategies = ["none", "food_only", "potion_only"]
-    print(f"=== {class_name.capitalize()}: avg quests completed per trip, out of {ACTIVE_QUEST_COUNT} ({chain_trips}-trip runs, {trials} trials) ===")
+    print(f"=== {class_name.capitalize()}: avg quests completed per turn, out of {ACTIVE_QUEST_COUNT} ({max_turns}-turn runs, {trials} trials) ===")
     for strategy in strategies:
         rng = random.Random(seed)
         totals = []
         for _ in range(trials):
-            result = decay_stress_test(class_name, strategy, rng, chain_trips=chain_trips,
+            result = decay_stress_test(class_name, strategy, rng, max_turns=max_turns,
                                         risk_tolerance=risk_tolerance,
                                         risk_tolerance_base=risk_tolerance_base,
                                         risk_only_as_last_resort=risk_only_as_last_resort)
-            totals.append(result["avg_quests_per_trip"])
+            totals.append(result["avg_quests_per_turn"])
         avg = sum(totals) / len(totals)
-        print(f"  {strategy:12s} avg {avg:.2f} of {ACTIVE_QUEST_COUNT} quests/trip")
+        print(f"  {strategy:12s} avg {avg:.2f} of {ACTIVE_QUEST_COUNT} quests/turn")
 
 
 if __name__ == "__main__":
