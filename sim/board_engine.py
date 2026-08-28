@@ -330,7 +330,7 @@ def _trainer_automatic_setup(hero, class_name):
     return {"mandatory_turn": mandatory_turn}
 
 
-def _town_automatic_setup(hero, class_name, strategy, rng, restock=True):
+def _town_automatic_setup(hero, class_name, strategy, rng, board, restock=True):
     """Everything about a Town visit that is NOT a discretionary player choice -- quest
     turn-in/decay/refill, and Phase 1 quest pickup (the free mandatory-upgrade grant moved to
     _trainer_automatic_setup, 2026-08-24 -- see its own docstring for why). Factored out of
@@ -374,13 +374,12 @@ def _town_automatic_setup(hero, class_name, strategy, rng, restock=True):
         if pool is M.QUESTS:
             hero.active_quests = still_incomplete
         else:
+            for loot in turned_in:
+                board.quest_discard.append(loot)
             newly_active = []
-            for _ in range(len(turned_in)):
-                if not hero.quest_bag:
-                    hero.quest_bag = [loot for loot in M.LEVEL2_QUESTS
-                                       if loot not in still_incomplete and loot not in newly_active]
-                    rng.shuffle(hero.quest_bag)
-                newly_active.append(hero.quest_bag.pop(0))
+            while len(newly_active) < len(turned_in) and board.town_markets[zone_id]:
+                newly_active.append(board.town_markets[zone_id].pop(0))
+            board.draw_unique_quest(board.town_markets[zone_id], 3 - len(board.town_markets[zone_id]), rng)
             hero.active_quests = still_incomplete + newly_active
         quests_completed = len(turned_in)
 
@@ -393,14 +392,19 @@ def _town_automatic_setup(hero, class_name, strategy, rng, restock=True):
     pool = M.LEVEL2_QUESTS if hero.xp >= M.LEVEL2_XP_THRESHOLD else M.QUESTS
     valid_quest_zones = M.LEVEL2_QUEST_ZONES if hero.xp >= M.LEVEL2_XP_THRESHOLD else M.LEVEL1_QUEST_ZONES
     if not hero.active_quests and zone_id in valid_quest_zones:
-        hero.active_quests = rng.sample(list(pool.keys()), min(M.ACTIVE_QUEST_COUNT, len(pool)))
         if pool is M.LEVEL2_QUESTS:
+            hero.active_quests = []
+            while len(hero.active_quests) < M.ACTIVE_QUEST_COUNT and board.town_markets[zone_id]:
+                hero.active_quests.append(board.town_markets[zone_id].pop(0))
+            board.draw_unique_quest(board.town_markets[zone_id], 3 - len(board.town_markets[zone_id]), rng)
             hero.acquired.add("started_l2_quests")
+        else:
+            hero.active_quests = rng.sample(list(pool.keys()), min(M.ACTIVE_QUEST_COUNT, len(pool)))
 
     return {"quests_completed": quests_completed, "gold_after_turnin": gold_after_turnin}
 
 
-def resolve_town_turn(hero, class_name, strategy, purchase_queue, purchase_policy, rng):
+def resolve_town_turn(hero, class_name, strategy, purchase_queue, purchase_policy, rng, board):
     """Resolves one full Town turn, plus a separate Trainer turn if the hero is standing in a
     Trainer Zone and actually has Trainer business to do -- "Town... one turn total per visit"
     and "Class Trainer: same structure as Town... One turn total per visit" are two PARALLEL
@@ -433,7 +437,7 @@ def resolve_town_turn(hero, class_name, strategy, purchase_queue, purchase_polic
     external observability/verification (e.g. a UI wanting to show "you earned X from
     quests" separately from "then spent Y at the shop"), not used internally."""
     zone_id, _node = hero.position
-    setup = _town_automatic_setup(hero, class_name, strategy, rng)
+    setup = _town_automatic_setup(hero, class_name, strategy, rng, board)
 
     town_queue = [item for item in purchase_queue if item["kind"] != "skill"]
     hero.gold, _ = M._walk_purchase_queue(
@@ -462,7 +466,7 @@ def resolve_town_turn(hero, class_name, strategy, purchase_queue, purchase_polic
             "gold_after_turnin": setup["gold_after_turnin"]}
 
 
-def enter_town(hero, class_name, strategy, rng):
+def enter_town(hero, class_name, strategy, rng, board):
     """Human-facing equivalent of resolve_town_turn's Town half -- runs the automatic parts of
     a Town visit (turn-in, quest pickup, see _town_automatic_setup) and marks the ONE turn this
     visit costs (unconditional, charged on arrival, not per purchase, since "one turn total per
@@ -476,7 +480,7 @@ def enter_town(hero, class_name, strategy, rng):
 
     Mutates hero in place. Returns _town_automatic_setup's own dict (quests_completed,
     gold_after_turnin)."""
-    setup = _town_automatic_setup(hero, class_name, strategy, rng, restock=False)
+    setup = _town_automatic_setup(hero, class_name, strategy, rng, board, restock=False)
     hero.turns += 1
     return setup
 
@@ -1571,10 +1575,11 @@ def run_solo_chain(class_name, strategy, rng, max_turns, risk_tolerance=M.RISK_T
     purchase_queue = M._build_purchase_queue(class_name, bag_queue_position)
     level_decks = {1: B.LevelDeck.new(1, rng), 2: B.LevelDeck.new(2, rng)}
     board = B.BoardState(mode="solo", heroes=[hero], zones={}, level_decks=level_decks)
+    board.setup_quests(rng)
 
     # Chain-init Town moment: picks up the initial active_quests log (nothing to turn in yet,
     # matching _trip_chain's own pre-loop `active_quests = rng.sample(...)`).
-    init_result = resolve_town_turn(hero, class_name, strategy, purchase_queue, purchase_policy, rng)
+    init_result = resolve_town_turn(hero, class_name, strategy, purchase_queue, purchase_policy, rng, board)
     prev_trainer_turn = init_result["trainer_turn"]
 
     while hero.turns < max_turns:
@@ -1593,7 +1598,7 @@ def run_solo_chain(class_name, strategy, rng, max_turns, risk_tolerance=M.RISK_T
         if not trip_result["alive"]:
             apply_death_post_processing(hero, quest_pool, trip_result["death_node"])
 
-        town_result = resolve_town_turn(hero, class_name, strategy, purchase_queue, purchase_policy, rng)
+        town_result = resolve_town_turn(hero, class_name, strategy, purchase_queue, purchase_policy, rng, board)
         yield (trip_result["alive"], town_result["gold_after_turnin"], hero.xp,
                town_result["quests_completed"], prev_trainer_turn, hero.turns)
         prev_trainer_turn = town_result["trainer_turn"]
@@ -1828,11 +1833,12 @@ def run_competitive_chain(class_names_list, strategy, rng, max_rounds,
     purchase_queues = {i: M._build_purchase_queue(class_names_list[i], 0) for i in range(n)}
     level_decks = {1: B.LevelDeck.new(1, rng), 2: B.LevelDeck.new(2, rng)}
     board = B.BoardState(mode="competitive", heroes=heroes, zones={}, level_decks=level_decks)
+    board.setup_quests(rng)
 
     for _round_num in range(max_rounds):
         for hero_idx, hero in enumerate(board.heroes):
             if hero.position[1] == "town":
-                enter_town(hero, class_names[hero_idx], strategy, rng)
+                enter_town(hero, class_names[hero_idx], strategy, rng, board)
                 while True:
                     town_actions = get_town_actions(hero, purchase_queues[hero_idx])
                     buyable = next((a for a in town_actions if a["type"] == "buy"), None)

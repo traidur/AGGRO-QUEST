@@ -392,6 +392,7 @@ def start():
     purchase_queues = {0: M._build_purchase_queue(class_name, 0)}
     level_decks = {1: B.LevelDeck.new(1, rng), 2: B.LevelDeck.new(2, rng)}
     board = B.BoardState(mode="solo", heroes=[hero], zones={}, level_decks=level_decks)
+    board.setup_quests(_S["rng"])
 
     _S.update(mode="solo", board=board, class_names={0: class_name}, controllers={0: "human"},
               purchase_queues=purchase_queues, rng=rng, phase="town", town_entered=False,
@@ -410,7 +411,7 @@ def town():
     hero = _S["board"].heroes[0]
     class_name = _S["class_names"][0]
     if not _S["town_entered"]:
-        setup = BE.enter_town(hero, class_name, _S["strategy"], _S["rng"])
+        setup = BE.enter_town(hero, class_name, _S["strategy"], _S["rng"], _S["board"])
         if setup["quests_completed"]:
             _flash(f"Turned in {setup['quests_completed']} quest(s).")
         _S["town_entered"] = True
@@ -771,6 +772,7 @@ def party_start():
     purchase_queues = {i: M._build_purchase_queue(class_names[i], 0) for i in range(len(specs))}
     level_decks = {1: B.LevelDeck.new(1, rng), 2: B.LevelDeck.new(2, rng)}
     board = B.BoardState(mode="competitive", heroes=heroes, zones={}, level_decks=level_decks)
+    board.setup_quests(_S["rng"])
 
     _S.update(mode="competitive", board=board, class_names=class_names, controllers=controllers,
               labels=labels, purchase_queues=purchase_queues, rng=rng,
@@ -797,7 +799,7 @@ def _cmp_begin_round():
             if at_trainer:
                 BE.enter_trainer(hero, _S["class_names"][hero_idx])
             else:
-                BE.enter_town(hero, _S["class_names"][hero_idx], _S["strategy"], _S["rng"])
+                BE.enter_town(hero, _S["class_names"][hero_idx], _S["strategy"], _S["rng"], _S["board"])
             while True:
                 actions = BE.get_town_actions(hero, _S["purchase_queues"][hero_idx])
                 buyable = next((a for a in actions if a["type"] == "buy"), None)
@@ -828,7 +830,7 @@ def cmp_town():
     hero_idx = _S["active_hero_idx"]
     hero = _S["board"].heroes[hero_idx]
     if not _S["cmp_town_entered"].get(hero_idx):
-        setup = BE.enter_town(hero, _S["class_names"][hero_idx], _S["strategy"], _S["rng"])
+        setup = BE.enter_town(hero, _S["class_names"][hero_idx], _S["strategy"], _S["rng"], _S["board"])
         if setup["quests_completed"]:
             _flash(f"Turned in {setup['quests_completed']} quest(s).")
         _S["cmp_town_entered"][hero_idx] = True

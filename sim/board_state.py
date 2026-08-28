@@ -162,6 +162,69 @@ class BoardState:
     # hero in `heroes` has an entry here before resolving anything, competitive N=2-4 only --
     # solo (one hero) trivially always has exactly one entry, so it resolves every round
     # immediately, same as calling apply_travel_action directly always did.
+    quest_bag: list = field(default_factory=list)
+    quest_discard: list = field(default_factory=list)
+    town_markets: dict = field(default_factory=lambda: {3: [], 4: []})
+
+    def setup_quests(self, rng):
+        import macro_sim as M
+        self.quest_bag = list(M.LEVEL2_QUESTS.keys()) * 3
+        rng.shuffle(self.quest_bag)
+        self.quest_discard = []
+        self.town_markets = {3: [], 4: []}
+        
+        def _draw_unique(target_list, count):
+            drawn = 0
+            attempts = 0
+            while drawn < count:
+                if not self.quest_bag:
+                    if not self.quest_discard:
+                        break
+                    self.quest_bag = self.quest_discard
+                    self.quest_discard = []
+                    rng.shuffle(self.quest_bag)
+                
+                total_ecosystem = len(self.quest_bag) + len(self.quest_discard)
+                if attempts > total_ecosystem + 10:
+                    break
+
+                candidate = self.quest_bag.pop(0)
+                if candidate in target_list:
+                    self.quest_discard.append(candidate)
+                    attempts += 1
+                else:
+                    target_list.append(candidate)
+                    drawn += 1
+                    attempts = 0
+
+        _draw_unique(self.town_markets[3], 3)
+        _draw_unique(self.town_markets[4], 3)
+
+    def draw_unique_quest(self, target_list, count, rng):
+        def _draw_unique(target_list, count):
+            drawn = 0
+            attempts = 0
+            while drawn < count:
+                if not self.quest_bag:
+                    if not self.quest_discard:
+                        break
+                    self.quest_bag = self.quest_discard
+                    self.quest_discard = []
+                    rng.shuffle(self.quest_bag)
+                
+                total_ecosystem = len(self.quest_bag) + len(self.quest_discard)
+                if attempts > total_ecosystem + 10:
+                    break
+
+                candidate = self.quest_bag.pop(0)
+                if candidate in target_list:
+                    self.quest_discard.append(candidate)
+                    attempts += 1
+                else:
+                    target_list.append(candidate)
+                    drawn += 1
+                    attempts = 0
+        _draw_unique(target_list, count)
 
 
 def deal_zone(state, zone_id, level, node_names, rng):
