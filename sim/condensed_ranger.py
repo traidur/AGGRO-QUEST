@@ -133,15 +133,15 @@ RANGER_HP = 15
 # aggro: co-op Party Pull targeting value (0-4), locked via direct user
 # review -- see OPEN_QUESTIONS.md's "Co-op multi-hero vs. one Elite" entry.
 CARDS = {
-    "Beast Bond: Wolf":         dict(dmg=4, block=1, grants_range=False, beast_bond=True, beast_block_value=1,
+    "Beast Bond: Wolf": dict(combat_type="melee",dmg=4, block=1, grants_range=False, beast_bond=True, beast_block_value=1,
                                       payoff_prev_range=False, aggro=2),
-    "Withdrawing Hip Shot":     dict(dmg=2, block=0, grants_range=True, beast_bond=False, payoff_prev_range=False, aggro=2),
-    "Sniper/Point Blank Shot":  dict(dmg=None, block=0, grants_range=False, beast_bond=False, payoff_prev_range=True,
+    "Withdrawing Hip Shot": dict(combat_type="ranged",dmg=2, block=0, grants_range=True, beast_bond=False, payoff_prev_range=False, aggro=2),
+    "Sniper/Point Blank Shot": dict(combat_type="ranged",dmg=None, block=0, grants_range=False, beast_bond=False, payoff_prev_range=True,
                                       dmg_if_prev_range=7, dmg_else=5, aggro=3),
-    "Beast's Challenge":        dict(dmg=None, block=0, grants_range=False, beast_bond=False, payoff_prev_range=False,
+    "Beast's Challenge": dict(combat_type="melee",dmg=None, block=0, grants_range=False, beast_bond=False, payoff_prev_range=False,
                                       payoff_wolf=True, dmg_if_wolf=5, dmg_else=2, aggro=3),
-    "Sure Shot":                dict(dmg=4, block=0, grants_range=False, beast_bond=False, payoff_prev_range=False, aggro=2),
-    "Crippling Shot":           dict(dmg=2, block=1, grants_range=True, beast_bond=False, payoff_prev_range=False, aggro=3),
+    "Sure Shot": dict(combat_type="ranged",dmg=4, block=0, grants_range=False, beast_bond=False, payoff_prev_range=False, aggro=2),
+    "Crippling Shot": dict(combat_type="ranged",dmg=2, block=1, grants_range=True, beast_bond=False, payoff_prev_range=False, aggro=3),
 }
 DECK = list(CARDS.keys())
 

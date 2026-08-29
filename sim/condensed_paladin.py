@@ -49,12 +49,12 @@ PALADIN_HP = 17  # locked: settled at Warrior-1 after the Sacred Light/HP dial-b
 # aggro: co-op Party Pull targeting value (0-4), locked via direct user
 # review -- see OPEN_QUESTIONS.md's "Co-op multi-hero vs. one Elite" entry.
 CARDS = {
-    "Might of the Aegis":     dict(dmg=4, heal=0, block=2, strike=True,  invocation=None, aggro=4, grants_aura_block=False),
-    "Bastion's Hammer":       dict(dmg=6, heal=0, block=0, strike=True,  invocation=None, aggro=2, grants_aura_block=False),
-    "Sacred Light":           dict(dmg=0, heal=3, block=0, strike=False, invocation=None, aggro=2, grants_aura_block=False),
-    "Holy Fortress":          dict(dmg=2, heal=0, block=4, strike=False, invocation=None, aggro=4, grants_aura_block=False),
-    "Invocation of Sanctuary": dict(dmg=3, heal=0, block=0, strike=False, invocation="sanctuary", aggro=3, grants_aura_block=False),
-    "Invocation of Grace":     dict(dmg=4, heal=0, block=0, strike=False, invocation="grace", aggro=3, grants_aura_block=False),
+    "Might of the Aegis": dict(combat_type="melee",dmg=4, heal=0, block=2, strike=True,  invocation=None, aggro=4, grants_aura_block=False),
+    "Bastion's Hammer": dict(combat_type="melee",dmg=6, heal=0, block=0, strike=True,  invocation=None, aggro=2, grants_aura_block=False),
+    "Sacred Light": dict(combat_type="ranged",dmg=0, heal=3, block=0, strike=False, invocation=None, aggro=2, grants_aura_block=False),
+    "Holy Fortress": dict(combat_type="melee",dmg=2, heal=0, block=4, strike=False, invocation=None, aggro=4, grants_aura_block=False),
+    "Invocation of Sanctuary": dict(combat_type="ranged",dmg=3, heal=0, block=0, strike=False, invocation="sanctuary", aggro=3, grants_aura_block=False),
+    "Invocation of Grace": dict(combat_type="ranged",dmg=4, heal=0, block=0, strike=False, invocation="grace", aggro=3, grants_aura_block=False),
 }
 DECK = list(CARDS.keys())
 

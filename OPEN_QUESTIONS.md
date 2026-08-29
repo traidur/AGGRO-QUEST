@@ -219,14 +219,9 @@ declaration insight, and the pass-the-device *sequential* turn order actually sh
 competitive web UI, task #78) instead of needing a new adversarial solver and a new UI
 commit/reveal flow.
 
-**Also undecided, separate from the mechanic itself:** whether this would *replace* the
-current contested-Node resolution (priority token + blind redraw, "The Claim phase's failure
-mode" below) when two heroes declare the same Node, or exist as a separate, standalone
-"declare a duel against another hero" action unrelated to Node contention. Very different scope
-either way -- the first touches the whole competitive round loop (`advance_board`/
-`_resolve_contested_declarations`) already built and regression-tested; the second is more
-additive/opt-in. Needs deciding before any design work starts, not implied by the mechanic
-itself.
+### PvP duel mechanic for competitive mode — decided 2026-08-28
+
+Resolved. PvP occurs exclusively as an opt-in mechanic during contested node resolution. See `DESIGN_DOC.md` Section VIII for the full locked ruleset, including sequential declaration, the 3-round damage resolution, and the Gold/Loot stakes.
 
 ### "Dungeon" node concept — forced multi-pull chain, not evaluated or decided
 

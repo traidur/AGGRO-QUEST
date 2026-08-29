@@ -110,12 +110,12 @@ ROGUE_HP = 15
 # aggro: co-op Party Pull targeting value (0-4), locked via direct user
 # review -- see OPEN_QUESTIONS.md's "Co-op multi-hero vs. one Elite" entry.
 CARDS = {
-    "Backstab and Dodge": dict(kind="plain", dmg=4, block=2, strike=True, aggro=3),
-    "Evasion":            dict(kind="plain", dmg=0, block=10, strike=False, aggro=1),
-    "Quick Slash":        dict(kind="plain", dmg=3, block=0, strike=True, aggro=2),
-    "Ambush":             dict(kind="opener", dmg=3, round1_dmg=5, block=0, strike=True, aggro=3),
-    "Cutthroat":          dict(kind="finisher", curve={0: 2, 1: 3, 2: 6}, block=0, strike=False, killing_blow=True, aggro=4),
-    "Envenom":            dict(kind="finisher", curve={0: 3, 1: 4, 2: 5}, block=0, strike=False, killing_blow=True, aggro=2),
+    "Backstab and Dodge": dict(combat_type="melee",kind="plain", dmg=4, block=2, strike=True, aggro=3),
+    "Evasion": dict(combat_type="melee",kind="plain", dmg=0, block=10, strike=False, aggro=1),
+    "Quick Slash": dict(combat_type="melee",kind="plain", dmg=3, block=0, strike=True, aggro=2),
+    "Ambush": dict(combat_type="melee",kind="opener", dmg=3, round1_dmg=5, block=0, strike=True, aggro=3),
+    "Cutthroat": dict(combat_type="melee",kind="finisher", curve={0: 2, 1: 3, 2: 6}, block=0, strike=False, killing_blow=True, aggro=4),
+    "Envenom": dict(combat_type="ranged",kind="finisher", curve={0: 3, 1: 4, 2: 5}, block=0, strike=False, killing_blow=True, aggro=2),
 }
 DECK = list(CARDS.keys())
 

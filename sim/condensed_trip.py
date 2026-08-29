@@ -465,6 +465,105 @@ def unplayed_card_diagnostic_genuine(mod, has_stance, mob_key, max_hp):
     return left_out, total, tie_count
 
 
+def combo_dominance_report(mod, has_stance, mob_key, max_hp, card_a, card_b):
+    """Answers a different question than unplayed_card_diagnostic_genuine: not "does this card
+    get left out," but "whenever a hand contains BOTH card_a and card_b, does the optimal line
+    always play them together" -- i.e. is this pair a de facto auto-include combo a player
+    would learn to always slot in together, regardless of the other two cards dealt. Raised
+    2026-08-28 checking Necromancer's Blight (echo_dmg) + Death Blow (killing_blow) -- no
+    reusable tool existed for this before; the closest precedent was a one-off manual check
+    noted in Runecaster's own module docstring ("34 of 36 hand/mob combos play both cards
+    together"), never generalized.
+
+    Only counts hands where BOTH cards are actually dealt (hands missing either card are
+    irrelevant to "is this combo dominant," not scored as any kind of miss). Tie-aware, same
+    discipline as unplayed_card_diagnostic_genuine: if multiple distinct 3-card sequences tie
+    for best (win, hp_left) and they don't all agree on whether/how the pair gets played, that
+    (hand, mob) pair is genuinely ambiguous and gets skipped, not guessed.
+
+    Returns a dict: total_hands_with_both (how many of ALL_HANDS contain both cards), and per
+    mob_name a dict with together (count where both appear in the winning line), a_then_b /
+    b_then_a (round-order split, only meaningful when together), apart (winning line uses at
+    most one of the two), ties_skipped."""
+    if card_a not in mod.CARDS or card_b not in mod.CARDS:
+        raise ValueError(f"{card_a!r} or {card_b!r} not in this class's CARDS")
+    hands_with_both = [h for h in mod.ALL_HANDS if card_a in h and card_b in h]
+
+    report = {"total_hands_with_both": len(hands_with_both), "per_mob": {}}
+    for mob_name in MOB_NAMES:
+        pattern, mob_hp = MOBS[mob_name][mob_key]
+        together = a_then_b = b_then_a = apart = ties_skipped = 0
+        for hand in hands_with_both:
+            best_key = None
+            winning_seqs = []
+            if has_stance:
+                for seq in mod.orderings(hand):
+                    for stance in mod.STANCE_SEQS:
+                        win, hp_left, rounds = mod.simulate(seq, stance, pattern, mob_hp, starting_hp=max_hp)
+                        key = (win, hp_left)
+                        if best_key is None or key > best_key:
+                            best_key = key
+                            winning_seqs = [seq]
+                        elif key == best_key:
+                            winning_seqs.append(seq)
+            else:
+                for seq in mod.orderings(hand):
+                    win, hp_left, rounds = mod.simulate(seq, pattern, mob_hp, starting_hp=max_hp)
+                    key = (win, hp_left)
+                    if best_key is None or key > best_key:
+                        best_key = key
+                        winning_seqs = [seq]
+                    elif key == best_key:
+                        winning_seqs.append(seq)
+
+            # Classify every winning sequence (co-played or not, and in what order); only
+            # trust the (hand, mob) result if every tied-for-best sequence agrees.
+            classifications = set()
+            for seq in winning_seqs:
+                has_both = card_a in seq and card_b in seq
+                if not has_both:
+                    classifications.add("apart")
+                elif seq.index(card_a) < seq.index(card_b):
+                    classifications.add("a_then_b")
+                else:
+                    classifications.add("b_then_a")
+            if len(classifications) > 1:
+                ties_skipped += 1
+                continue
+            verdict = next(iter(classifications))
+            if verdict == "apart":
+                apart += 1
+            elif verdict == "a_then_b":
+                together += 1
+                a_then_b += 1
+            else:
+                together += 1
+                b_then_a += 1
+
+        report["per_mob"][mob_name] = dict(together=together, a_then_b=a_then_b, b_then_a=b_then_a,
+                                            apart=apart, ties_skipped=ties_skipped)
+    return report
+
+
+def print_combo_dominance_report(mod, has_stance, mob_key, max_hp, card_a, card_b):
+    report = combo_dominance_report(mod, has_stance, mob_key, max_hp, card_a, card_b)
+    n = report["total_hands_with_both"]
+    print(f"=== {card_a!r} + {card_b!r}: {n} hands (of {len(mod.ALL_HANDS)}) deal both ===")
+    total_together = 0
+    total_scored = 0
+    for mob_name, r in report["per_mob"].items():
+        scored = r["together"] + r["apart"]
+        pct = 100 * r["together"] / scored if scored else 0.0
+        print(f"  {mob_name:10s} together={r['together']:3d} ({card_a} then {card_b}={r['a_then_b']}, "
+              f"{card_b} then {card_a}={r['b_then_a']})  apart={r['apart']:3d}  "
+              f"ties_skipped={r['ties_skipped']:3d}   {pct:5.1f}% co-played")
+        total_together += r["together"]
+        total_scored += scored
+    overall_pct = 100 * total_together / total_scored if total_scored else 0.0
+    print(f"  {'OVERALL':10s} {overall_pct:.1f}% of scored hand/mob pairs play both cards together")
+    return report
+
+
 # ---------------------------------------------------------------------------
 # Standardized diagnostic suite. All of these are black-box: they only use
 # each class's public ALL_HANDS/DECK/best_line_for_hand/simulate interface,

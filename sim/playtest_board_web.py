@@ -392,7 +392,7 @@ def start():
     purchase_queues = {0: M._build_purchase_queue(class_name, 0)}
     level_decks = {1: B.LevelDeck.new(1, rng), 2: B.LevelDeck.new(2, rng)}
     board = B.BoardState(mode="solo", heroes=[hero], zones={}, level_decks=level_decks)
-    board.setup_quests(_S["rng"])
+    board.setup_quests(rng)
 
     _S.update(mode="solo", board=board, class_names={0: class_name}, controllers={0: "human"},
               purchase_queues=purchase_queues, rng=rng, phase="town", town_entered=False,
@@ -535,7 +535,7 @@ def travel():
         return redirect(url_for("index"))
     hero = _S["board"].heroes[0]
     actions = BE.get_travel_actions(hero, _S["board"], _S["rng"])
-    return render_template("travel.html", board=_S["board"], hero=hero, actions=list(enumerate(actions)), flash=_pop_flash(), board=_S["board"],
+    return render_template("travel.html", board=_S["board"], hero=hero, actions=list(enumerate(actions)), flash=_pop_flash(),
                             map_data=_build_map_data(_S["board"], 0), action_dict=_build_action_dict(actions),
                             coords=_load_map_coords())
 
@@ -772,7 +772,7 @@ def party_start():
     purchase_queues = {i: M._build_purchase_queue(class_names[i], 0) for i in range(len(specs))}
     level_decks = {1: B.LevelDeck.new(1, rng), 2: B.LevelDeck.new(2, rng)}
     board = B.BoardState(mode="competitive", heroes=heroes, zones={}, level_decks=level_decks)
-    board.setup_quests(_S["rng"])
+    board.setup_quests(rng)
 
     _S.update(mode="competitive", board=board, class_names=class_names, controllers=controllers,
               labels=labels, purchase_queues=purchase_queues, rng=rng,

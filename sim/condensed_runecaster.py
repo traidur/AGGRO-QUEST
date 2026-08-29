@@ -85,22 +85,22 @@ RUNECASTER_HP = 16
 # aggro: co-op Party Pull targeting value (0-4), locked via direct user
 # review -- see OPEN_QUESTIONS.md's "Co-op multi-hero vs. one Elite" entry.
 CARDS = {
-    "Chain Lightning":    dict(dmg=6, heal=0, block=0, grants_range=False,
+    "Chain Lightning": dict(combat_type="ranged",dmg=6, heal=0, block=0, grants_range=False,
                                 chain_bonus_if_prev=None, chain_bonus_dmg=0,
                                 echo_dmg=0, echo_heal=0, aggro=3),
-    "Lightning Bolt":     dict(dmg=3, heal=0, block=0, grants_range=False,
+    "Lightning Bolt": dict(combat_type="ranged",dmg=3, heal=0, block=0, grants_range=False,
                                 chain_bonus_if_prev="Chain Lightning", chain_bonus_dmg=1,
                                 echo_dmg=0, echo_heal=0, aggro=2),
-    "Call of the Glacier": dict(dmg=3, heal=0, block=0, grants_range=True,
+    "Call of the Glacier": dict(combat_type="ranged",dmg=3, heal=0, block=0, grants_range=True,
                                  chain_bonus_if_prev=None, chain_bonus_dmg=0,
                                  echo_dmg=0, echo_heal=0, aggro=3),
-    "Tidal Ward":         dict(dmg=0, heal=2, block=2, grants_range=False,
+    "Tidal Ward": dict(combat_type="melee",dmg=0, heal=2, block=2, grants_range=False,
                                 chain_bonus_if_prev=None, chain_bonus_dmg=0,
                                 echo_dmg=0, echo_heal=0, aggro=1),
-    "Windstrike":         dict(dmg=5, heal=0, block=0, grants_range=False,
+    "Windstrike": dict(combat_type="melee",dmg=5, heal=0, block=0, grants_range=False,
                                 chain_bonus_if_prev=None, chain_bonus_dmg=0,
                                 echo_dmg=0, echo_heal=0, aggro=3),
-    "Earth Strike Rune":  dict(dmg=2, heal=1, block=0, grants_range=False,
+    "Earth Strike Rune": dict(combat_type="melee",dmg=2, heal=1, block=0, grants_range=False,
                                 chain_bonus_if_prev=None, chain_bonus_dmg=0,
                                 echo_dmg=1, echo_heal=1, aggro=0),
 }

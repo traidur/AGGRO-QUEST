@@ -33,10 +33,10 @@ WARRIOR_HP = 18
 # stance (Vanguard Shield, Shield Block), matching the existing G=/C=
 # per-stance convention already used for dmg/block on those same cards.
 CARDS = {
-    "Heavy Swing":     dict(G=(2, 0), C=(4, 0), sunder=False, execute_finisher=False,
+    "Heavy Swing":     dict(combat_type="melee", G=(2, 0), C=(4, 0), sunder=False, execute_finisher=False,
                              chain_stance=None, chain_bonus=0, chain_target=None, chain_requires=None,
                              aggro=2),
-    "Sundering Blow":  dict(G=(1, 0), C=(1, 0), sunder=True,  execute_finisher=False,
+    "Sundering Blow":  dict(combat_type="melee", G=(1, 0), C=(1, 0), sunder=True,  execute_finisher=False,
                              chain_stance=None, chain_bonus=0, chain_target=None, chain_requires=None,
                              aggro=4),
     # Execute: 6dmg, same in either stance, but only while the mob is at 50%
@@ -44,7 +44,7 @@ CARDS = {
     # flat fallback value, this line is simply not a legal choice until the
     # mob is wounded). No stance asymmetry: G/C values unused, see
     # execute_finisher handling in _sim_from.
-    "Execute":         dict(G=None, C=None,     sunder=False, execute_finisher=True,
+    "Execute":         dict(combat_type="melee", G=None, C=None,     sunder=False, execute_finisher=True,
                              chain_stance=None, chain_bonus=0, chain_target=None, chain_requires=None,
                              killing_blow=True, aggro=3),
     # Same baseline in either stance now (2 DMG + 2 Block, trimmed from 3) --
@@ -53,7 +53,7 @@ CARDS = {
     # (confirmed: cutting it reduced trip length 10-23% depending on the
     # mob, while trimming Shield Block did nothing -- the solver routed
     # around a weaker Shield Block with zero net effect on trip outcomes).
-    "Vanguard Shield": dict(G=(2, 2), C=(2, 2), sunder=False, execute_finisher=False,
+    "Vanguard Shield": dict(combat_type="melee", G=(2, 2), C=(2, 2), sunder=False, execute_finisher=False,
                              chain_stance="G", chain_bonus=2, chain_target="block",
                              chain_requires="Vanguard Blade", aggro_G=4, aggro_C=2),
     # Champion Shield Block is a confirmed false choice -- zeroing it never
@@ -62,12 +62,12 @@ CARDS = {
     # Guardian value set to 5 specifically -- confirmed genuine 7/7/1
     # Guardian-vs-Champion parity (one hand is an exact numerical tie),
     # independent of Vanguard Shield's value.
-    "Shield Block":    dict(G=(0, 5), C=(0, 0), sunder=False, execute_finisher=False,
+    "Shield Block":    dict(combat_type="melee", G=(0, 5), C=(0, 0), sunder=False, execute_finisher=False,
                              chain_stance=None, chain_bonus=0, chain_target=None,
                              chain_requires=None, aggro_G=4, aggro_C=0),
     # Champion loses the 2 Block (3 DMG only there) -- Guardian keeps the
     # full 3 DMG + 2 Block baseline. Bonus stays +2 DMG in Champion only.
-    "Vanguard Blade":  dict(G=(3, 2), C=(3, 0), sunder=False, execute_finisher=False,
+    "Vanguard Blade":  dict(combat_type="melee", G=(3, 2), C=(3, 0), sunder=False, execute_finisher=False,
                              chain_stance="C", chain_bonus=2, chain_target="dmg",
                              aggro=3,
                              chain_requires="Vanguard Shield"),
@@ -189,3 +189,4 @@ def win_rate(mob_pattern, mob_hp, verbose=False, starting_hp=None):
         elif verbose:
             print(f"  LOSS hand={hand} best_seq={seq_cards} stance={stance_seq}")
     return wins / len(ALL_HANDS)
+

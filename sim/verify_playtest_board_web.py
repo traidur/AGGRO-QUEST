@@ -149,6 +149,12 @@ def run_scripted_competitive_session(specs, seed, max_rounds=6, verbose=False):
                 actions = BE.get_town_actions(hero, PW._S["purchase_queues"][hero_idx])
                 idx = rng.randrange(len(actions))
                 resp = client.post("/cmp/town/action", data={"idx": str(idx)}, follow_redirects=True)
+            elif phase == "cmp_trainer":
+                hero_idx = PW._S["active_hero_idx"]
+                hero = PW._S["board"].heroes[hero_idx]
+                actions = BE.get_town_actions(hero, PW._S["purchase_queues"][hero_idx])
+                idx = rng.randrange(len(actions))
+                resp = client.post("/cmp/trainer/action", data={"idx": str(idx)}, follow_redirects=True)
             elif phase == "cmp_declare":
                 hero_idx = PW._S["active_hero_idx"]
                 hero = PW._S["board"].heroes[hero_idx]

@@ -21,8 +21,26 @@ Bag/Quest-Log blocks -- one copy instead of four. -->
     </div>
     <div class="hp-track-label">HP {{ hp_shown }}/{{ max_hp_shown }}</div>
 
-    <div class="sidebar-stat-line"><span>Gold</span><strong>{{ hero.gold }}</strong></div>
-    <div class="sidebar-stat-line"><span>XP</span><strong>{{ hero.xp }}</strong></div>
+    <div class="sidebar-stat-line" style="align-items: center;">
+        <span>Gold ({{ hero.gold }})</span>
+        <div class="resource-tokens">
+            {% set num_gold = 30 if hero.gold > 30 else hero.gold %}
+            {% for _ in range(num_gold) %}
+                <div class="token-gold" style="animation-delay: {{ loop.index0 * 0.02 }}s;"></div>
+            {% endfor %}
+            {% if hero.gold > 30 %}<span style="font-size:10px; margin-left:4px; align-self:center;">+{{ hero.gold - 30 }}</span>{% endif %}
+        </div>
+    </div>
+    <div class="sidebar-stat-line" style="align-items: center;">
+        <span>XP ({{ hero.xp }})</span>
+        <div class="resource-tokens">
+            {% set num_xp = 30 if hero.xp > 30 else hero.xp %}
+            {% for _ in range(num_xp) %}
+                <div class="token-xp" style="animation-delay: {{ loop.index0 * 0.02 }}s;"></div>
+            {% endfor %}
+            {% if hero.xp > 30 %}<span style="font-size:10px; margin-left:4px; align-self:center;">+{{ hero.xp - 30 }}</span>{% endif %}
+        </div>
+    </div>
     <div class="sidebar-stat-line"><span>Turn</span><strong>{{ hero.turns }}</strong></div>
 
     {% set match = get_class_matchup(hero.class_name, hero.xp) %}

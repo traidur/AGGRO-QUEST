@@ -88,8 +88,8 @@ WIZARD_HP = 14
 # aggro: co-op Party Pull targeting value (0-4), locked via direct user
 # review -- see OPEN_QUESTIONS.md's "Co-op multi-hero vs. one Elite" entry.
 CARDS = {
-    "Fire Blast":    dict(dmg=(3, 3), block=0,  grants_range=False, weave_source=True,  payoff=False, aggro=1),
-    "Arcane Volley": dict(dmg=(6, 8), block=0,  grants_range=False, weave_source=False, payoff=True, aggro=3),
+    "Fire Blast": dict(combat_type="ranged",dmg=(3, 3), block=0,  grants_range=False, weave_source=True,  payoff=False, aggro=1),
+    "Arcane Volley": dict(combat_type="ranged",dmg=(6, 8), block=0,  grants_range=False, weave_source=False, payoff=True, aggro=3),
     # Snap Freeze's block=1 (was 0) is deliberately silent against every
     # existing melee mob -- grants_range already zeroes melee damage
     # outright, so added block underneath it can never help there, and
@@ -99,10 +99,10 @@ CARDS = {
     # partial recovery there without touching WIZARD_HP (explicitly ruled
     # out) or anything else already locked. See CLASS_BALANCE_GUIDE.md's
     # ranged-mob section for the before/after numbers.
-    "Snap Freeze":   dict(dmg=(1, 1), block=1,  grants_range=True,  weave_source=True,  payoff=False, aggro=3),
-    "Ice Barricade": dict(dmg=(0, 0), block=10, grants_range=False, weave_source=True,  payoff=False, aggro=2),
-    "Fire Ball":     dict(dmg=(5, 7), block=0,  grants_range=False, weave_source=False, payoff=True, aggro=3),
-    "Frozen Shot":   dict(dmg=(2, 4), block=0,  grants_range=True,  weave_source=False, payoff=True, aggro=3),
+    "Snap Freeze": dict(combat_type="melee",dmg=(1, 1), block=1,  grants_range=True,  weave_source=True,  payoff=False, aggro=3),
+    "Ice Barricade": dict(combat_type="melee",dmg=(0, 0), block=10, grants_range=False, weave_source=True,  payoff=False, aggro=2),
+    "Fire Ball": dict(combat_type="ranged",dmg=(5, 7), block=0,  grants_range=False, weave_source=False, payoff=True, aggro=3),
+    "Frozen Shot": dict(combat_type="ranged",dmg=(2, 4), block=0,  grants_range=True,  weave_source=False, payoff=True, aggro=3),
 }
 DECK = list(CARDS.keys())
 

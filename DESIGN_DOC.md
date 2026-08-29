@@ -149,7 +149,7 @@ mandatory check before locking any healing-capable class.
 | Ranger | 15 | Beast Bond: Wolf — persistent Block every round once played; Sniper/Point Blank Shot pays off having granted At Range the previous round |
 | Runecaster | 16 | Lightning Bolt rewards playing right after Chain Lightning; Earth Strike Rune's damage/heal partially echoes automatically next round, no card spent |
 
-Necromancer and Druid are not built yet. **Full, exact card-by-card rules text (with keyword
+All 9 classes are now built. **Full, exact card-by-card rules text (with keyword
 tags) lives in `CARD_REFERENCE.md`, generated directly from each class's real `CARDS` dict —
 don't duplicate card text here, it would drift.**
 
@@ -195,6 +195,8 @@ maximizing how differentiated the ranged tag reads — and deliberately carries 
 since Block represents durability against being hit (a melee-tank trait), while a ranged
 attacker's identity is staying out of the fight entirely; giving it Block would stack a second,
 redundant advantage on top of evasion-nullification for no real reason.
+
+**Mixed-Type Mobs (Future Design Space):** Instead of a mob being exclusively Ranged or Melee for all 3 rounds, future mobs should explore mixed-round types (e.g., Round 1: Ranged, Round 2: Melee, Round 3: Melee). The combat engine already natively supports per-round types. This forces players to sequence their `grants_range` cards to counter the exact specific round where the mob closes to melee, massively increasing the depth of the sequencing puzzle without adding any new rules.
 
 ## V. Co-op — Aggro & the Party Pull
 
@@ -757,3 +759,62 @@ entries where a sub-item is still explicitly marked open:
   found to be solving a problem a direct fix (Cleric's Sacred Balance heal cut) already handled,
   and caused real test-process bugs on top of that. The general idea (gear wear, Town-only
   repair) remains open if a new trigger is ever proposed — don't reuse the old one.
+
+## VIII. Competitive PvP (The Duel)
+
+**Locked 2026-08-28.** PvP is an opt-in mechanic that occurs strictly during the resolution of Contested Nodes in Competitive Mode. It resolves conflicts between players attempting to claim the same mob and loot.
+
+**Initiation Flow (The Prisoner's Dilemma)**
+When two or more players declare the same node simultaneously, resolution proceeds in Priority Order:
+1. **Player 1 (Highest Priority) Choice:** Player 1 decides to declare Peace or War.
+   - If **War**: PvP initiates. If 3+ players are present, Player 1 must explicitly challenge ONE specific player to a Duel. Player 1 is the Initiator.
+   - If **Peace**: The choice passes to the next player.
+2. **Subsequent Player Choice:** The next highest priority player decides to declare Peace or War.
+   - If **War**: PvP initiates. (They must pick a specific target if 3+ players are present). They are the Initiator.
+   - If **Peace**: The choice continues down the line. If all players declare Peace, the highest priority player fights the visible mob (standard priority claim). All other players are subjected to a Blind Pull (draws a fresh mob from the deck with no preview).
+
+*Multi-Hero Bystander Rule:* If 3 or 4 players land on the same node and a Duel is initiated between two of them, the remaining players are NOT involved in the PvP. The PvE mob does NOT flee the node—it ignores the duelists! The highest priority non-dueling player claims the right to fight the visible PvE mob and claim the node's loot. The PvP winner still gets the stolen gold/bonus, but they forfeit the node's specific loot to the bystander.
+
+*Balance Note:* Player 1 has a massive PvE advantage (priority access to the safe, known mob) and will generally decline PvP. Player 2 is disadvantaged in PvE (facing a blind pull) but gets the ultimate tactical choice to force PvP if their hand is strong enough to beat Player 1. This is a deliberate asymmetrical balance.
+
+**The Duel Mechanics (Reveal & Resolve)**
+If PvP is initiated (and it is only a 2-player contention), the mob at the node scatters (disappears).
+1. **The "Oh Crap" Consumable Window:** Immediately after PvP is locked in, both combatants have a reaction window to use any non-Food consumables. (e.g., pop a Potion to heal 8 HP, use a Whetstone, or drop a Smoke Bomb to instantly flee and negate the duel).
+2. Both players draw 4 cards from their unique decks.
+3. Each player selects exactly 3 cards and places them face down in sequence (Round 1, Round 2, Round 3).
+4. **Reveal & Resolve:** Players reveal their Round 1 card simultaneously and resolve damage. Then Round 2. Then Round 3.
+
+**Melee vs. Ranged Keywords**
+To support evasion mechanics in PvP, every damage-dealing class card carries a keyword tag: **[Melee]** or **[Ranged]**.
+- If a player plays a card that grants_range, they take 0 damage from any **[Melee]** attack that round.
+- **[Ranged]** attacks ignore the grants_range evasion and deal their full damage.
+
+**Class-Specific PvP Rules**
+To balance the mathematical disparity between PvE-tuned sustain tanks and burst classes in a 3-round sprint, PvP relies on the dynamic Battle Hardened token system:
+
+1. **Unlocked Execute:** The Warrior's *Execute* card does not require the opponent to be <= 50% HP during a PvP duel. It is freely playable at any time for its baseline 6 damage.
+2. **Starting Battle Hardened Tokens:** To prevent a "rough patch" at the beginning of a campaign where naturally weaker PvP classes get stomped while waiting for the pity-timer to kick in, classes begin the game with an innate stack of Battle Hardened Tokens:
+   * **2 Starting Tokens:** Rogue, Necromancer, Warrior, Runecaster
+   * **1 Starting Token:** Paladin
+   * **0 Starting Tokens:** Wizard, Cleric, Ranger, Druid
+3. **The Pendulum Mechanic:** Each token adds **+1** to a player's final score for all future PvP duels. After a duel concludes, the **Winner discards exactly ONE** of their Battle Hardened Tokens, and the **Loser gains exactly ONE** Battle Hardened Token.
+
+> **[DESIGNER NOTE]: The Rubber-Banding Pendulum**
+> Because the Winner and Loser are adjusted independently, the token economy acts as a mathematically perfect pendulum that forces players to "take turns" winning. A heavily countered underdog naturally hovers around a higher token count, slowly bleeding tokens when they win and instantly regaining them when they lose. This guarantees true, long-term 50/50 parity across all 72 class matchups, completely eliminating the need for complex static modifiers or 9x9 lookup tables.
+
+**Resolution and Spoils**
+The duel lasts exactly 3 rounds. The winner is determined by:
+- **The Knockout:** If a player is reduced to 0 HP, they die. (They suffer the lighter PvP Death Penalty: Respawn in Town, quests decay only 1 stage, no locked bag slots).
+- **The Score Tiebreaker:** If both players survive all 3 rounds, the players calculate their Final Score: `(Unblocked Damage Dealt) + (Battle Hardened Tokens)`. The highest score wins.
+- **Initiator Tiebreaker:** If the Final Scores are exactly equal, the Initiator (whoever said 'War' first) wins.
+
+**Edge-Case Rulings:**
+- **Mutual Destruction:** If both players are reduced to 0 HP simultaneously, they *both* suffer a PvP Death. However, a "Winner" is still calculated purely via the normal Score Tiebreaker to resolve token math: the winner discards one token, and the loser gains one token.
+- **The Smoke Bomb Flee:** If a player uses a Smoke Bomb in the consumable window, they instantly flee. The remaining player automatically wins by default and claims the node's Quest Loot freely (since the PvE mob scattered). The fleeing player does *not* receive a Battle Hardened token. 
+
+**The Reward:**
+- The Winner claims the Node's original Quest Loot Token.
+- The Winner receives +1 Gold (standard combat victory reward).
+- The Winner steals +1 Gold from the Loser (a PvP bonus).
+- The Loser is forced to flee to an adjacent node (unless they died).
+

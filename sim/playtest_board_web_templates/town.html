@@ -16,16 +16,24 @@
     {% for msg in flash %}<div class="flash">{{ msg }}</div>{% endfor %}
 
     {% if board and hero.position[0] in [3, 4] and hero.position[1] != 'trainer' %}
-        <div class="market-section" style="border: 1px solid #ccc; padding: 10px; margin-bottom: 20px; background: #fafafa;">
-            <h3 style="margin-top: 0;">Town {{ hero.position[0] }} Quest Market</h3>
+        <h3 style="margin-top: 0; color: #fff;">Town {{ hero.position[0] }} Quest Market</h3>
+        <div class="market-section" style="display: flex; gap: 16px; margin-bottom: 24px; min-height: 220px; align-items: center;">
+            <!-- Visual Quest Deck -->
+            <div class="quest-deck" style="width: 140px; height: 200px; background: repeating-linear-gradient(45deg, #4a2e15, #4a2e15 10px, #3e2612 10px, #3e2612 20px); border: 2px solid #2a1508; border-radius: 8px; box-shadow: 4px 4px 0 rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; position: relative;">
+                <div style="background: rgba(0,0,0,0.6); padding: 4px 8px; border-radius: 4px; color: #f5ebd9; font-family: 'Cinzel', serif; font-size: 14px; font-weight: bold;">Quest Deck</div>
+            </div>
+
             {% if board.town_markets[hero.position[0]] %}
-                <ul style="list-style-type: square; margin-bottom: 0;">
                 {% for quest in board.town_markets[hero.position[0]] %}
-                    <li><strong>{{ quest }}</strong></li>
+                    <div class="quest-card quest-card-deal" style="animation-delay: {{ loop.index0 * 0.15 }}s;">
+                        <div class="quest-card-hdr">{{ quest.replace('_', ' ')|title }}</div>
+                        <div class="quest-card-body">
+                            Take this quest to earn powerful rewards in Zone {{ hero.position[0] }}.
+                        </div>
+                    </div>
                 {% endfor %}
-                </ul>
             {% else %}
-                <em>Market is empty.</em>
+                <div style="color: #999; font-style: italic; margin-left: 20px;">Market is empty.</div>
             {% endif %}
         </div>
     {% endif %}

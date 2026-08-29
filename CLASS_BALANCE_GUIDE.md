@@ -158,6 +158,29 @@ Run these roughly in this order on a new class:
    dozen times across those two sessions before this got promoted to a real function. See
    "Numeric tuning playbook" below for what the numbers this prints actually mean and which
    levers move which of them.
+8. **`combo_dominance_report(mod, has_stance, mob_key, max_hp, card_a, card_b)`** (added
+   2026-08-28, after the user hand-played Necromancer for half a dozen hands and found Blight
+   + Death Blow always got played together, same order, before any tool confirmed it) —
+   answers a different question than the unplayed-card diagnostics above: not "does this card
+   get left out," but "whenever a hand deals BOTH of these two cards, does the optimal line
+   always play them together, in a fixed round order." Tie-aware, same discipline as
+   `unplayed_card_diagnostic_genuine`. **`combo_dominance_sweep.py`** runs this over every
+   card pair in every locked class's own kit at once and flags anything crossing 80% co-play
+   with a single fixed direction — the actual tool to reach for, not calling the pairwise
+   report by hand unless a specific pair is already suspected.
+
+   **Read the result together with each card's own fields before treating a hit as a
+   finding** — most flagged pairs turn out to be an already-named, intentional mechanic
+   working exactly as designed (confirmed directly in `CARDS`, not assumed): Wizard's
+   `weave_source`/`payoff` pair, Rogue's `kind="finisher"` STRIKE-curve, Druid's coded
+   Shapeshift-payoff check, Paladin's `invocation` field, or (Warrior specifically) a card
+   that's simply *illegal* until the mob is already low, which isn't a "preference" finding
+   at all. None of those are hidden — the mechanic is the class's stated identity. What
+   actually matters is a pair with **no shared field, no textual cross-reference, nothing
+   telling the player it exists** that still dominates as hard or harder than the classes
+   built with combos on purpose — that's what Necromancer's Blight/Death Blow turned out to
+   be (see its own build notes below), and it's the shape worth re-running this sweep to
+   catch on every class going forward, not just the ones that feel combo-heavy by design.
 
 Every one of these is class-agnostic by construction (`has_stance` flag, generic
 `mob_key`) — a fourth class plugs in without modifying any tool, only by adding its own

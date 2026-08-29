@@ -166,24 +166,28 @@ BONEGUARD_OFFERING = "Boneguard's Offering"
 # a card Reap's dot_payoff counts. dot_payoff=True (Reap only) means +1 dmg per dot-tagged
 # card played in a strictly earlier round this pull. echo_dmg fires automatically at the
 # start of the next round, no card spent (Blight only). killing_blow prevents the mob's
-# attack this round if this card's damage brings it to <=0 (Death Blow only).
+# attack this round if this card's damage brings it to <=0 -- field kept on every card for
+# shape-consistency with the other classes' CARDS dicts, currently False everywhere in this
+# kit (Death Blow's killing_blow was removed 2026-08-28, see CLASS_BALANCE_GUIDE.md's
+# Necromancer section: it was the shared root of Blight/Reap/Sowing Dread all separately
+# gravitating toward Death Blow as an automatic finisher partner).
 # aggro: co-op Party Pull targeting value (0-4) -- NOT YET ASSIGNED, placeholder 0 throughout,
 # matching every other class's actual build order (aggro comes after balance lock).
 BONEGUARD_OFFERING_BOOSTED = "Boneguard's Offering (Boosted)"  # virtual variant, see module docstring
 
 CARDS = {
-    BONEGUARD_OFFERING: dict(dmg=0, heal=0, block=2, grants_range=True, dot=False,
+    BONEGUARD_OFFERING: dict(combat_type="melee",dmg=0, heal=0, block=2, grants_range=True, dot=False,
                               dot_payoff=False, echo_dmg=0, killing_blow=False, aggro=0),
-    "Soul Harvest":      dict(dmg=3, heal=2, block=0, grants_range=False, dot=False,
+    "Soul Harvest": dict(combat_type="ranged",dmg=3, heal=3, block=0, grants_range=False, dot=False,
                                dot_payoff=False, echo_dmg=0, killing_blow=False, aggro=0),
-    "Sowing Dread":      dict(dmg=2, heal=0, block=0, grants_range=True, dot=True,
+    "Sowing Dread": dict(combat_type="ranged",dmg=3, heal=0, block=0, grants_range=True, dot=True,
                                dot_payoff=False, echo_dmg=0, killing_blow=False, aggro=0),
-    "Reap":              dict(dmg=3, heal=0, block=0, grants_range=False, dot=False,
+    "Reap": dict(combat_type="melee",dmg=3, heal=0, block=0, grants_range=False, dot=False,
                                dot_payoff=True, echo_dmg=0, killing_blow=False, aggro=0),
-    "Blight":            dict(dmg=3, heal=0, block=0, grants_range=False, dot=True,
+    "Blight": dict(combat_type="ranged",dmg=3, heal=0, block=0, grants_range=False, dot=True,
                                dot_payoff=False, echo_dmg=3, killing_blow=False, aggro=0),
-    "Death Blow":        dict(dmg=4, heal=0, block=0, grants_range=False, dot=False,
-                               dot_payoff=False, echo_dmg=0, killing_blow=True, aggro=0),
+    "Death Blow": dict(combat_type="melee",dmg=5, heal=0, block=0, grants_range=False, dot=False,
+                               dot_payoff=False, echo_dmg=0, killing_blow=False, aggro=0),
 }
 DECK = list(CARDS.keys())
 ALL_HANDS = list(itertools.combinations(DECK, 4))

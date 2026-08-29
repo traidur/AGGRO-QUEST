@@ -39,12 +39,12 @@ SACRED_BALANCE_HEAL = 1  # automatic heal on playing Smite
 # aggro: co-op Party Pull targeting value (0-4), locked via direct user
 # review -- see OPEN_QUESTIONS.md's "Co-op multi-hero vs. one Elite" entry.
 CARDS = {
-    "Void Mark":         dict(dmg=3, heal=0, block=0, sacred_balance=False, max_hp_buff=0, echo_dmg=0, aggro=1),
-    "Smite":             dict(dmg=5, heal=0, block=0, sacred_balance=True,  max_hp_buff=0, echo_dmg=0, aggro=2),
-    "Call of the Void":  dict(dmg=6, heal=0, block=0, sacred_balance=False, max_hp_buff=0, echo_dmg=0, aggro=3),
-    "Cleansing Barrier": dict(dmg=3, heal=0, block=5, sacred_balance=False, max_hp_buff=0, echo_dmg=0, aggro=1),
-    "Fiery Fortitude":   dict(dmg=3, heal=2, block=0, sacred_balance=False, max_hp_buff=2, echo_dmg=0, aggro=2),
-    "Heal":              dict(dmg=0, heal=3, block=0, sacred_balance=False, max_hp_buff=0, echo_dmg=0, aggro=3),
+    "Void Mark": dict(combat_type="ranged",dmg=3, heal=0, block=0, sacred_balance=False, max_hp_buff=0, echo_dmg=0, aggro=1),
+    "Smite": dict(combat_type="ranged",dmg=5, heal=0, block=0, sacred_balance=True,  max_hp_buff=0, echo_dmg=0, aggro=2),
+    "Call of the Void": dict(combat_type="ranged",dmg=6, heal=0, block=0, sacred_balance=False, max_hp_buff=0, echo_dmg=0, aggro=3),
+    "Cleansing Barrier": dict(combat_type="melee",dmg=3, heal=0, block=5, sacred_balance=False, max_hp_buff=0, echo_dmg=0, aggro=1),
+    "Fiery Fortitude": dict(combat_type="melee",dmg=3, heal=2, block=0, sacred_balance=False, max_hp_buff=2, echo_dmg=0, aggro=2),
+    "Heal": dict(combat_type="ranged",dmg=0, heal=3, block=0, sacred_balance=False, max_hp_buff=0, echo_dmg=0, aggro=3),
 }
 DECK = list(CARDS.keys())
 

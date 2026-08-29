@@ -780,17 +780,17 @@
       }
     },
     "Soul Harvest": {
-      "text": "3 DMG. Heal 2 HP.",
+      "text": "3 DMG. Heal 3 HP.",
       "aggro": "Aggro 0",
       "tags": [],
       "split": false,
       "badges": {
         "dmg": "3",
-        "heal": 2
+        "heal": 3
       }
     },
     "Sowing Dread": {
-      "text": "2 DMG. Grants At Range this round (evades a melee mob's attack).",
+      "text": "3 DMG. Grants At Range this round (evades a melee mob's attack).",
       "aggro": "Aggro 0",
       "tags": [
         "AT RANGE",
@@ -798,7 +798,7 @@
       ],
       "split": false,
       "badges": {
-        "dmg": "2",
+        "dmg": "3",
         "range": true
       }
     },
@@ -825,14 +825,12 @@
       }
     },
     "Death Blow": {
-      "text": "4 DMG. If this attack kills the mob, its attack this round is prevented.",
+      "text": "5 DMG.",
       "aggro": "Aggro 0",
-      "tags": [
-        "KILLING BLOW"
-      ],
+      "tags": [],
       "split": false,
       "badges": {
-        "dmg": "4"
+        "dmg": "5"
       }
     }
   }

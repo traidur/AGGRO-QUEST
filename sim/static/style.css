@@ -13,13 +13,29 @@
 
 body {
   font-family: 'Barlow Condensed', sans-serif;
-  background: radial-gradient(circle at top center, #2a2a2a 0%, var(--bg-color) 100%);
+  /* Tabletop texture: radial gradient spotlight over a dark "felt/wood" base */
+  background-color: #1e1510;
+  background-image: 
+      radial-gradient(circle at center, rgba(255,230,200,0.1) 0%, rgba(0,0,0,0.6) 100%),
+      url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100' height='100' filter='url(%23noise)' opacity='0.08'/%3E%3C/svg%3E");
   color: var(--text-main);
   min-height: 100vh;
   padding: 40px 20px;
   max-width: 720px;
   margin: 0 auto;
   font-size: 18px;
+}
+
+/* Animations */
+@keyframes pop-in {
+  0% { transform: scale(0.5); opacity: 0; }
+  70% { transform: scale(1.1); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes slide-deal {
+  0% { transform: translateY(-50px) translateX(50px) rotate(15deg); opacity: 0; }
+  100% { transform: translateY(0) translateX(0) rotate(0deg); opacity: 1; }
 }
 
 h1, h2, h3 {
@@ -178,6 +194,30 @@ window (that column is 720-850px depending on page, so a 240px sidebar plus itse
   display: flex; justify-content: space-between; font-size: 15px; padding: 2px 0;
 }
 .sidebar-stat-line strong { color: var(--accent-gold); }
+
+/* Tactile Resource Tokens */
+.resource-tokens {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  max-width: 150px;
+  justify-content: flex-end;
+}
+.token-gold {
+  width: 14px; height: 14px; border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #ffd700, #b8860b);
+  border: 1px solid #8b6508;
+  box-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+  animation: pop-in 0.3s ease-out backwards;
+}
+.token-xp {
+  width: 14px; height: 14px; transform: rotate(45deg);
+  background: radial-gradient(circle at 30% 30%, #4a90d9, #004aad);
+  border: 1px solid #002255;
+  box-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+  animation: pop-in 0.3s ease-out backwards;
+  margin: 2px; /* compensate for rotation */
+}
 
 /* HP pip track -- one box per HP point (roster HP is 14-18, small enough to render as an
 actual physical track rather than an abstract bar), grouped in 5s like tally marks. Each

@@ -273,5 +273,70 @@
     </div>
 
 </div>
+
+<script>
+function animateTravelAndSubmit(idx, btnElement) {
+    // Find the active hero's meeple (P1 usually, or whichever is moving)
+    // Since this is a server-rendered page, the easiest way to animate is to fly a ghost meeple
+    const targetPin = btnElement.closest('.map-pin');
+    const allMeeples = document.querySelectorAll('.meeple');
+    let myMeeple = null;
+    
+    // Find our hero's meeple (assuming p0 for solo playtest)
+    allMeeples.forEach(m => {
+        if(m.classList.contains('p0')) myMeeple = m;
+    });
+
+    if (myMeeple && targetPin) {
+        // Get absolute positions
+        const startRect = myMeeple.getBoundingClientRect();
+        const endRect = targetPin.getBoundingClientRect();
+        
+        // Create ghost meeple
+        const ghost = myMeeple.cloneNode(true);
+        ghost.style.position = 'fixed';
+        ghost.style.left = startRect.left + 'px';
+        ghost.style.top = startRect.top + 'px';
+        ghost.style.zIndex = '9999';
+        ghost.style.transition = 'all 0.5s ease-in-out';
+        
+        document.body.appendChild(ghost);
+        myMeeple.style.opacity = '0'; // Hide original
+        
+        // Trigger reflow
+        ghost.offsetHeight;
+        
+        // Fly to target
+        ghost.style.left = (endRect.left + (endRect.width/2) - 10) + 'px';
+        ghost.style.top = (endRect.top + (endRect.height/2) - 20) + 'px';
+        ghost.style.transform = 'scale(1.5)';
+        
+        setTimeout(() => {
+            document.getElementById('travel-idx').value = idx;
+            document.getElementById('travel-form').submit();
+        }, 500);
+    } else {
+        document.getElementById('travel-idx').value = idx;
+        document.getElementById('travel-form').submit();
+    }
+}
+
+// Intercept all onclick handlers for travel buttons
+document.addEventListener('DOMContentLoaded', () => {
+    const btns = document.querySelectorAll('.map-node-btn.active');
+    btns.forEach(btn => {
+        // Extract the idx from the inline onclick
+        const match = btn.getAttribute('onclick').match(/value='([^']+)'/);
+        if (match) {
+            const idx = match[1];
+            btn.removeAttribute('onclick');
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                animateTravelAndSubmit(idx, btn);
+            });
+        }
+    });
+});
+</script>
 </body>
 </html>

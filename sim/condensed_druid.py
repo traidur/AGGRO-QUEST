@@ -140,12 +140,12 @@ DRUID_HP = 15
 # Shapeshift: Grizzly (given directly); every other card's 0 is a placeholder, not a real
 # locked value, matching every other class's actual build order (aggro assigned after lock).
 CARDS = {
-    "Shapeshift: Grizzly": dict(dmg=2, heal=0, block=3, tag="shapeshift", aggro=4),
-    "Maul":                dict(dmg=2, heal=0, block=2, tag="shapeshift", aggro=0),
-    "Swipe":                dict(dmg=3, heal=0, block=0, tag="shapeshift", aggro=0),
-    "Solar Flare":          dict(dmg=5, heal=0, block=0, tag="eclipse", aggro=0),
-    "Moonbeam":             dict(dmg=5, heal=1, block=0, tag="eclipse", aggro=0),
-    "Nature's Wildguard":   dict(dmg=0, heal=2, block=2, tag="eclipse", aggro=0,
+    "Shapeshift: Grizzly": dict(combat_type="melee",dmg=2, heal=0, block=3, tag="shapeshift", aggro=4),
+    "Maul": dict(combat_type="melee",dmg=2, heal=0, block=2, tag="shapeshift", aggro=0),
+    "Swipe": dict(combat_type="melee",dmg=3, heal=0, block=0, tag="shapeshift", aggro=0),
+    "Solar Flare": dict(combat_type="ranged",dmg=5, heal=0, block=0, tag="eclipse", aggro=0),
+    "Moonbeam": dict(combat_type="ranged",dmg=5, heal=1, block=0, tag="eclipse", aggro=0),
+    "Nature's Wildguard": dict(combat_type="melee",dmg=0, heal=2, block=2, tag="eclipse", aggro=0,
                                   heal_scales_with_eclipse=True),
 }
 DECK = list(CARDS.keys())
