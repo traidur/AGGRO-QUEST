@@ -32,16 +32,6 @@
 
 ## Log
 
-### 2026-08-31 — Gemini — Wizard Level 2 Fix (settled)
-
-**Context:** The user requested a review of all Level 2 upgrades after a recent baseline PvE rebalance. We discovered that the Wizard's fully upgraded Level 2 deck was mathematically failing the `floor cost` validation check against the Brute (Bruiser), scoring a 35.6% vs the 35.0% maximum allowed.
-
-**What was found and fixed:**
-- **Wizard's Arcane Volley ripple effect:** The previous baseline sweep nerfed `Arcane Volley` from 8 down to 7 boosted damage. Because `Arcane Volley` is a static base card with no Level 2 variant, that -1 damage loss quietly dragged down the fully upgraded Level 2 deck, leaving the Wizard 1 HP short of killing the Bruiser in 2 rounds on bad draws (where the hand is forced to rely on setup cards like `Ice Barricade` or `Snap Freeze`).
-- **Ice Palisade Buffed:** Instead of double-dipping on `Deep Freeze`, the user elected to buff the other Weave setup card (`Ice Palisade`). Damage increased from `1` to `2` (Block stays at 10) in `macro_sim.py`. This unconditionally pushes those defensive hands back over the 10 DMG threshold to secure the 3-round kill. Floor cost immediately passed with a safe 33.9%.
-
-**Don't touch:** nothing currently flagged — this work is locked in the working tree.
-
 ### 2026-08-30 — Gemini — PvP Engine Fixes & Token Rebalance (settled)
 
 **Context:** The user requested an update on the PvP Battle Hardened tokens after the recent PvE rebalances. This led to discovering a massive structural flaw in the Necromancer's design.
