@@ -12,6 +12,15 @@ caught while building this: its docstring says "3 dmg + heal per STRIKE," but th
 CARDS dict has dmg=4 flat and only the heal scales -- the generator below follows the dict).
 
 Run: python generate_card_reference.py (from sim/), writes ../CARD_REFERENCE.md.
+
+**Card versioning (added 2026-08-30):** every card carries a `version` field in its own
+`CARDS` dict entry -- an integer bumped only when that specific card's printed text or numbers
+actually change, never touched otherwise. Purely a printed-deck bookkeeping aid (lets a
+physical deck owner tell which cards need reprinting after a rebalance pass) -- nothing in the
+solver reads it. Necromancer is the one class currently exempted: its file is mid-investigation
+(not a finished, locked decision), so neither "1" (implies nothing changed, false) nor "2"
+(implies a decided rebalance, also false) would be accurate -- add its version numbers once
+that class actually locks.
 """
 import condensed_cleric as C
 import condensed_paladin as P
@@ -300,14 +309,18 @@ def generate():
            "-- regenerate with `python generate_card_reference.py` after any card change rather "
            "than hand-editing this file, so it can never drift out of sync with what the solver "
            "actually runs. Aggro is the co-op Party Pull targeting value (0-4) -- see "
-           "`OPEN_QUESTIONS.md`'s \"Co-op multi-hero vs. Elite/multi-mob nodes\" entry.\n"]
+           "`OPEN_QUESTIONS.md`'s \"Co-op multi-hero vs. Elite/multi-mob nodes\" entry. `v#` is "
+           "the card's printed-revision number -- compare against your physical deck to see "
+           "which cards need reprinting after a rebalance.\n"]
     for cls, builder in BUILDERS.items():
         out.append(f"## {cls} (HP {HP[cls]})\n")
         out.append(f"*{IDENTITY[cls]}*\n")
         for name, text, aggro in builder():
-            tags = _tags(CARDS_BY_CLASS[cls][name])
+            card = CARDS_BY_CLASS[cls][name]
+            tags = _tags(card)
             tag_str = f" [{' | '.join(tags)}]" if tags else ""
-            out.append(f"**{name}**{tag_str} -- {text} ({aggro})\n")
+            version_str = f" v{card['version']}" if "version" in card else ""
+            out.append(f"**{name}**{tag_str} -- {text} ({aggro}{version_str})\n")
         out.append("")
     return "\n".join(out)
 

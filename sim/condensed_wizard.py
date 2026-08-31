@@ -47,6 +47,32 @@ LEVELING_GUIDE.md's "Sixth class worked example: Wizard" for the full combined c
 
 See LEVELING_GUIDE.md's "Sixth class worked example: Wizard" for the full diagnosis, mechanism
 trace, and sweep data.
+
+**2026-08-30 rebalance:** `worst_pair_round2_breadth` (see CLASS_BALANCE_GUIDE.md's "Fixing a
+worst-pair round-2 shortcut" recipe) found Snap Freeze(weave_source)+Arcane Volley(payoff,
+boosted dmg=8)=9 raw damage clearing 4 of 6 Standard mobs by round 2 -- Arcane Volley was the
+common thread across the top 3 flagged pairs, since every one of the kit's three weave_source
+cards (Fire Blast, Snap Freeze, Ice Barricade) can arm it. Unlike Paladin/Cleric/Ranger, this
+wasn't a hidden interaction -- Weave is Wizard's real, signposted identity (`weave_source`/
+`payoff` are named CARDS fields) -- so the fix specifically preserved the mechanic rather than
+gutting it: only Arcane Volley's *boosted* value moved (8->7), its base damage (6) and every
+weave_source card's own numbers stayed untouched (cutting the base value alone was tried first
+and made things WORSE, not better -- it widened the gap the boost creates, making Snap
+Freeze->Arcane Volley even more consistently correct). Worst-pair breadth 4/6->3/6.
+
+That cut alone undershot the roster on chained-trip metrics -- caught by the newly-added
+`FROZEN_BASELINE_2026_08_30` check specifically, not the live pack range (Wizard's own dip had
+already become the live floor, so the live check trivially passed against itself). Every card
+in this kit is either `weave_source` or `payoff` -- no card sits outside the mechanic the way
+Paladin had Holy Fortress or Cleric had Sacred Light -- so the compensating buff went to Frozen
+Shot's own boosted value (4->5) instead: the single losing hand (`Fire Blast, Snap Freeze, Ice
+Barricade, Frozen Shot` -- three weave_source cards, only one payoff, wasting two of three arms)
+had no Arcane Volley or Fire Ball at all, so buffing either of those couldn't have helped it.
+Landed clean against both the live pack and the frozen baseline afterward; win rate actually
+improved slightly over the original (Enforcer 93.3%->100%). Post-fix combo-dominance sweep
+flags several weave_source->payoff pairs at high co-play -- expected and benign, they're all
+explained directly by the shared `weave_source`/`payoff` fields, the same already-signposted
+mechanic this whole fix was built around preserving.
 """
 import itertools
 from dataclasses import replace
@@ -87,9 +113,12 @@ WIZARD_HP = 14
 # it next to Cleric instead of standing alone as the clear worst class.
 # aggro: co-op Party Pull targeting value (0-4), locked via direct user
 # review -- see OPEN_QUESTIONS.md's "Co-op multi-hero vs. one Elite" entry.
+# version: printed-card revision number, bumped only when a card's printed text/numbers
+# change -- lets a physical deck owner tell which cards need reprinting. See
+# CARD_REFERENCE.md's own note for the convention.
 CARDS = {
-    "Fire Blast": dict(combat_type="ranged",dmg=(3, 3), block=0,  grants_range=False, weave_source=True,  payoff=False, aggro=1),
-    "Arcane Volley": dict(combat_type="ranged",dmg=(6, 8), block=0,  grants_range=False, weave_source=False, payoff=True, aggro=3),
+    "Fire Blast": dict(combat_type="ranged",dmg=(3, 3), block=0,  grants_range=False, weave_source=True,  payoff=False, aggro=1, version=1),
+    "Arcane Volley": dict(combat_type="ranged",dmg=(6, 7), block=0,  grants_range=False, weave_source=False, payoff=True, aggro=3, version=2),
     # Snap Freeze's block=1 (was 0) is deliberately silent against every
     # existing melee mob -- grants_range already zeroes melee damage
     # outright, so added block underneath it can never help there, and
@@ -99,10 +128,10 @@ CARDS = {
     # partial recovery there without touching WIZARD_HP (explicitly ruled
     # out) or anything else already locked. See CLASS_BALANCE_GUIDE.md's
     # ranged-mob section for the before/after numbers.
-    "Snap Freeze": dict(combat_type="melee",dmg=(1, 1), block=1,  grants_range=True,  weave_source=True,  payoff=False, aggro=3),
-    "Ice Barricade": dict(combat_type="melee",dmg=(0, 0), block=10, grants_range=False, weave_source=True,  payoff=False, aggro=2),
-    "Fire Ball": dict(combat_type="ranged",dmg=(5, 7), block=0,  grants_range=False, weave_source=False, payoff=True, aggro=3),
-    "Frozen Shot": dict(combat_type="ranged",dmg=(2, 4), block=0,  grants_range=True,  weave_source=False, payoff=True, aggro=3),
+    "Snap Freeze": dict(combat_type="melee",dmg=(1, 1), block=1,  grants_range=True,  weave_source=True,  payoff=False, aggro=3, version=1),
+    "Ice Barricade": dict(combat_type="melee",dmg=(0, 0), block=10, grants_range=False, weave_source=True,  payoff=False, aggro=2, version=1),
+    "Fire Ball": dict(combat_type="ranged",dmg=(5, 7), block=0,  grants_range=False, weave_source=False, payoff=True, aggro=3, version=1),
+    "Frozen Shot": dict(combat_type="ranged",dmg=(2, 5), block=0,  grants_range=True,  weave_source=False, payoff=True, aggro=3, version=2),
 }
 DECK = list(CARDS.keys())
 

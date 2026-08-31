@@ -122,6 +122,26 @@ data points, not removed. See LEVELING_GUIDE.md's "Fifth class worked example: R
 derivation and locked Level 2 upgrades (kept out of this module's own CARDS,
 matching every other class -- leveled kits live in LEVELING_GUIDE.md as documented `leveled_kit`
 swaps, not baked into the base file).
+
+**2026-08-30 rebalance:** `worst_pair_round2_breadth` (see CLASS_BALANCE_GUIDE.md's "Fixing a
+worst-pair round-2 shortcut" recipe) found Beast Bond: Wolf(4)+Sniper/Point Blank Shot(5, the
+unboosted dmg_else since Wolf doesn't grants_range)=9 raw damage clearing 5 of 6 Standard mobs
+by round 2 -- Sniper/Point Blank Shot was the common thread across the top 3 flagged pairs
+(also Withdrawing Hip Shot and Crippling Shot into it, both via the boosted dmg_if_prev_range=7
+path). Fixed via: Sniper/Point Blank Shot dmg_else 5->4 and dmg_if_prev_range 7->5, Beast's
+Challenge dmg_if_wolf 5->4 (a second whack-a-mole pair that emerged once Sniper/Point Blank
+Shot alone was cut), Withdrawing Hip Shot dmg 2->3 (compensating buff -- the specific losing
+hands against Bruiser/Enforcer this opened up all lacked both Beast Bond: Wolf and Sure Shot,
+so Sure Shot's own buff couldn't reach them; Withdrawing Hip Shot was the card actually present
+in those hands). Deliberately did NOT touch Beast Bond: Wolf's own dmg or persistent Block
+value -- already the subject of a carefully-tuned prior pass (see "Beast Bond: Wolf's base
+block" note above), re-touching it risked reopening that fix. Worst-pair breadth 5/6->3/6
+(Beast Bond: Wolf+Sniper/Point Blank Shot, capped at Enforcer/Raider/Scout -- the familiar
+soft-mob trio also seen on Paladin/Cleric); win rate landed back at the original 93.3-100%
+band exactly (a Sure Shot buff was tried first, tested, and dropped -- it plus Withdrawing Hip
+Shot together overshot the whole pack's chained-trip ceiling; Withdrawing Hip Shot alone
+was sufficient). Full combo-dominance sweep post-fix: zero flagged pairs, cleanest of the three
+classes fixed this pass.
 """
 import itertools
 from dataclasses import replace
@@ -132,16 +152,19 @@ RANGER_HP = 15
 
 # aggro: co-op Party Pull targeting value (0-4), locked via direct user
 # review -- see OPEN_QUESTIONS.md's "Co-op multi-hero vs. one Elite" entry.
+# version: printed-card revision number, bumped only when a card's printed text/numbers
+# change -- lets a physical deck owner tell which cards need reprinting. See
+# CARD_REFERENCE.md's own note for the convention.
 CARDS = {
     "Beast Bond: Wolf": dict(combat_type="melee",dmg=4, block=1, grants_range=False, beast_bond=True, beast_block_value=1,
-                                      payoff_prev_range=False, aggro=2),
-    "Withdrawing Hip Shot": dict(combat_type="ranged",dmg=2, block=0, grants_range=True, beast_bond=False, payoff_prev_range=False, aggro=2),
+                                      payoff_prev_range=False, aggro=2, version=1),
+    "Withdrawing Hip Shot": dict(combat_type="ranged",dmg=3, block=0, grants_range=True, beast_bond=False, payoff_prev_range=False, aggro=2, version=2),
     "Sniper/Point Blank Shot": dict(combat_type="ranged",dmg=None, block=0, grants_range=False, beast_bond=False, payoff_prev_range=True,
-                                      dmg_if_prev_range=7, dmg_else=5, aggro=3),
+                                      dmg_if_prev_range=5, dmg_else=4, aggro=3, version=2),
     "Beast's Challenge": dict(combat_type="melee",dmg=None, block=0, grants_range=False, beast_bond=False, payoff_prev_range=False,
-                                      payoff_wolf=True, dmg_if_wolf=5, dmg_else=2, aggro=3),
-    "Sure Shot": dict(combat_type="ranged",dmg=4, block=0, grants_range=False, beast_bond=False, payoff_prev_range=False, aggro=2),
-    "Crippling Shot": dict(combat_type="ranged",dmg=2, block=1, grants_range=True, beast_bond=False, payoff_prev_range=False, aggro=3),
+                                      payoff_wolf=True, dmg_if_wolf=4, dmg_else=2, aggro=3, version=2),
+    "Sure Shot": dict(combat_type="ranged",dmg=4, block=0, grants_range=False, beast_bond=False, payoff_prev_range=False, aggro=2, version=1),
+    "Crippling Shot": dict(combat_type="ranged",dmg=2, block=1, grants_range=True, beast_bond=False, payoff_prev_range=False, aggro=3, version=1),
 }
 DECK = list(CARDS.keys())
 

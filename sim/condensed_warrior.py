@@ -32,13 +32,16 @@ WARRIOR_HP = 18
 # split; aggro_G/aggro_C for the two cards whose real number differs by
 # stance (Vanguard Shield, Shield Block), matching the existing G=/C=
 # per-stance convention already used for dmg/block on those same cards.
+# version: printed-card revision number, bumped only when a card's printed text/numbers
+# change -- lets a physical deck owner tell which cards need reprinting. See
+# CARD_REFERENCE.md's own note for the convention.
 CARDS = {
     "Heavy Swing":     dict(combat_type="melee", G=(2, 0), C=(4, 0), sunder=False, execute_finisher=False,
                              chain_stance=None, chain_bonus=0, chain_target=None, chain_requires=None,
-                             aggro=2),
+                             aggro=2, version=1),
     "Sundering Blow":  dict(combat_type="melee", G=(1, 0), C=(1, 0), sunder=True,  execute_finisher=False,
                              chain_stance=None, chain_bonus=0, chain_target=None, chain_requires=None,
-                             aggro=4),
+                             aggro=4, version=1),
     # Execute: 6dmg, same in either stance, but only while the mob is at 50%
     # HP or lower -- illegal to play otherwise in Guardian or Champion (no
     # flat fallback value, this line is simply not a legal choice until the
@@ -46,7 +49,7 @@ CARDS = {
     # execute_finisher handling in _sim_from.
     "Execute":         dict(combat_type="melee", G=None, C=None,     sunder=False, execute_finisher=True,
                              chain_stance=None, chain_bonus=0, chain_target=None, chain_requires=None,
-                             killing_blow=True, aggro=3),
+                             killing_blow=True, aggro=3, version=1),
     # Same baseline in either stance now (2 DMG + 2 Block, trimmed from 3) --
     # stance only changes whether the bonus is reachable. Block trimmed
     # specifically because it was the real driver of multi-pull sustain
@@ -55,7 +58,7 @@ CARDS = {
     # around a weaker Shield Block with zero net effect on trip outcomes).
     "Vanguard Shield": dict(combat_type="melee", G=(2, 2), C=(2, 2), sunder=False, execute_finisher=False,
                              chain_stance="G", chain_bonus=2, chain_target="block",
-                             chain_requires="Vanguard Blade", aggro_G=4, aggro_C=2),
+                             chain_requires="Vanguard Blade", aggro_G=4, aggro_C=2, version=1),
     # Champion Shield Block is a confirmed false choice -- zeroing it never
     # changes an outcome, so it's zeroed for clarity: this card is a real,
     # honest Guardian-exclusive tool now, not a mediocre option in both.
@@ -64,13 +67,13 @@ CARDS = {
     # independent of Vanguard Shield's value.
     "Shield Block":    dict(combat_type="melee", G=(0, 5), C=(0, 0), sunder=False, execute_finisher=False,
                              chain_stance=None, chain_bonus=0, chain_target=None,
-                             chain_requires=None, aggro_G=4, aggro_C=0),
+                             chain_requires=None, aggro_G=4, aggro_C=0, version=1),
     # Champion loses the 2 Block (3 DMG only there) -- Guardian keeps the
     # full 3 DMG + 2 Block baseline. Bonus stays +2 DMG in Champion only.
     "Vanguard Blade":  dict(combat_type="melee", G=(3, 2), C=(3, 0), sunder=False, execute_finisher=False,
                              chain_stance="C", chain_bonus=2, chain_target="dmg",
                              aggro=3,
-                             chain_requires="Vanguard Shield"),
+                             chain_requires="Vanguard Shield", version=1),
 }
 DECK = list(CARDS.keys())
 SUNDER_BONUS = 2  # Sundering Blow's persistent marker: +2 to all later damage, not +1

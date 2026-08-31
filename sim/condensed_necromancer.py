@@ -151,6 +151,45 @@ macro_sim.py compatibility confirmed via `run_one_trip`.
 
 **Not yet done:** Aggro values (all placeholder 0) -- assigned after balance lock per this
 project's standard build order, not before.
+
+**2026-08-30, full rebalance -- two separate findings, resolved in different ways.**
+
+*Finding 1 -- the original one, from the user hand-playing this class:* Blight+Death Blow
+co-played 94.4% of the time whenever both are dealt, 100% fixed order, no shared field
+connecting them (unlike every other class's comparably-strong combo -- Wizard's `weave_source`/
+`payoff`, Rogue's finisher curve, Paladin's `invocation` field, all explicitly signposted on
+the cards themselves). Extensively investigated: numeric nerf+buff pairs (Blight/Reap,
+Blight/Sowing Dread) repeatedly just relocated the same pattern onto whichever card got
+buffed to compensate, rather than fixing it -- a real, structural finding, not a tuning
+failure. Death Blow's `killing_blow` rider is the actual constant across every flagged pair
+(Reap+Death Blow, Sowing Dread+Death Blow, Blight+Death Blow all separately flagged at
+different points), not any one setup card. **Not fully resolved as of this lock** -- see
+CLASS_BALANCE_GUIDE.md's Necromancer section for the full trail; the combo-dominance sweep
+still flags 3 pairs after the round2-breadth fix below, all still funneling into Death Blow,
+though the round-2-specific manifestation of it is narrow (10 of 90 hand/mob combinations,
+9 of those 10 against Scout specifically -- closer to a Scout matchup quirk than a roster-wide
+problem).
+
+*Finding 2 -- a real bug, found while investigating Finding 1:* `resolve_round`'s mob-Block
+handling applied Block as a flat reduction to Echo damage AND this round's own card damage
+independently, instead of depleting as a single first-come-first-served pool the way the
+user's actual tabletop play (and QUEST's stated ancestry, AGGRO and Slay the Spire) has always
+worked. Fixed -- see `resolve_round`'s own docstring. This changed the actual combat math:
+under the corrected model, the true original kit's `worst_pair_round2_breadth` got *worse*
+(3/6 -> 4/6, Blight+Death Blow clearing 4 of 6 Standard mobs by round 2), where under the old
+buggy math it had already been at the accepted floor and hadn't needed this fix at all.
+
+**Locked:** Blight dmg 3->1 (the smallest cut that actually moved worst-pair breadth --
+dmg=2 didn't move it at all, since the echo alone still fed Death Blow's math the same way).
+Reap dmg 3->4, compensating for the one hand this cut left underpowered against Bruiser/
+Enforcer (`Boneguard's Offering, Soul Harvest, Sowing Dread, Reap` -- no Blight or Death Blow
+at all; Reap was present but not competitive enough to be chosen). Confirmed directly: Blight
+at dmg=1 is played only 50% of the time it's drawn (down from 73.3% at dmg=3) -- a real
+identity shift, not just a number change, toward "mostly a setup for the echo" rather than "a
+solid hit that also echoes." Worst-pair breadth 4/6->2/6, win rate 100% on all six mobs, clean
+against both the live pack and the frozen baseline. See CLASS_BALANCE_GUIDE.md's "Fixing a
+worst-pair round-2 shortcut" recipe for the full methodology, and its Necromancer section for
+Finding 1's still-open combo-dominance trail.
 """
 import itertools
 from dataclasses import replace
@@ -166,28 +205,27 @@ BONEGUARD_OFFERING = "Boneguard's Offering"
 # a card Reap's dot_payoff counts. dot_payoff=True (Reap only) means +1 dmg per dot-tagged
 # card played in a strictly earlier round this pull. echo_dmg fires automatically at the
 # start of the next round, no card spent (Blight only). killing_blow prevents the mob's
-# attack this round if this card's damage brings it to <=0 -- field kept on every card for
-# shape-consistency with the other classes' CARDS dicts, currently False everywhere in this
-# kit (Death Blow's killing_blow was removed 2026-08-28, see CLASS_BALANCE_GUIDE.md's
-# Necromancer section: it was the shared root of Blight/Reap/Sowing Dread all separately
-# gravitating toward Death Blow as an automatic finisher partner).
+# attack this round if this card's damage brings it to <=0 (Death Blow only).
 # aggro: co-op Party Pull targeting value (0-4) -- NOT YET ASSIGNED, placeholder 0 throughout,
 # matching every other class's actual build order (aggro comes after balance lock).
 BONEGUARD_OFFERING_BOOSTED = "Boneguard's Offering (Boosted)"  # virtual variant, see module docstring
 
+# version: printed-card revision number, bumped only when a card's printed text/numbers
+# change -- lets a physical deck owner tell which cards need reprinting. See
+# CARD_REFERENCE.md's own note for the convention.
 CARDS = {
     BONEGUARD_OFFERING: dict(combat_type="melee",dmg=0, heal=0, block=2, grants_range=True, dot=False,
-                              dot_payoff=False, echo_dmg=0, killing_blow=False, aggro=0),
-    "Soul Harvest": dict(combat_type="ranged",dmg=3, heal=3, block=0, grants_range=False, dot=False,
-                               dot_payoff=False, echo_dmg=0, killing_blow=False, aggro=0),
-    "Sowing Dread": dict(combat_type="ranged",dmg=3, heal=0, block=0, grants_range=True, dot=True,
-                               dot_payoff=False, echo_dmg=0, killing_blow=False, aggro=0),
-    "Reap": dict(combat_type="melee",dmg=3, heal=0, block=0, grants_range=False, dot=False,
-                               dot_payoff=True, echo_dmg=0, killing_blow=False, aggro=0),
-    "Blight": dict(combat_type="ranged",dmg=3, heal=0, block=0, grants_range=False, dot=True,
-                               dot_payoff=False, echo_dmg=3, killing_blow=False, aggro=0),
-    "Death Blow": dict(combat_type="melee",dmg=5, heal=0, block=0, grants_range=False, dot=False,
-                               dot_payoff=False, echo_dmg=0, killing_blow=False, aggro=0),
+                              dot_payoff=False, echo_dmg=0, killing_blow=False, aggro=0, version=1),
+    "Soul Harvest": dict(combat_type="ranged",dmg=3, heal=2, block=0, grants_range=False, dot=False,
+                               dot_payoff=False, echo_dmg=0, killing_blow=False, aggro=0, version=1),
+    "Sowing Dread": dict(combat_type="ranged",dmg=2, heal=0, block=0, grants_range=True, dot=True,
+                               dot_payoff=False, echo_dmg=0, killing_blow=False, aggro=0, version=1),
+    "Reap": dict(combat_type="melee",dmg=4, heal=0, block=0, grants_range=False, dot=False,
+                               dot_payoff=True, echo_dmg=0, killing_blow=False, aggro=0, version=2),
+    "Blight": dict(combat_type="ranged",dmg=1, heal=0, block=0, grants_range=False, dot=True,
+                               dot_payoff=False, echo_dmg=3, killing_blow=False, aggro=0, version=2),
+    "Death Blow": dict(combat_type="melee",dmg=4, heal=0, block=0, grants_range=False, dot=False,
+                               dot_payoff=False, echo_dmg=0, killing_blow=True, aggro=0, version=1),
 }
 DECK = list(CARDS.keys())
 ALL_HANDS = list(itertools.combinations(DECK, 4))
@@ -228,13 +266,25 @@ def resolve_round(state, card_name, stance, round_num, mob_pattern, mob_hp_total
     state.nc_pending_echo_dmg, set by the PREVIOUS round's card), before this round's own
     card's effects apply, same ordering Runecaster's echo already established. stance is
     unused (Necromancer has none). hero_max_hp threaded unchanged (healing caps at the
-    class's own NECROMANCER_HP constant, same pattern as Paladin/Runecaster/Druid)."""
+    class's own NECROMANCER_HP constant, same pattern as Paladin/Runecaster/Druid).
+
+    **Mob Block is a depleting pool for the round, not a flat reduction reapplied to every
+    damage source separately (fixed 2026-08-30, same bug and same fix as Runecaster's own
+    resolve_round -- confirmed against the user's actual tabletop play and QUEST's stated
+    ancestry, AGGRO and Slay the Spire both work this way).** When Echo and this round's own
+    card both deal damage in the same round, Block absorbs the Echo first (since it resolves
+    first), and whatever's left over -- possibly nothing -- reduces this round's own card
+    damage. Every point of Block is single-use within the round, first hit served first."""
     card = CARDS[card_name]
     mob_atk, mob_block, mob_type = mob_pattern[round_num]
+    remaining_block = mob_block  # depletes as it absorbs damage this round, first-come-first-served
 
     new_remaining = mob_hp_remaining
     if state.nc_pending_echo_dmg:
-        new_remaining -= max(0.0, state.nc_pending_echo_dmg - mob_block)
+        echo_dmg = state.nc_pending_echo_dmg
+        absorbed = min(remaining_block, echo_dmg)
+        remaining_block -= absorbed
+        new_remaining -= (echo_dmg - absorbed)
 
     dmg, heal, block = card["dmg"], card["heal"], card["block"]
     if card["dot_payoff"]:
@@ -242,7 +292,9 @@ def resolve_round(state, card_name, stance, round_num, mob_pattern, mob_hp_total
 
     new_hp = min(hero_max_hp, hero_hp + heal)
 
-    dmg_dealt = max(0.0, dmg - mob_block)
+    absorbed = min(remaining_block, dmg)
+    remaining_block -= absorbed
+    dmg_dealt = dmg - absorbed
     new_remaining -= dmg_dealt
 
     if card["killing_blow"] and new_remaining <= 0:

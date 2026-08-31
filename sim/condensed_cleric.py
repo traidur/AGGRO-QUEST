@@ -14,6 +14,19 @@ Every card's effect is fully self-contained: order only matters relative to the 
 known pattern, never relative to another card in hand. Deliberately different in kind
 from Warrior (Stance/Sunder) and Wizard (Positioning/Spellweave), both of which have real
 card-to-card dependencies independent of the mob.
+
+**2026-08-30 rebalance:** `worst_pair_round2_breadth` (see CLASS_BALANCE_GUIDE.md's "Fixing a
+worst-pair round-2 shortcut" recipe) found Call of the Void(6)+Fiery Fortitude(3)=9 raw damage
+cleared 5 of 6 Standard mobs by round 2, no mechanic involved -- pure magnitude, same shape as
+Paladin's Might of the Aegis+Bastion's Hammer. Fixed with a single change: Call of the Void
+dmg 6->5. Breadth dropped to 3/6 (a different pair, Fiery Fortitude+Smite=8, becomes the new
+worst offender at the same floor -- confirmed via sweep that cutting Call of the Void further
+does nothing, since that pair doesn't involve it at all). Unlike Paladin, no compensating buff
+was needed: win rate per mob came out identical to the original unmodified baseline, and every
+chained-trip metric landed comfortably inside the existing pack range. The one remaining
+flagged co-play pair (Fiery Fortitude+Smite, 95.2%) predates this change (was 94.7% before) and
+has real variety in its third card slot (Cleansing Barrier/Void Mark/Call of the Void/Heal, 4
+real options) -- the "two reliably good cards" pattern, not a shortcut.
 """
 import itertools
 from dataclasses import replace
@@ -38,13 +51,16 @@ SACRED_BALANCE_HEAL = 1  # automatic heal on playing Smite
 # variant stays clean at every starting-HP level). Ceiling-only it is.
 # aggro: co-op Party Pull targeting value (0-4), locked via direct user
 # review -- see OPEN_QUESTIONS.md's "Co-op multi-hero vs. one Elite" entry.
+# version: printed-card revision number, bumped only when a card's printed text/numbers
+# change -- lets a physical deck owner tell which cards need reprinting. See
+# CARD_REFERENCE.md's own note for the convention.
 CARDS = {
-    "Void Mark": dict(combat_type="ranged",dmg=3, heal=0, block=0, sacred_balance=False, max_hp_buff=0, echo_dmg=0, aggro=1),
-    "Smite": dict(combat_type="ranged",dmg=5, heal=0, block=0, sacred_balance=True,  max_hp_buff=0, echo_dmg=0, aggro=2),
-    "Call of the Void": dict(combat_type="ranged",dmg=6, heal=0, block=0, sacred_balance=False, max_hp_buff=0, echo_dmg=0, aggro=3),
-    "Cleansing Barrier": dict(combat_type="melee",dmg=3, heal=0, block=5, sacred_balance=False, max_hp_buff=0, echo_dmg=0, aggro=1),
-    "Fiery Fortitude": dict(combat_type="melee",dmg=3, heal=2, block=0, sacred_balance=False, max_hp_buff=2, echo_dmg=0, aggro=2),
-    "Heal": dict(combat_type="ranged",dmg=0, heal=3, block=0, sacred_balance=False, max_hp_buff=0, echo_dmg=0, aggro=3),
+    "Void Mark": dict(combat_type="ranged",dmg=3, heal=0, block=0, sacred_balance=False, max_hp_buff=0, echo_dmg=0, aggro=1, version=1),
+    "Smite": dict(combat_type="ranged",dmg=5, heal=0, block=0, sacred_balance=True,  max_hp_buff=0, echo_dmg=0, aggro=2, version=1),
+    "Call of the Void": dict(combat_type="ranged",dmg=5, heal=0, block=0, sacred_balance=False, max_hp_buff=0, echo_dmg=0, aggro=3, version=2),
+    "Cleansing Barrier": dict(combat_type="melee",dmg=3, heal=0, block=5, sacred_balance=False, max_hp_buff=0, echo_dmg=0, aggro=1, version=1),
+    "Fiery Fortitude": dict(combat_type="melee",dmg=3, heal=2, block=0, sacred_balance=False, max_hp_buff=2, echo_dmg=0, aggro=2, version=1),
+    "Heal": dict(combat_type="ranged",dmg=0, heal=3, block=0, sacred_balance=False, max_hp_buff=0, echo_dmg=0, aggro=3, version=1),
 }
 DECK = list(CARDS.keys())
 

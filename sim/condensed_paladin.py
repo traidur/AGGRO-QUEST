@@ -1,6 +1,8 @@
 """
 Exact solver for the condensed Paladin prototype -- first pass, v2 (folded
-Invocation design).
+Invocation design), rebalanced 2026-08-30 to close a genuine 2-card shortcut
+(see below and CLASS_BALANCE_GUIDE.md's Paladin section for the full
+investigation).
 
 Mechanic, locked through iteration with the user: two self-contained
 "Invocation of X" cards replace the original three-card Virtue+shared-
@@ -8,13 +10,19 @@ Invocation structure from CONDENSED_COMBAT.md's original design note.
 Each Invocation card is simultaneously a payoff for STRIKE cards already
 played earlier in the pull AND a setup for STRIKE cards played after it:
 
-  Invocation of Sanctuary: on play, deal 3 dmg + 1 dmg per STRIKE card
+  Invocation of Sanctuary: on play, deal 3 dmg + 2 dmg per STRIKE card
   already played earlier this pull. Every STRIKE card played afterward
-  also generates +1 dmg when played.
+  also generates +2 dmg when played.
 
-  Invocation of Grace: on play, deal 3 dmg + heal 1 HP per STRIKE card
+  Invocation of Grace: on play, deal 4 dmg + heal 2 HP per STRIKE card
   already played earlier this pull. Every STRIKE card played afterward
-  also heals +1 HP when played.
+  also heals +2 HP when played.
+
+  (Per-STRIKE bonus raised from +1 to +2 as part of the 2026-08-30
+  rebalance -- moves damage budget out of the two flat STRIKE cards
+  and into a bonus that only pays off with the full 3-card investment,
+  so the fast 2-card burst specifically loses value while a real
+  Strike+Strike+Invocation line keeps its old total.)
 
 Exclusive: only one of the two Invocation cards may be played per pull,
 ever (confirmed explicitly, same "one lane, chosen once" restriction
@@ -22,10 +30,30 @@ CONDENSED_COMBAT.md's original Virtue design already established).
 
 Might of the Aegis and Bastion's Hammer are the two STRIKE-tagged cards
 (matches AGGRO's real STRIKE tag -- verified against StS_WoW_Sim/data/
-cards.csv). Sacred Light and Holy Fortress are plain support cards, not
+cards.csv). Vigil of Light and Holy Fortress are plain support cards, not
 STRIKE-tagged, so they don't feed the Invocation bonus chain either
 direction. Holy Fortress is simplified from AGGRO's real charge/reactive-
 damage sub-mechanic to a flat dmg+block card for this first pass.
+
+**2026-08-30 rebalance, full record:** a roster-wide sweep (worst-pair
+round-2-finish breadth, see CLASS_BALANCE_GUIDE.md) found Might of the
+Aegis(4)+Bastion's Hammer(6)=10 raw damage cleared every Standard mob's HP
+(ceiling 10) in two cards, no mechanic needed -- literally any two of the
+kit's damage cards did it. Fixed via: Might of the Aegis dmg 4->3,
+Bastion's Hammer dmg 6->4, Invocation's per-STRIKE bonus 1->2 (so a full
+3-card kit still reaches its old damage total, just not in 2 cards), Holy
+Fortress dmg 2->3, and Sacred Light renamed Vigil of Light with block=1
+added (was the least-played card in the kit, 8/90 real hand/mob
+appearances; needed to close a real win-rate gap the burst nerf opened
+against Bruiser/Enforcer specifically). PALADIN_HP was tried at 18
+(partially restoring the earlier Warrior-1 dial-back) mid-investigation
+when the burst nerf alone had left the class weaker on chained-trip
+metrics, but once Holy Fortress and Vigil of Light were also carrying
+their share of the load, HP=17 (the original, pre-existing value) landed
+cleaner -- pulls=5.94 sits inside the pack range at HP=17 vs. 6.23
+(outside it) at HP=18 -- so the HP dial-back was never actually needed
+and PALADIN_HP stays at its original 17. Worst-pair breadth went from 6/6
+(every mob) to 3/6; full tuning_report validated clean afterward.
 
 No stance system -- has_stance=False, same category as Wizard/Cleric.
 """
@@ -34,7 +62,12 @@ from dataclasses import replace
 
 from combat_round import RoundState, RoundOutcome
 
-PALADIN_HP = 17  # locked: settled at Warrior-1 after the Sacred Light/HP dial-back pass
+PALADIN_HP = 17  # locked: settled at Warrior-1 after the Sacred Light/HP dial-back pass.
+                 # Tried at 18 mid-2026-08-30-rebalance (see note above) but landed worse
+                 # than the original 17 once Holy Fortress/Vigil of Light were also in
+                 # the mix -- stays at 17.
+
+INVOCATION_PER_STRIKE_BONUS = 2  # 2026-08-30: raised from 1 -- see rebalance note above.
 
 # dmg/heal/block are flat, unconditional base values. strike=True marks the
 # two cards the Invocation bonus chain keys off. invocation={"sanctuary",
@@ -48,13 +81,16 @@ PALADIN_HP = 17  # locked: settled at Warrior-1 after the Sacred Light/HP dial-b
 # card that doesn't normally have any Block of its own.
 # aggro: co-op Party Pull targeting value (0-4), locked via direct user
 # review -- see OPEN_QUESTIONS.md's "Co-op multi-hero vs. one Elite" entry.
+# version: printed-card revision number, bumped only when a card's printed text/numbers
+# change -- lets a physical deck owner tell which cards need reprinting. See
+# CARD_REFERENCE.md's own note for the convention.
 CARDS = {
-    "Might of the Aegis": dict(combat_type="melee",dmg=4, heal=0, block=2, strike=True,  invocation=None, aggro=4, grants_aura_block=False),
-    "Bastion's Hammer": dict(combat_type="melee",dmg=6, heal=0, block=0, strike=True,  invocation=None, aggro=2, grants_aura_block=False),
-    "Sacred Light": dict(combat_type="ranged",dmg=0, heal=3, block=0, strike=False, invocation=None, aggro=2, grants_aura_block=False),
-    "Holy Fortress": dict(combat_type="melee",dmg=2, heal=0, block=4, strike=False, invocation=None, aggro=4, grants_aura_block=False),
-    "Invocation of Sanctuary": dict(combat_type="ranged",dmg=3, heal=0, block=0, strike=False, invocation="sanctuary", aggro=3, grants_aura_block=False),
-    "Invocation of Grace": dict(combat_type="ranged",dmg=4, heal=0, block=0, strike=False, invocation="grace", aggro=3, grants_aura_block=False),
+    "Might of the Aegis": dict(combat_type="melee",dmg=3, heal=0, block=2, strike=True,  invocation=None, aggro=4, grants_aura_block=False, version=2),
+    "Bastion's Hammer": dict(combat_type="melee",dmg=4, heal=0, block=0, strike=True,  invocation=None, aggro=2, grants_aura_block=False, version=2),
+    "Vigil of Light": dict(combat_type="ranged",dmg=0, heal=3, block=1, strike=False, invocation=None, aggro=2, grants_aura_block=False, version=2),
+    "Holy Fortress": dict(combat_type="melee",dmg=3, heal=0, block=4, strike=False, invocation=None, aggro=4, grants_aura_block=False, version=2),
+    "Invocation of Sanctuary": dict(combat_type="ranged",dmg=3, heal=0, block=0, strike=False, invocation="sanctuary", aggro=3, grants_aura_block=False, version=2),
+    "Invocation of Grace": dict(combat_type="ranged",dmg=4, heal=0, block=0, strike=False, invocation="grace", aggro=3, grants_aura_block=False, version=2),
 }
 DECK = list(CARDS.keys())
 
@@ -88,20 +124,20 @@ def resolve_round(state, card_name, stance, round_num, mob_pattern, mob_hp_total
             new_active_invocation = card["invocation"]
             new_active_grants_aura_block = card["grants_aura_block"]
             if new_active_invocation == "sanctuary":
-                dmg += state.strikes_played
+                dmg += INVOCATION_PER_STRIKE_BONUS * state.strikes_played
                 if new_active_grants_aura_block:
-                    block += state.strikes_played
+                    block += INVOCATION_PER_STRIKE_BONUS * state.strikes_played
             else:
-                heal += state.strikes_played
+                heal += INVOCATION_PER_STRIKE_BONUS * state.strikes_played
 
     if card["strike"]:
         new_strikes_played = state.strikes_played + 1
         if state.active_invocation == "sanctuary":
-            dmg += 1
+            dmg += INVOCATION_PER_STRIKE_BONUS
             if state.active_grants_aura_block:
-                block += 1
+                block += INVOCATION_PER_STRIKE_BONUS
         elif state.active_invocation == "grace":
-            heal += 1
+            heal += INVOCATION_PER_STRIKE_BONUS
 
     healed_hp = min(hero_max_hp, hero_hp + heal)
 

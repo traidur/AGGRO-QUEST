@@ -181,6 +181,32 @@ Run these roughly in this order on a new class:
    built with combos on purpose — that's what Necromancer's Blight/Death Blow turned out to
    be (see its own build notes below), and it's the shape worth re-running this sweep to
    catch on every class going forward, not just the ones that feel combo-heavy by design.
+9. **`worst_pair_round2_breadth(mod, has_stance, mob_key, max_hp)` /
+   `print_worst_pair_round2_breadth(...)`** (added 2026-08-30 during the Paladin rebalance) —
+   a different, narrower question than `combo_dominance_report`: not "are these two cards
+   always played together" (true even for an ordinary 3-round fight), but "is there a single,
+   fixed 2-card ordering that ends the fight by round 2 across most or all of the roster's
+   mobs, with no need to know which mob you're facing." This is the tool that actually found
+   Paladin's real problem — `combo_dominance_sweep` had already run on Paladin and did NOT
+   flag Might of the Aegis+Bastion's Hammer (the pair that cleared literally every Standard
+   mob's HP in two cards) as the worst offender; it flagged three other pairs instead, none of
+   which were fast finishers. The two questions are related but genuinely different, and a
+   class can fail one without failing the other. See "Fixing a worst-pair round-2 shortcut —
+   the recipe" below for how to actually use this tool's output.
+
+   **A high `aggregate_pct` alone doesn't mean the same thing every time — check
+   `pairs_at_max`/`max_pairs_share_mobs` before chasing it further** (added after Cleric's fix
+   left a 53.3% aggregate rate that read alarming in isolation). The first instinct here was a
+   hand-count "concentration" percentage; checked against real data before trusting it, and
+   discarded because it didn't discriminate — Paladin's clearly-bad original case scored 25.0%
+   by that measure and Cleric's fine post-fix case scored 18.8%, too close to mean anything.
+   What actually separates the two, visible directly in the raw per-pair breakdown: Paladin's
+   original worst pair stood alone (5/6, next pair down at only 4/6 — a real gap, nearly the
+   whole roster on its own). Cleric's post-fix state instead has 3 different, unrelated pairs
+   all tied at the same 3/6 ceiling, hitting the *identical* 3 mobs — no pair is special,
+   they're redundant routes to the same result, which reads as "these 3 low-HP mobs are just
+   soft," not a discoverable shortcut. `pairs_at_max` near 1 with a wide `worst_breadth` is the
+   real problem; several pairs tied on the identical mob set is a different, less urgent one.
 
 Every one of these is class-agnostic by construction (`has_stance` flag, generic
 `mob_key`) — a fourth class plugs in without modifying any tool, only by adding its own
@@ -560,6 +586,174 @@ earlier round this pull) — different cards in the same Ranger kit turned out t
 different things by design (one checked only the previous round, the other checked the whole
 pull so far), and guessing either one wrong would have meant building and testing the wrong
 mechanic. Costs one message to ask; costs a full tuning pass to discover after the fact.
+
+## Fixing a worst-pair round-2 shortcut — the recipe (Paladin, 2026-08-30)
+
+Built after `worst_pair_round2_breadth` (tool inventory, above) found Paladin's Might of the
+Aegis+Bastion's Hammer clearing every Standard mob's HP in two cards, no mechanic needed. The
+process that actually fixed it, in the order it happened, generalized into a repeatable recipe
+for the next class this shows up on.
+
+**1. Diagnose, then classify the mechanism before touching any number.** Run
+`worst_pair_round2_breadth` first. If it flags a real problem (roughly: 3/6 mobs or fewer is
+acceptable, 5-6/6 is the shape that started this investigation), read the offending pair's
+`CARDS` entries and `resolve_round` fresh — not from memory — and classify which of two very
+different problems this is:
+- **Magnitude-driven** (Paladin's case): two flat numbers just add up past the mob HP ceiling,
+  no synergy, no timing, no shared field between the cards at all. The fix is a numeric dial,
+  even though which specific dial takes real work to find (see step 2).
+- **Interaction-driven** (Necromancer's original Blight+Death Blow case): the combo only works
+  because of a hidden cross-round mechanic (an echo, a payoff counter) that isn't visible from
+  either card's printed number in isolation. This needs a mechanism-level look, not just a
+  number — see that class's own build notes for how that investigation actually went, since
+  it's a different recipe than this one. **Caveat found 2026-08-30:** an interaction-driven
+  combo can still fail `worst_pair_round2_breadth` in the ordinary, numeric sense once its
+  underlying mechanic is computed correctly — Necromancer's Blight+Death Blow only crossed the
+  round2-breadth threshold after a real mob-Block engine bug was fixed (see Necromancer's own
+  section below), at which point this exact recipe applied to it cleanly. The two classifications
+  aren't mutually exclusive — check for an engine-level correctness bug in the interaction
+  itself before assuming "interaction-driven" rules this recipe out entirely.
+
+Getting this classification right matters because a magnitude fix (nerf the number) doesn't
+touch an interaction problem, and a mechanism fix doesn't touch a magnitude problem — confirmed
+directly on Paladin: an early attempt to change the *ordering* Invocation cards could grant
+their bonus in (a mechanism question) was correctly predicted to do nothing before it was even
+tested, because the worst pair (Might of the Aegis+Bastion's Hammer) didn't involve an
+Invocation card at all.
+
+**2. Expect whack-a-mole — find the recurring card, not just the first flagged pair.**
+Nerfing the single worst offender (Bastion's Hammer, dmg 6→5→4) dropped breadth 6/6→5/6→3/6,
+then *stopped moving* — a different pair (Might of the Aegis+Invocation of Sanctuary) took over
+as the new worst offender at the same 3/6 floor, and further Bastion's Hammer cuts did nothing
+because it wasn't even the worst pair anymore. The card common to *both* the original and the
+replacement worst pair (Might of the Aegis, in this case) is usually the real structural
+culprit — cutting it too, in isolation, made things worse (a same-magnitude cut to both Strike
+cards at once, tested directly, both widened breadth to 4/6 *and* cost real aggregate power).
+Don't chase the symptom pair-by-pair; identify what's actually shared across the pairs that
+keep reappearing.
+
+**3. Prefer restructuring the payoff over blanket nerf+buff, if the class has a spendable
+mechanic already.** The move that actually worked wasn't "nerf the Strike cards, buff something
+unrelated to compensate" (tried and it undershot badly — see step 4). It was moving damage
+budget *out of* the flat Strike numbers and *into* the existing Invocation per-Strike bonus
+(doubled: 1→2 per Strike), so a full Strike+Strike+Invocation line recovers its old total
+damage while the 2-card shortcut specifically can't reach it anymore, since the bonus requires
+spending the third card. This is strictly better than an unrelated compensating buff when the
+class already has *some* mechanic that rewards playing the full kit — it reinforces the
+intended play pattern instead of subsidizing something disconnected from the actual problem.
+If the class has no such mechanic, a flat nerf+buff (step 4's shape) is the fallback, not the
+first move.
+
+**4. Any nerf needs a real, validated compensating buff — and "in range" can lie.** Every
+numeric cut, checked alone, undershot the pack on chained-trip metrics (pulls/wins-per-trip/
+wins-per-pull) even when the single-pull win rate looked fine. Watch specifically for the
+self-referential validation trap already documented elsewhere in this guide: when a candidate
+becomes the new min or max on a chained-trip metric, `tuning_report`'s "in range" verdict is
+trivially true (the range is computed *including* the candidate) but can still be a real
+regression — check whether the candidate lands inside an *existing* boundary set by another
+class, not just whether it technically clears its own.
+
+This trap has a roster-wide version too, caught directly (not hypothetically) after fixing
+Paladin/Cleric/Ranger in one sitting: the LIVE pack range only ever compares a candidate
+against the *current* roster, which by definition includes every class already touched this
+session. If the classes that happen to set the pack's floor and ceiling are never themselves
+edited, the range holds steady by luck, not by design — a different edit order (starting with
+whichever class sets the ceiling, say) could let the whole range walk in one direction across
+several classes' fixes without any single `tuning_report` call ever flagging it, since each
+call only ever checks against a live, self-referential snapshot. `tuning_report` now also
+checks every candidate against `FROZEN_BASELINE_2026_08_30` (a fixed, never-recomputed snapshot
+of all 9 classes' pre-rebalance numbers) alongside the live pack range — always read both, and
+treat exceeding the frozen range as the more serious flag even when the live range still
+technically contains the candidate.
+
+**5. Find the exact losing hands before picking what to buff.** Don't buff on a hunch — list
+the actual losing hands for the weak matchups (a simple loop over `ALL_HANDS`, checking which
+ones have no winning line at all) and read what they have in common. Paladin's losses against
+Bruiser/Enforcer were *all* hands missing at least one piece of the full Strike+Strike+
+Invocation combo, falling back on the two weakest "spare" cards (Sacred Light, Holy Fortress) —
+which told us directly which cards needed the buff and why, instead of guessing.
+
+**6. Buff the spare/glue cards, not anything that feeds the risky mechanic.** Holy Fortress and
+Sacred Light (renamed Vigil of Light) were the safe targets specifically *because* neither is
+Strike- or Invocation-tagged — buffing them cannot reopen the shortcut even in principle, no
+matter how far the buff goes, because they're structurally outside the economy that caused the
+problem. This is the same reasoning that makes HP a uniquely safe lever (see "HP as a balance
+lever" above) generalized to card buffs: a buff is safe by *construction*, not by hoping, when
+it can't touch the mechanic that produced the original finding.
+
+**7. Iterate in small steps and watch for overshoot as hard as undershoot.** Sacred Light's
+block went 0→2→1: block=2 overshot badly (pulls/wins-per-trip became the new pack *ceiling*,
+not just cleared the floor), block=1 landed clean. The failure mode flips from "too weak" to
+"too strong" fast once a class has already absorbed several compensating buffs — re-run the
+full chained-trip comparison after every single change, not just at the end.
+
+**8. HP is worth revisiting *after* the card-level fixes land, not just before.** PALADIN_HP
+was bumped 17→18 mid-investigation when the Strike-card nerf alone had left the class
+undershooting — a reasonable, structurally-safe move at the time (HP can't reopen a damage-
+magnitude shortcut). But once Holy Fortress and Vigil of Light were also carrying real weight,
+re-testing HP=17 against the *final* card set showed it landed cleaner than HP=18 (pulls
+inside the pack range vs. barely outside it) — the HP bump had become unnecessary once the
+other levers were doing enough work. Don't treat an HP change as settled just because it was
+correct at an earlier point in the same investigation; re-check it against the final candidate.
+
+**9. Run the full combo-dominance sweep as a final gate, and distinguish severity.** Even after
+`worst_pair_round2_breadth` reads clean, run the full `combo_dominance_sweep`-style pairwise
+check (every pair, not just round-2 finishers) — buffing a "safe" glue card can still push it
+into 100% co-play with something else. When that happens, check whether it's the *same* kind of
+problem: does the pair represent the *entire* winning line (mob-independent, no real decision
+left), or is it a fixed 2-card anchor with a genuinely varying third card? Paladin's post-fix
+sweep found three 100% pairs, but in every case the third card varied across 3-4 real options —
+closer to "these are just reliably good cards" (Cleric's Smite, Wizard's Weave-style pattern)
+than to the shortcut this recipe exists to catch. Don't stop checking once the headline metric
+clears — but don't treat every remaining flagged pair as equally serious either.
+
+**10. A high aggregate fast-kill rate after `worst_breadth` is already at the accepted floor
+doesn't automatically mean more work is needed — check `pairs_at_max`/`max_pairs_share_mobs`
+before chasing it.** Cleric's fix (Call of the Void dmg 6→5 alone) dropped breadth 5/6→3/6
+cleanly, but left a 53.3% aggregate rate that looked concerning on its own. Digging into the
+raw per-pair breakdown showed it wasn't one shortcut lingering — it was 3 different, unrelated
+pairs all independently capping out at the same 3/6 ceiling against the *identical* 3 low-HP
+mobs (Enforcer/Raider/Scout). That's not a discoverable 2-card recipe, it's those 3 mobs being
+generally soft against almost any competent 2-card line — fixing it further would mean trimming
+damage across multiple cards at once (a much bigger, more invasive change than anything else in
+this recipe), for a finding that isn't the pattern-recognition problem this recipe exists to
+catch. Don't reflexively keep pulling levers just because a percentage still looks high — confirm
+first whether it's actually the same *kind* of problem as the one that started the investigation.
+
+**11. Not every nerf needs a compensating buff — validate right after the minimal cut before
+reaching for one.** Cleric needed exactly one number (Call of the Void dmg 6→5) and nothing
+else: win rate came back identical to the original baseline, every chained-trip metric landed
+clean, no buff required. The recipe's own step order (nerf, then find losing hands, then buff)
+reads like a fixed sequence, but it isn't — check the aggregate numbers immediately after the
+minimal cut and stop there if they're already clean, rather than assuming a compensating buff
+is coming next just because Paladin and Ranger both needed one.
+
+**12. Test multiple candidate buffs individually before combining them — stacking compounds
+even when each one alone looks fine.** Ranger's Bruiser/Enforcer win-rate gap looked like it
+needed two buffs (Sure Shot dmg 4→5 *and* Withdrawing Hip Shot dmg 2→3); together they pushed
+`pulls`/`wins-per-trip`/`wins-per-pull` all past the entire pack's ceiling. Dropping to
+Withdrawing Hip Shot alone was sufficient and landed clean. This is a different failure mode
+than step 7 (which is about escalating the magnitude of *one* lever) — here the problem was
+combining two independently-reasonable levers without testing either alone first.
+
+**13. The right buff target is the card actually present in the specific losing hand, not just
+the most globally-unplayed card.** Sure Shot was Ranger's most-unplayed card overall (43%) —
+the obvious pick by step 6's own logic. But the actual losing hand against Bruiser/Enforcer
+didn't contain Sure Shot at all, so buffing it could never have helped that matchup no matter
+how far it was pushed. Withdrawing Hip Shot — less unplayed in aggregate, but the card
+genuinely sitting in the losing hand — was the real fix. Global unplayed-rate is a good first
+filter, but always cross-check it against the specific losing hands from step 5 before
+committing to a buff target.
+
+**14. Check a card's own docstring history before touching it, even when it's technically part
+of the flagged pair.** Ranger's worst pair was Beast Bond: Wolf + Sniper/Point Blank Shot, but
+Wolf's own numbers (its persistent Block value specifically) were deliberately left untouched —
+they were the subject of a separate, already-documented, carefully-calibrated tuning pass
+earlier in the project (see this file's own "Rogue and Ranger's macro-loop risk outlier"
+section). Nerfing Sniper/Point Blank Shot and Beast's Challenge instead fixed the shortcut
+without touching that history. Before changing any card's number, read whether its current
+value already carries a specific, documented reason for being what it is — re-touching a
+number that was hard-won for an unrelated reason risks reopening a fix nobody asked to revisit.
 
 ## Locking a class in — the checklist, once tuning is actually done
 
@@ -1147,6 +1341,99 @@ Death Pact already validated, no raw/adjusted split needed. Chained trip: pulls~
 wins/trip~4.31, wins/pull~75.9%, all three inside the pack's range (5.13-5.68 / 3.84-4.33 /
 74.1-78.3%), pulls sitting at the pack's current maximum by deliberate choice (see above).
 macro_sim.py compatibility confirmed via `run_one_trip`.
+
+### Necromancer, 2026-08-30 rebalance -- a mob-Block engine bug found mid-investigation, and a combo-dominance problem still open
+
+Two separate findings came out of one investigation, resolved on different timelines.
+
+**Finding 1, the one that started it: Blight+Death Blow, no-thinking-required.** The user
+hand-played this class and found Blight into Death Blow co-played 94.4% of the time whenever
+both were dealt, in a fixed order, with no shared field connecting them the way every other
+class's comparably-strong combo is signposted (Wizard's `weave_source`/payoff, Rogue's
+finisher curve, Paladin's `invocation` field). Numeric nerf+buff attempts (Blight/Reap,
+Blight/Sowing Dread) repeatedly just relocated the same shape onto whichever card got buffed
+to compensate, rather than fixing it -- confirmed a structural finding, not a tuning miss.
+Death Blow's `killing_blow` rider is the actual constant across every pair that's gotten
+flagged at different points (Reap+Death Blow, Sowing Dread+Death Blow, Blight+Death Blow),
+not any one setup card.
+
+**Finding 2, a real engine bug found while investigating Finding 1.** `resolve_round`'s
+mob-Block handling applied Block as a flat reduction to Echo damage AND the round's own card
+damage independently -- two separate applications of the same Block value in a single round --
+instead of depleting as one first-come-first-served pool, which is how the user's actual
+tabletop play (and QUEST's stated ancestry, AGGRO and Slay the Spire) has always worked. This
+bug affected exactly two classes in the roster -- Runecaster and Necromancer, the only two
+where a card's Echo and that round's own card both deal damage in the same round -- confirmed
+by checking all 9 classes' `resolve_round` implementations directly, not assumed. Every other
+class's bonuses are additive into a single damage calculation before one Block subtraction, so
+the bug had no surface there. Fixed in both classes' real `resolve_round` (see each module's
+own docstring for the corrected depleting-block pattern).
+
+**The bug fix changed the actual combat math, not just cosmetically.** Under the corrected
+model, Necromancer's true-original kit's `worst_pair_round2_breadth` got *worse*, not better:
+3/6 -> 4/6, with Blight+Death Blow now clearing 4 of 6 Standard mobs by round 2 (Ambusher,
+Enforcer, Grunt, Scout) where under the old buggy math it had already been sitting at the
+accepted floor and hadn't needed a round2-breadth fix at all. This reclassified Finding 1 --
+it's now both the original signposting/co-play concern *and* a genuine instance of the same
+round2-breadth problem the "Fixing a worst-pair round-2 shortcut" recipe (below) was built to
+handle, not a separate category as first assessed. Aggregate strength moved the opposite
+direction from breadth, worth naming since it's counterintuitive: the true-original kit's
+chained-trip numbers got slightly *stronger* under the fix (pulls 5.67->5.77, wins/trip
+4.30->4.41, wins/pull 75.9%->76.4%, win rate per mob unchanged) even though the specific
+shortcut got more automatic, not less -- the echo "clearing the path" for whatever follows it
+helps overall throughput independent of whether that path leads to Death Blow specifically.
+
+**Round2-breadth fix, run through the recipe below.** Blight is the recurring card across the
+worst pairs (round-1 in the top three: Blight+DeathBlow 4/6, Blight+SoulHarvest 3/6,
+Blight+SowingDread 2/6) -- the only card in the kit with an active Echo, and it happens to
+pair well with almost anything. Swept both of Blight's numeric levers:
+- `dmg` (Blight's own immediate damage): 3->2 didn't move breadth at all (echo alone still fed
+  Death Blow's math the same way); 3->1 dropped breadth to 2/6 and fully removed Death Blow
+  from the worst pair entirely (new worst pair: Blight+Soul Harvest).
+- `echo_dmg`: 3->2 didn't move breadth; 3->1 also reached 2/6, but Death Blow was still in the
+  worst pair (just narrower, Enforcer/Scout only).
+
+**Locked: Blight dmg 3->1** (preserves `echo_dmg` at 3 fully, keeping the card's whole identity
+-- the echo -- untouched, rather than cutting into the mechanic that defines the card). This is
+a real identity shift, not just a number change: at dmg=1, Blight is played only 50% of the
+time it's drawn (30 of 60 hand/mob cases), down from 73.3% (44 of 60) at dmg=3 -- confirmed
+directly, not assumed. The card moves from "a solid hit that also echoes" toward "mostly a
+setup for the echo," worth playing about half the time.
+
+This cut alone left one hand underpowered against Bruiser/Enforcer:
+`Boneguard's Offering, Soul Harvest, Sowing Dread, Reap` -- no Blight or Death Blow at all,
+and notably Reap was present in the hand but not competitive enough to be chosen in the
+optimal (losing) line. **Locked: Reap dmg 3->4**, the smallest buff that rescues this hand
+without overshooting -- dmg=5 was tested and immediately recreated a new round-2 shortcut
+(Reap+Death Blow, 4/6, the exact same whack-a-mole shape as the original numeric attempts),
+confirming this class's compensating-buff levers are unusually tight around Death Blow
+specifically, not a one-off.
+
+**Final state: worst_pair_round2_breadth 2/6** (Reap+Death Blow, Enforcer/Scout only), win
+rate 100% on all six Standard mobs, equilibrium clean, chained trip pulls=5.38/wins-per-
+trip=4.05/wins-per-pull=75.3%, inside both the live pack range and the frozen 2026-08-30
+baseline.
+
+**Finding 1 is NOT fully resolved by this lock -- flagged directly, not glossed over.** The
+final combo-dominance sweep (all 15 card pairs, all 6 mobs) still flags three pairs at or above
+the 80% threshold, all funneling into Death Blow: Reap+Death Blow 92.9%, Sowing Dread+Death
+Blow 88.2%, and Blight+Death Blow itself still 80.0% even after its own nerf. Buffing Reap to
+compensate for Blight's cut simply made Reap the newest partner feeding the same sink. This is
+the third time this exact shape has appeared for this class (across both the old and corrected
+block models), reinforcing that Death Blow's `killing_blow` rider -- not whichever setup card
+is currently strongest -- is the actual mechanism, and any further fix needs to target Death
+Blow itself rather than another round of nerf/buff on its partners.
+
+**Measured directly, to size the remaining problem honestly:** of the 90 hand/mob combinations,
+only 10 (11.1%) actually finish by round 2 via one of the three flagged pairs (Reap->Death Blow
+7/90, Blight->Death Blow 3/90, Sowing Dread->Death Blow 0/90 despite its 88.2% co-play number --
+confirming co-play frequency and fast-kill frequency are genuinely separate measurements, not
+proxies for each other). Of those 10, **9 are against a single mob, Scout** -- Grunt, Bruiser,
+Raider, and Ambusher show zero round-2 finishes via these pairs; Enforcer shows exactly one.
+So the still-open combo-dominance flag is real but narrow: closer to a Scout-matchup quirk than
+a roster-wide problem, and the user's explicit call (2026-08-30) was to accept this as
+understood rather than chase it further right now. Revisit if Scout's own shape changes, or if
+a future pass wants to take on Death Blow's `killing_blow` rider directly across the whole kit.
 
 ## Retired roster, and mobs are derived by brute force now, not hand-designed
 

@@ -310,6 +310,24 @@ CLASSES = [("Warrior", run_trip_warrior), ("Wizard", run_trip_wizard), ("Cleric"
            ("Runecaster", run_trip_runecaster), ("Druid", run_trip_druid),
            ("Necromancer", run_trip_necromancer)]
 
+# FROZEN. Captured 2026-08-30, before the worst-pair-round2-breadth rebalance pass touched
+# Paladin/Cleric/Ranger, at trials=3000 seed=1000 (tuning_report's own defaults). Never
+# recompute this from the live roster -- that's the exact self-referential drift bug this
+# constant exists to catch. `tuning_report`'s live "pack range" check only compares a
+# candidate against the CURRENT roster, which includes every class already touched this
+# session -- if the pack's own floor/ceiling classes get edited in a later pass, the "in
+# range" bar silently moves with them, and a real regression could clear it without ever
+# being flagged. This frozen snapshot is the fixed reference point that live check can't be:
+# always compare a new candidate against BOTH, and treat exceeding the frozen range as the
+# more serious flag, even if the live pack range technically still contains it. Only append a
+# *new* dated frozen constant when deliberately re-baselining (e.g. after a full roster pass
+# is done and the results are meant to become the new normal) -- never edit this dict in place.
+FROZEN_BASELINE_2026_08_30 = {
+    "Warrior": (5.62, 4.15, 73.9), "Wizard": (5.33, 3.98, 74.6), "Cleric": (5.64, 4.34, 77.0),
+    "Paladin": (5.55, 4.27, 76.9), "Rogue": (6.08, 4.93, 81.1), "Ranger": (6.09, 4.73, 77.8),
+    "Runecaster": (5.43, 4.14, 76.2), "Druid": (5.86, 4.55, 77.6), "Necromancer": (5.03, 3.79, 75.4),
+}  # each value: (pulls, wins_per_trip, wins_per_pull_pct)
+
 # Shared per-class lookup tables -- used anywhere a diagnostic needs to
 # treat all classes uniformly (mobs are tuned class-agnostic, so any
 # roster-level stat, like mob difficulty, should be averaged across all
@@ -562,6 +580,116 @@ def print_combo_dominance_report(mod, has_stance, mob_key, max_hp, card_a, card_
     overall_pct = 100 * total_together / total_scored if total_scored else 0.0
     print(f"  {'OVERALL':10s} {overall_pct:.1f}% of scored hand/mob pairs play both cards together")
     return report
+
+
+def worst_pair_round2_breadth(mod, has_stance, mob_key, max_hp):
+    """Answers a different question than combo_dominance_report: not "whenever both cards are
+    drawn, are they always played together" (which can be true even for an ordinary 3-round
+    fight), but "is there a single, fixed 2-card ordering that ends the fight by round 2 --
+    skipping round 3 entirely -- across most or all of the roster's mobs, with no need to know
+    which mob you're facing." Built 2026-08-30 during the Paladin rebalance, after the user's
+    question "if I see card A and card B, do I even need to think about the mob" turned out to
+    have a precise, checkable answer combo_dominance_report alone couldn't give: Paladin's
+    Might of the Aegis(4)+Bastion's Hammer(6)=10 raw damage cleared literally every Standard
+    mob's HP (ceiling 10) by round 2, no mechanic involved at all, and combo_dominance_sweep's
+    own 80%-co-play threshold hadn't flagged that specific pair as the worst offender (it
+    flagged three OTHER Paladin pairs instead, none of which were fast finishers).
+
+    For every ordered 2-card pair (card A played round 1, B round 2 -- order matters), counts
+    how many of the 6 Standard mobs that exact pair, played in that exact order, wins by round
+    2 against (for at least one hand containing both cards). The pair with the widest mob
+    coverage is the "worst pair" -- that count out of 6 is the headline number. Also returns
+    the aggregate rate: of all 90 hand x mob combinations (15 hands x 6 mobs), what fraction
+    finish by round 2 via ANY winning line at all, not just the worst pair -- context for how
+    "puzzle-light" the class is overall, since a class can have a narrow worst pair but still a
+    high aggregate rate spread across many different pairs (or vice versa).
+
+    A rough, non-binding target established through actual play (Paladin's fix, not derived
+    from first principles): worst-pair breadth of 1-2/6 reads as "acceptable, most mobs still
+    require reading the hand/matchup"; 3/6 was accepted as the practical floor after diminishing
+    returns set in (see CLASS_BALANCE_GUIDE.md's Paladin section for the whack-a-mole pattern
+    that caused this); 5-6/6 is the shape that started this whole investigation and should be
+    treated as a real problem, not a strong class.
+
+    **`pairs_at_max` and `max_pairs_share_mobs` distinguish "one shortcut" from "these mobs are
+    just soft" -- added 2026-08-30, after a first attempt at this distinction
+    (hand/mob-win-count "concentration") was built, checked against real data, and found NOT to
+    discriminate cleanly (Paladin's original clearly-bad case scored 25.0% by that measure,
+    Cleric's fine post-fix case scored 18.8% -- too close to be a useful signal, discarded
+    rather than kept once the check disagreed with the ground truth).** What actually separates
+    the two cases in the raw per-pair breakdown: Paladin's original worst pair stood alone (5/6,
+    next pair down at 4/6 -- a real gap, and its mob set was nearly the whole roster on its
+    own). Cleric's post-fix state instead has THREE different, unrelated pairs all tied at the
+    exact same 3/6 ceiling, and critically, **hitting the identical 3 mobs** (Enforcer/Raider/
+    Scout) -- no single pair is special, they're redundant routes to the same result, which
+    reads as "these 3 low-HP mobs are just soft against almost any real 2-card line," not a
+    discoverable shortcut. `pairs_at_max` (how many distinct pairs tie the worst breadth) and
+    `max_pairs_share_mobs` (True if every one of those tied pairs hits the exact same mob set)
+    together capture this: `pairs_at_max` near 1 with a wide `worst_breadth` is the real
+    pattern-recognition problem; `pairs_at_max` several-and-up with `max_pairs_share_mobs=True`
+    is softness in a handful of specific mobs, a different and usually less urgent finding.
+
+    Returns a dict: worst_pair (tuple or None), worst_breadth (0-6), worst_mobs (sorted list of
+    mob names), aggregate_fastkills (int, out of 90), aggregate_pct (float 0-100),
+    distinct_pairs (int, how many different ordered pairs contribute at least one round-2 win
+    at all), pairs_at_max (int, how many distinct pairs tie worst_breadth exactly),
+    max_pairs_share_mobs (bool, True if every pair tied at worst_breadth hits the identical mob
+    set as worst_mobs)."""
+    pair_mobs = {}
+    total_fastkills = 0
+    for mob_name in MOB_NAMES:
+        pattern, mob_hp = MOBS[mob_name][mob_key]
+        for hand in mod.ALL_HANDS:
+            if has_stance:
+                best_key = None
+                best_seq = None
+                for seq in mod.orderings(hand):
+                    for stance in mod.STANCE_SEQS:
+                        win, hp_left, rounds = mod.simulate(seq, stance, pattern, mob_hp, starting_hp=max_hp)
+                        key = (win, hp_left)
+                        if best_key is None or key > best_key:
+                            best_key = key
+                            best_seq, best_rounds = seq, rounds
+            else:
+                best_key = None
+                best_seq = None
+                for seq in mod.orderings(hand):
+                    win, hp_left, rounds = mod.simulate(seq, pattern, mob_hp, starting_hp=max_hp)
+                    key = (win, hp_left)
+                    if best_key is None or key > best_key:
+                        best_key = key
+                        best_seq, best_rounds = seq, rounds
+            win = best_key[0]
+            if win and best_rounds == 2:
+                total_fastkills += 1
+                pair = (best_seq[0], best_seq[1])
+                pair_mobs.setdefault(pair, set()).add(mob_name)
+    if not pair_mobs:
+        return {"worst_pair": None, "worst_breadth": 0, "worst_mobs": [],
+                "aggregate_fastkills": total_fastkills, "aggregate_pct": 100 * total_fastkills / 90,
+                "distinct_pairs": 0, "pairs_at_max": 0, "max_pairs_share_mobs": True}
+    worst_pair, worst_mobs = max(pair_mobs.items(), key=lambda kv: len(kv[1]))
+    worst_breadth = len(worst_mobs)
+    tied = [p for p, mobs in pair_mobs.items() if len(mobs) == worst_breadth]
+    share_mobs = all(pair_mobs[p] == worst_mobs for p in tied)
+    return {"worst_pair": worst_pair, "worst_breadth": worst_breadth, "worst_mobs": sorted(worst_mobs),
+            "aggregate_fastkills": total_fastkills, "aggregate_pct": 100 * total_fastkills / 90,
+            "distinct_pairs": len(pair_mobs), "pairs_at_max": len(tied), "max_pairs_share_mobs": share_mobs}
+
+
+def print_worst_pair_round2_breadth(mod, has_stance, mob_key, max_hp, label=None):
+    r = worst_pair_round2_breadth(mod, has_stance, mob_key, max_hp)
+    prefix = f"{label}: " if label else ""
+    if r["worst_pair"] is None:
+        print(f"{prefix}no pair ever finishes by round 2")
+    else:
+        a, b = r["worst_pair"]
+        shape = ("one pair stands alone" if r["pairs_at_max"] == 1
+                 else f"{r['pairs_at_max']} pairs tied" + (", same mobs (soft matchups)" if r["max_pairs_share_mobs"] else ", different mobs"))
+        print(f"{prefix}worst_pair_breadth={r['worst_breadth']}/6  pair=({a!r}, {b!r})  "
+              f"mobs={r['worst_mobs']}  agg_fastkills={r['aggregate_fastkills']}/90 ({r['aggregate_pct']:.1f}%)  "
+              f"distinct_pairs={r['distinct_pairs']}  [{shape}]")
+    return r
 
 
 # ---------------------------------------------------------------------------
@@ -1376,7 +1504,7 @@ def tuning_report(label, mod, has_stance, mob_key, max_hp, max_hp_attr, run_trip
     wins_range = (min(r[1] for r in pack_results.values()), max(r[1] for r in pack_results.values()))
     wpp_range = (min(r[2] for r in pack_results.values()), max(r[2] for r in pack_results.values()))
     print()
-    print(f"pack range: pulls {pulls_range[0]:.2f}-{pulls_range[1]:.2f}   "
+    print(f"pack range (LIVE, current roster): pulls {pulls_range[0]:.2f}-{pulls_range[1]:.2f}   "
           f"wins/trip {wins_range[0]:.2f}-{wins_range[1]:.2f}   wins/pull {wpp_range[0]:.1f}-{wpp_range[1]:.1f}%")
 
     def _tag(v, r):
@@ -1384,6 +1512,17 @@ def tuning_report(label, mod, has_stance, mob_key, max_hp, max_hp_attr, run_trip
 
     print(f"{label}: pulls {_tag(avg_p, pulls_range)}   wins/trip {_tag(avg_w, wins_range)}   "
           f"wins/pull {_tag(wpp, wpp_range)}")
+
+    frozen_pulls_range = (min(r[0] for r in FROZEN_BASELINE_2026_08_30.values()), max(r[0] for r in FROZEN_BASELINE_2026_08_30.values()))
+    frozen_wins_range = (min(r[1] for r in FROZEN_BASELINE_2026_08_30.values()), max(r[1] for r in FROZEN_BASELINE_2026_08_30.values()))
+    frozen_wpp_range = (min(r[2] for r in FROZEN_BASELINE_2026_08_30.values()), max(r[2] for r in FROZEN_BASELINE_2026_08_30.values()))
+    print(f"pack range (FROZEN, pre-2026-08-30 baseline): pulls {frozen_pulls_range[0]:.2f}-{frozen_pulls_range[1]:.2f}   "
+          f"wins/trip {frozen_wins_range[0]:.2f}-{frozen_wins_range[1]:.2f}   wins/pull {frozen_wpp_range[0]:.1f}-{frozen_wpp_range[1]:.1f}%")
+    print(f"{label} vs FROZEN: pulls {_tag(avg_p, frozen_pulls_range)}   wins/trip {_tag(avg_w, frozen_wins_range)}   "
+          f"wins/pull {_tag(wpp, frozen_wpp_range)}")
+    if (pulls_range != frozen_pulls_range) or (wins_range != frozen_wins_range) or (wpp_range != frozen_wpp_range):
+        print("NOTE: live pack range has drifted from the frozen baseline (expected once classes get fixed -- "
+              "compare the two ranges above directly if that drift itself needs scrutiny).")
 
     return dict(pulls=avg_p, wins=avg_w, wins_per_pull=wpp, flee_rate=flee_rate, pack=pack_results)
 

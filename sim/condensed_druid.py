@@ -139,14 +139,17 @@ DRUID_HP = 15
 # Form-synergy modifier. aggro: co-op Party Pull targeting value -- NOT YET ASSIGNED except
 # Shapeshift: Grizzly (given directly); every other card's 0 is a placeholder, not a real
 # locked value, matching every other class's actual build order (aggro assigned after lock).
+# version: printed-card revision number, bumped only when a card's printed text/numbers
+# change -- lets a physical deck owner tell which cards need reprinting. See
+# CARD_REFERENCE.md's own note for the convention.
 CARDS = {
-    "Shapeshift: Grizzly": dict(combat_type="melee",dmg=2, heal=0, block=3, tag="shapeshift", aggro=4),
-    "Maul": dict(combat_type="melee",dmg=2, heal=0, block=2, tag="shapeshift", aggro=0),
-    "Swipe": dict(combat_type="melee",dmg=3, heal=0, block=0, tag="shapeshift", aggro=0),
-    "Solar Flare": dict(combat_type="ranged",dmg=5, heal=0, block=0, tag="eclipse", aggro=0),
-    "Moonbeam": dict(combat_type="ranged",dmg=5, heal=1, block=0, tag="eclipse", aggro=0),
+    "Shapeshift: Grizzly": dict(combat_type="melee",dmg=2, heal=0, block=3, tag="shapeshift", aggro=4, version=1),
+    "Maul": dict(combat_type="melee",dmg=2, heal=0, block=2, tag="shapeshift", aggro=0, version=1),
+    "Swipe": dict(combat_type="melee",dmg=3, heal=0, block=0, tag="shapeshift", aggro=0, version=1),
+    "Solar Flare": dict(combat_type="ranged",dmg=5, heal=0, block=0, tag="eclipse", aggro=0, version=1),
+    "Moonbeam": dict(combat_type="ranged",dmg=5, heal=1, block=0, tag="eclipse", aggro=0, version=1),
     "Nature's Wildguard": dict(combat_type="melee",dmg=0, heal=2, block=2, tag="eclipse", aggro=0,
-                                  heal_scales_with_eclipse=True),
+                                  heal_scales_with_eclipse=True, version=1),
 }
 DECK = list(CARDS.keys())
 
