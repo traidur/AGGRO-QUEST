@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PvP Contention!</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="layout">
+        {% include "_hero_sidebar.html" %}
+        <div class="main-content">
+            {% for msg in flash %}<div class="flash">{{ msg }}</div>{% endfor %}
+            <h2>Node Contested: {{ node }}</h2>
+            <p>Another hero has arrived at this node. Do you declare Peace or War?</p>
+            <form action="{{ url_for('cmp_pvp_declare_peace') }}" method="POST" style="display:inline;">
+                <button type="submit" class="btn">Declare Peace</button>
+            </form>
+            <form action="{{ url_for('cmp_pvp_declare_war') }}" method="POST" style="display:inline;">
+                <button type="submit" class="btn" style="background:#d9534f; color:white;">Declare War!</button>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

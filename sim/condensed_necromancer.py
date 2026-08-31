@@ -220,11 +220,11 @@ CARDS = {
                                dot_payoff=False, echo_dmg=0, killing_blow=False, aggro=0, version=1),
     "Sowing Dread": dict(combat_type="ranged",dmg=2, heal=0, block=0, grants_range=True, dot=True,
                                dot_payoff=False, echo_dmg=0, killing_blow=False, aggro=0, version=1),
-    "Reap": dict(combat_type="melee",dmg=4, heal=0, block=0, grants_range=False, dot=False,
+    "Reap": dict(combat_type="ranged",dmg=4, heal=0, block=0, grants_range=False, dot=False,
                                dot_payoff=True, echo_dmg=0, killing_blow=False, aggro=0, version=2),
     "Blight": dict(combat_type="ranged",dmg=1, heal=0, block=0, grants_range=False, dot=True,
                                dot_payoff=False, echo_dmg=3, killing_blow=False, aggro=0, version=2),
-    "Death Blow": dict(combat_type="melee",dmg=4, heal=0, block=0, grants_range=False, dot=False,
+    "Death Blow": dict(combat_type="ranged",dmg=4, heal=0, block=0, grants_range=False, dot=False,
                                dot_payoff=False, echo_dmg=0, killing_blow=True, aggro=0, version=1),
 }
 DECK = list(CARDS.keys())

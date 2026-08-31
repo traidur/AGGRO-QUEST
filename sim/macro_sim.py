@@ -480,17 +480,17 @@ LEVEL2_PURCHASED_ORDER = {
     "cleric": [
         ("Fiery Fortitude", "Holy Fiery Fortitude", dict(dmg=4, heal=2, block=0, sacred_balance=False,
          max_hp_buff=2, echo_dmg=0, aggro=2)),
-        ("Call of the Void", "Void Storm", dict(dmg=7, heal=0, block=0, sacred_balance=False,
+        ("Call of the Void", "Void Storm", dict(dmg=6, heal=0, block=0, sacred_balance=False,
          max_hp_buff=0, echo_dmg=0, aggro=3)),
         ("Void Mark", "Void Mark [Lv 2]", dict(dmg=4, heal=0, block=0, sacred_balance=False,
          max_hp_buff=0, echo_dmg=1, aggro=1)),
     ],
     "paladin": [
-        ("Sacred Light", "Sanctified Light", dict(dmg=0, heal=4, block=0, strike=False, invocation=None,
+        ("Vigil of Light", "Sanctified Light", dict(dmg=0, heal=4, block=1, strike=False, invocation=None,
          aggro=2, grants_aura_block=False)),
         ("Invocation of Grace", "Invocation of Grace [Lv 2]", dict(dmg=5, heal=0, block=0, strike=False,
          invocation="grace", aggro=3, grants_aura_block=False)),
-        ("Bastion's Hammer", "Bastion's Breaker", dict(dmg=7, heal=0, block=0, strike=True,
+        ("Bastion's Hammer", "Bastion's Breaker", dict(dmg=5, heal=0, block=0, strike=True,
          invocation=None, aggro=2, grants_aura_block=False)),
     ],
     "rogue": [
@@ -504,7 +504,7 @@ LEVEL2_PURCHASED_ORDER = {
         ("Sure Shot", "Bullseye", dict(dmg=5, block=0, grants_range=False, beast_bond=False,
          payoff_prev_range=False, aggro=2)),
         ("Sniper/Point Blank Shot", "Deadeye/Point Blank Shot", dict(dmg=None, block=0, grants_range=False,
-         beast_bond=False, payoff_prev_range=True, dmg_if_prev_range=8, dmg_else=5, aggro=3)),
+         beast_bond=False, payoff_prev_range=True, dmg_if_prev_range=6, dmg_else=4, aggro=3)),
         ("Crippling Shot", "Crippling Shot [Lv 2]", dict(dmg=2, block=2, grants_range=True,
          beast_bond=False, payoff_prev_range=False, aggro=3)),
     ],
@@ -518,7 +518,7 @@ LEVEL2_PURCHASED_ORDER = {
     ],
     "runecaster": [
         ("Lightning Bolt", "Lightning Bolt [Lv 2]", dict(dmg=4, heal=0, block=0, grants_range=False,
-         chain_bonus_if_prev="Chain Lightning", chain_bonus_dmg=1, echo_dmg=0, echo_heal=0, aggro=2)),
+         chain_bonus_if_prev="Chain Lightning", chain_bonus_dmg=0, echo_dmg=0, echo_heal=0, aggro=2)),
         ("Earth Strike Rune", "Earth Strike Rune [Lv 2]", dict(dmg=2, heal=1, block=0, grants_range=False,
          chain_bonus_if_prev=None, chain_bonus_dmg=0, echo_dmg=2, echo_heal=1, aggro=0)),
         ("Windstrike", "Windstrike [Lv 2]", dict(dmg=6, heal=0, block=0, grants_range=False,

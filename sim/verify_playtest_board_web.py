@@ -167,6 +167,15 @@ def run_scripted_competitive_session(specs, seed, max_rounds=6, verbose=False):
             elif phase == "cmp_combat_plan":
                 client.get("/cmp/combat_plan")
                 resp = _submit_active_combat_plan(client, rng, "/cmp/combat_plan/submit")
+            elif phase == "cmp_pvp_initiate":
+                resp = client.post("/cmp/pvp/declare_peace", data={}, follow_redirects=True)
+            elif phase == "cmp_pvp_plan":
+                hero_idx = PW._S["active_hero_idx"]
+                hand = PW._S[f"pvp_hand_{hero_idx}"]
+                import random as rnd
+                plan = rnd.sample(hand, 3)
+                data = {f"card_{i}": c for i, c in enumerate(plan)}
+                resp = client.post("/cmp/pvp/plan/submit", data=data, follow_redirects=True)
             elif phase == "cmp_round_result":
                 resp = client.post("/cmp/round_result/continue", data={}, follow_redirects=True)
             else:

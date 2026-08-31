@@ -41,6 +41,14 @@ Bag/Quest-Log blocks -- one copy instead of four. -->
             {% if hero.xp > 30 %}<span style="font-size:10px; margin-left:4px; align-self:center;">+{{ hero.xp - 30 }}</span>{% endif %}
         </div>
     </div>
+    <div class="sidebar-stat-line" style="align-items: center;">
+        <span style="color:#d9534f; font-weight:bold;" title="Battle Hardened Tokens (PvP)">Tokens ({{ hero.tokens }})</span>
+        <div class="resource-tokens">
+            {% for _ in range(hero.tokens) %}
+                <div class="token-xp" style="background:#d9534f; border-color:#d9534f; animation-delay: {{ loop.index0 * 0.02 }}s;"></div>
+            {% endfor %}
+        </div>
+    </div>
     <div class="sidebar-stat-line"><span>Turn</span><strong>{{ hero.turns }}</strong></div>
 
     {% set match = get_class_matchup(hero.class_name, hero.xp) %}

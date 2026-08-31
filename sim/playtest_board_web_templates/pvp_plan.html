@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PvP Duel!</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='cards.css') }}">
+</head>
+<body>
+    <div class="layout">
+        {% include "_hero_sidebar.html" %}
+        <div class="main-content">
+            {% for msg in flash %}<div class="flash">{{ msg }}</div>{% endfor %}
+            <h2>PvP Duel!</h2>
+            <p>Select exactly 3 cards for Round 1, 2, and 3.</p>
+            <form action="{{ url_for('cmp_pvp_plan_submit') }}" method="POST">
+                <div style="display:flex; gap: 10px; margin-bottom: 20px;">
+                    {% for i in range(3) %}
+                    <div>
+                        <label>Round {{ i+1 }}</label>
+                        <select name="card_{{ i }}">
+                            <option value="">--Select Card--</option>
+                            {% for c in hand %}
+                            <option value="{{ c }}">{{ c }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% endfor %}
+                </div>
+                <button type="submit" class="btn" style="background:#d9534f; color:white;">Commit Sequence</button>
+            </form>
+            <h3>Your Hand:</h3>
+            <div class="hand-container" style="display:flex; gap: 10px;">
+                {% for c in hand %}
+                    {% set c_obj = get_card_obj(hero.class_name, c) %}
+                    {% include "_card.html" %}
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</body>
+</html>

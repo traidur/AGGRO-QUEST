@@ -2,6 +2,7 @@ import './style.css'
 import cardsData from './cards_text.json'
 
 let activeClass = 'all';
+let activeVersion = 'all';
 const classes = Object.keys(cardsData);
 let productionMode = true;
 
@@ -45,9 +46,30 @@ function renderFilters() {
 
   container.querySelectorAll('.filter-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
-      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      container.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
       e.target.classList.add('active');
       activeClass = e.target.getAttribute('data-class');
+      renderSheets();
+    });
+  });
+
+  let vContainer = document.getElementById('version-filters');
+  if (!vContainer) {
+    vContainer = document.createElement('div');
+    vContainer.id = 'version-filters';
+    vContainer.style.marginTop = '10px';
+    container.parentNode.appendChild(vContainer);
+  }
+  
+  vContainer.innerHTML = `<span style="color:#aaa;margin-right:10px;font-family:sans-serif;font-size:14px;">Version:</span><button class="filter-btn active" data-version="all">All</button>`;
+  vContainer.innerHTML += `<button class="filter-btn" data-version="1">v1</button>`;
+  vContainer.innerHTML += `<button class="filter-btn" data-version="2">v2</button>`;
+  
+  vContainer.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      vContainer.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      e.target.classList.add('active');
+      activeVersion = e.target.getAttribute('data-version');
       renderSheets();
     });
   });
@@ -90,12 +112,16 @@ function renderSheets() {
   if (activeClass === 'all') {
     classes.forEach(cls => {
       Object.entries(cardsData[cls]).forEach(([name, data]) => {
-        cardsToRender.push({ className: cls, name, data });
+        if (activeVersion === 'all' || String(data.version || 1) === activeVersion) {
+          cardsToRender.push({ className: cls, name, data });
+        }
       });
     });
   } else {
     Object.entries(cardsData[activeClass]).forEach(([name, data]) => {
-      cardsToRender.push({ className: activeClass, name, data });
+      if (activeVersion === 'all' || String(data.version || 1) === activeVersion) {
+        cardsToRender.push({ className: activeClass, name, data });
+      }
     });
   }
 
@@ -353,7 +379,7 @@ function renderCard({ className, name, data }) {
         </div>
         <div class="card-ftr">
           <div class="ftr-divider"></div>
-          <div class="ftr-class">${className}</div>
+          <div class="ftr-class">${className}${data.version ? ` v${data.version}` : ' v1'}</div>
         </div>
       </div>
     `;
@@ -375,7 +401,7 @@ function renderCard({ className, name, data }) {
         </div>
         <div class="card-ftr">
           <div class="ftr-divider"></div>
-          <div class="ftr-class">${className}</div>
+          <div class="ftr-class">${className}${data.version ? ` v${data.version}` : ' v1'}</div>
         </div>
       </div>
     `;

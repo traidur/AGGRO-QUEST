@@ -110,12 +110,14 @@ def _paladin_lines():
     for name, c in P.CARDS.items():
         parts = []
         if c["invocation"] == "sanctuary":
-            parts.append(f"Deal {c['dmg']} DMG, +1 DMG per STRIKE card already played earlier this pull.")
-            parts.append("Every STRIKE card played afterward also deals +1 DMG when played.")
+            b = P.INVOCATION_PER_STRIKE_BONUS
+            parts.append(f"Deal {c['dmg']} DMG, +{b} DMG per STRIKE card already played earlier this pull.")
+            parts.append(f"Every STRIKE card played afterward also deals +{b} DMG when played.")
             parts.append("Only the first Invocation card played each pull gets any bonus (backward or forward) -- a second one is legal to play but deals/heals its flat base only and never becomes Active.")
         elif c["invocation"] == "grace":
-            parts.append(f"Deal {c['dmg']} DMG. Heal 1 HP per STRIKE card already played earlier this pull.")
-            parts.append("Every STRIKE card played afterward also heals +1 HP when played.")
+            b = P.INVOCATION_PER_STRIKE_BONUS
+            parts.append(f"Deal {c['dmg']} DMG. Heal {b} HP per STRIKE card already played earlier this pull.")
+            parts.append(f"Every STRIKE card played afterward also heals +{b} HP when played.")
             parts.append("Only the first Invocation card played each pull gets any bonus (backward or forward) -- a second one is legal to play but deals/heals its flat base only and never becomes Active.")
         else:
             if c["dmg"]:

@@ -125,6 +125,7 @@ class HeroBoardState:
     locked: list
     gold: int = 0
     xp: int = 0
+    tokens: int = 0
     active_quests: list = field(default_factory=list)
     acquired: set = field(default_factory=set)
     consumables_used: dict = field(default_factory=lambda: {"food": 0, "potion": 0})

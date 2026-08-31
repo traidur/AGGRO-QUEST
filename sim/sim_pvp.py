@@ -122,9 +122,7 @@ def resolve_duel(class_A, seq_A, class_B, seq_B):
     dmg_done_by_B = max_hp_A - hp_A
     
     # NEW WIN CONDITION: Damage Dealt + Max HP
-    score_A = dmg_done_by_A + max_hp_A
-    score_B = dmg_done_by_B + max_hp_B
-    return score_A - score_B
+    return dmg_done_by_A, dmg_done_by_B
 
 def evaluate_matchup(class_A, class_B):
     hands_A = CLASSES[class_A][3]
@@ -140,7 +138,8 @@ def evaluate_matchup(class_A, class_B):
     def cached_duel(s_A, s_B):
         k = (s_A, s_B)
         if k not in cache:
-            cache[k] = resolve_duel(class_A, s_A, class_B, s_B)
+            dA, dB = resolve_duel(class_A, s_A, class_B, s_B)
+            cache[k] = (dA + CLASSES[class_A][2]) - (dB + CLASSES[class_B][2])
         return cache[k]
     
     for i, sA_list in enumerate(seqs_A):
@@ -162,16 +161,17 @@ def evaluate_matchup(class_A, class_B):
             
     return total_ev / count
 
-class_names = list(CLASSES.keys())
-print('| Attacker \\\ Defender | ' + ' | '.join(class_names) + ' |')
-print('|---' * (len(class_names) + 1) + '|')
-
-for cA in class_names:
-    row = [f'**{cA}**']
-    for cB in class_names:
-        if cA == cB:
-            row.append('0.00')
-        else:
-            ev = evaluate_matchup(cA, cB)
-            row.append(f'{ev:+.2f}')
-    print('| ' + ' | '.join(row) + ' |')
+if __name__ == "__main__":
+    class_names = list(CLASSES.keys())
+    print('| Attacker \\ Defender | ' + ' | '.join(class_names) + ' |')
+    print('|---' * (len(class_names) + 1) + '|')
+    
+    for cA in class_names:
+        row = [f'**{cA}**']
+        for cB in class_names:
+            if cA == cB:
+                row.append('0.00')
+            else:
+                ev = evaluate_matchup(cA, cB)
+                row.append(f'{ev:+.2f}')
+        print('| ' + ' | '.join(row) + ' |')

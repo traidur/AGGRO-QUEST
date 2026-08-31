@@ -65,9 +65,9 @@ Generated directly from each class's real `CARDS` dict in `sim/condensed_<class>
 
 **Holy Fortress** -- 3 DMG. 4 Block. (Aggro 4 v2)
 
-**Invocation of Sanctuary** [INVOCATION] -- Deal 3 DMG, +1 DMG per STRIKE card already played earlier this pull. Every STRIKE card played afterward also deals +1 DMG when played. Only the first Invocation card played each pull gets any bonus (backward or forward) -- a second one is legal to play but deals/heals its flat base only and never becomes Active. (Aggro 3 v2)
+**Invocation of Sanctuary** [INVOCATION] -- Deal 3 DMG, +2 DMG per STRIKE card already played earlier this pull. Every STRIKE card played afterward also deals +2 DMG when played. Only the first Invocation card played each pull gets any bonus (backward or forward) -- a second one is legal to play but deals/heals its flat base only and never becomes Active. (Aggro 3 v2)
 
-**Invocation of Grace** [INVOCATION] -- Deal 4 DMG. Heal 1 HP per STRIKE card already played earlier this pull. Every STRIKE card played afterward also heals +1 HP when played. Only the first Invocation card played each pull gets any bonus (backward or forward) -- a second one is legal to play but deals/heals its flat base only and never becomes Active. (Aggro 3 v2)
+**Invocation of Grace** [INVOCATION] -- Deal 4 DMG. Heal 2 HP per STRIKE card already played earlier this pull. Every STRIKE card played afterward also heals +2 HP when played. Only the first Invocation card played each pull gets any bonus (backward or forward) -- a second one is legal to play but deals/heals its flat base only and never becomes Active. (Aggro 3 v2)
 
 
 ## Rogue (HP 15)

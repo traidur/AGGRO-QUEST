@@ -32,6 +32,17 @@
 
 ## Log
 
+### 2026-08-30 — Gemini — PvP Engine Fixes & Token Rebalance (settled)
+
+**Context:** The user requested an update on the PvP Battle Hardened tokens after the recent PvE rebalances. This led to discovering a massive structural flaw in the Necromancer's design.
+
+**What was found and fixed:**
+- **Necromancer Evasion Trap Fixed:** The Necromancer's PvP win-rate was sitting at a dismal 1-7 because its two biggest damage dealers (`Reap` and `Death Blow`) were both flagged as `combat_type="melee"`. This meant that against any class with `grants_range` (Wizard, Ranger, etc.), the Necromancer's big setup payoffs were completely dodged and zeroes out. The user confirmed that these are magical/dark magic abilities, not physical weapon strikes. `Reap` and `Death Blow` were changed to `combat_type="ranged"` in `condensed_necromancer.py`. 
+- **True PvP Baseline Restored:** Note for future AI: avoid using experimental scripts like `sim_final_pvp.py`. The user confirmed that the 'Triple Buff' rules (Unlocked Execute, Glancing Blows) were rejected for PvP. The true baseline remains `sim_pvp.py`, which is what `playtest_board_web.py` natively uses.
+- **PvP Token Rebalance:** After applying the Necromancer `combat_type` fix, I ran a new steady-state token simulation (`sim_avg_tokens.py`) against the true PvP baseline. The Necromancer's mathematical token bleed improved from ~4.2 down to ~3.8. To properly buffer them for the early campaign, the user agreed to bump the Necromancer's starting tokens in `playtest_board_web.py` to **3 tokens** (Warrior/Rogue/Runecaster remain at 2, Paladin 1, others 0).
+
+**Don't touch:** nothing currently flagged — this work is locked in the working tree.
+
 ### 2026-08-30 — Claude — Necromancer rebalance + roster-wide mob-Block engine fix (settled; one open item flagged for a second opinion)
 
 **Context:** Applying an already-validated round2-breadth-shortcut recipe (see `CLASS_BALANCE_GUIDE.md`'s "Fixing a worst-pair round-2 shortcut" section, proven on Paladin/Cleric/Ranger/Wizard/Runecaster) to Necromancer surfaced a real combat-engine bug, not just another balance question.

@@ -26,14 +26,15 @@ for cls, builder in builders.items():
     for name, text, aggro in builder():
         tags = gcr._tags(gcr.CARDS_BY_CLASS[title_cls][name])
         
+        c_data = gcr.CARDS_BY_CLASS[title_cls][name]
+
         card_obj = {
             "text": text,
             "aggro": aggro,
             "tags": tags,
-            "split": False
+            "split": False,
+            "version": c_data.get("version", 1)
         }
-        
-        c_data = gcr.CARDS_BY_CLASS[title_cls][name]
 
         # Extract badges
         badges = {}
@@ -229,16 +230,18 @@ for cls, builder in builders.items():
                 })
                 
             if c_data.get("invocation") == "sanctuary":
+                b = gcr.P.INVOCATION_PER_STRIKE_BONUS
                 card_obj["panels"].append({
                     "type": "invocation",
                     "label": "INVOCATION",
-                    "text": "**+1 DMG** per STRIKE card already played earlier this pull. Every STRIKE card played afterward also deals **+1 DMG** when played. (Only one Invocation card may ever be played per pull.)"
+                    "text": f"**+{b} DMG** per STRIKE card already played earlier this pull. Every STRIKE card played afterward also deals **+{b} DMG** when played. (Only one Invocation card may ever be played per pull.)"
                 })
             elif c_data.get("invocation") == "grace":
+                b = gcr.P.INVOCATION_PER_STRIKE_BONUS
                 card_obj["panels"].append({
                     "type": "invocation",
                     "label": "INVOCATION",
-                    "text": "Heal **1 HP** per STRIKE card already played earlier this pull. Every STRIKE card played afterward also heals **+1 HP** when played. (Only one Invocation card may ever be played per pull.)"
+                    "text": f"Heal **{b} HP** per STRIKE card already played earlier this pull. Every STRIKE card played afterward also heals **+{b} HP** when played. (Only one Invocation card may ever be played per pull.)"
                 })
 
         if cls == "rogue":

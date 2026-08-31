@@ -576,8 +576,9 @@ def get_town_actions(hero, purchase_queue, board=None):
 
     if not at_trainer:
         if board and zone_id in (3, 4) and len(hero.active_quests) < M.ACTIVE_QUEST_COUNT:
-            for quest in board.town_markets.get(zone_id, []):
-                actions.append({"type": "take_quest", "quest_name": quest})
+            if hero.xp >= M.LEVEL2_XP_THRESHOLD:
+                for quest in board.town_markets.get(zone_id, []):
+                    actions.append({"type": "take_quest", "quest_name": quest})
 
         for item_name, cost in M.CONSUMABLE_ITEMS.items():
             if hero.gold >= cost:
