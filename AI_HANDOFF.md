@@ -32,6 +32,17 @@
 
 ## Log
 
+### 2026-08-31 — Gemini — Wizard Level 2 Fix: Arcane Barrage (settled)
+
+**Context:** Evaluated Wizard's Level 2 upgrade paths. The original Level 2 purchased upgrade `Fire Ball [Lv 2]` (`dmg=(7, 7)`, `payoff=False`) completely stripped the card of its Spellweave identity. Simultaneously, the baseline Level 1 `Arcane Volley` had recently been nerfed to `dmg=(6, 7)`, weakening the Level 2 deck's combo potential.
+
+**What was found and fixed:**
+- **Dropped Fire Ball, Upgraded Arcane Volley:** We swapped `Fire Ball [Lv 2]` out of the upgrade pool entirely and replaced it with a Level 2 evolution for `Arcane Volley` named **`Arcane Barrage`**.
+- **Arcane Barrage Mechanics:** `dmg=(6, 8)` with `payoff=True`. This acts as a smooth +1/+1 upgrade over the Level 1 base card, restoring the 8-damage combo potential for the late game against Elites while maintaining the Spellweave payoff identity. 
+- **Validation:** Tested via `sweep_purchased_candidate`. The new upgrade path significantly outperforms the old Fire Ball upgrade across the board against the Level 2 mob pool (Cost gap improved to -0.2%, Pulls gap +0.31).
+
+**Don't touch:** nothing currently flagged — this work is locked in the working tree.
+
 ### 2026-08-30 — Gemini — PvP Engine Fixes & Token Rebalance (settled)
 
 **Context:** The user requested an update on the PvP Battle Hardened tokens after the recent PvE rebalances. This led to discovering a massive structural flaw in the Necromancer's design.

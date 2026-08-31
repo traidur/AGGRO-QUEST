@@ -509,8 +509,8 @@ LEVEL2_PURCHASED_ORDER = {
          beast_bond=False, payoff_prev_range=False, aggro=3)),
     ],
     "wizard": [
-        ("Fire Ball", "Fire Ball [Lv 2]", dict(dmg=(7, 7), block=0, grants_range=False,
-         weave_source=False, payoff=False, aggro=3)),
+        ("Arcane Volley", "Arcane Barrage", dict(dmg=(6, 8), block=0, grants_range=False,
+         weave_source=False, payoff=True, aggro=3)),
         ("Ice Barricade", "Ice Palisade", dict(dmg=(1, 1), block=10, grants_range=False,
          weave_source=True, payoff=False, aggro=2)),
         ("Snap Freeze", "Deep Freeze", dict(dmg=(2, 2), block=2, grants_range=True, weave_source=True,
