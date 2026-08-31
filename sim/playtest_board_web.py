@@ -378,9 +378,9 @@ def _new_hero(class_name, rng):
     start_tokens = 0
     if class_name == "necromancer":
         start_tokens = 3
-    elif class_name in ("rogue", "warrior", "runecaster"):
+    elif class_name in ("rogue", "warrior"):
         start_tokens = 2
-    elif class_name == "paladin":
+    elif class_name in ("ranger", "wizard", "cleric", "runecaster"):
         start_tokens = 1
         
     hero = HeroBoardState(class_name=class_name, hp=max_hp, max_hp=max_hp, position=(1, "town"),
