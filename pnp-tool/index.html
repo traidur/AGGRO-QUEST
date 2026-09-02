@@ -77,6 +77,7 @@
       
       .nav-card.heroes::before { background: linear-gradient(90deg, #c79c6e, #f58cba, #69ccf0); }
       .nav-card.mobs::before { background: linear-gradient(90deg, #800000, #ff4444); }
+      .nav-card.quests::before { background: linear-gradient(90deg, #f1c40f, #27ae60); }
       
       .nav-card:hover {
         transform: translateY(-10px);
@@ -101,14 +102,15 @@
       .nav-desc {
         font-family: 'Crimson Pro', serif;
         font-size: 16px;
-        color: #999;
+        color: #aaa;
         text-align: center;
         padding: 0 30px;
-        line-height: 1.4;
+        line-height: 1.5;
       }
       
       .nav-card.heroes:hover .nav-title { color: #fdf5ec; }
       .nav-card.mobs:hover .nav-title { color: #ffcccc; }
+      .nav-card.quests:hover .nav-title { color: #fff; }
     </style>
   </head>
   <body>
@@ -126,6 +128,12 @@
         <div class="icon">🐉</div>
         <div class="nav-title">Mob Deck</div>
         <div class="nav-desc">Print the Standard and Elite mob encounters with round-by-round trackers.</div>
+      </a>
+
+      <a href="/quests.html" class="nav-card quests">
+        <div class="icon">📜</div>
+        <div class="nav-title">Items Deck</div>
+        <div class="nav-desc">Print the Quests, Quest Loot Tokens, and Consumables.</div>
       </a>
     </div>
   </body>

@@ -215,7 +215,7 @@ BONEGUARD_OFFERING_BOOSTED = "Boneguard's Offering (Boosted)"  # virtual variant
 # CARD_REFERENCE.md's own note for the convention.
 CARDS = {
     BONEGUARD_OFFERING: dict(combat_type="melee",dmg=0, heal=0, block=2, grants_range=True, dot=False,
-                              dot_payoff=False, echo_dmg=0, killing_blow=False, aggro=0, version=1),
+                              dot_payoff=False, echo_dmg=0, killing_blow=False, blood_magic=True, aggro=0, version=1),
     "Soul Harvest": dict(combat_type="ranged",dmg=3, heal=2, block=0, grants_range=False, dot=False,
                                dot_payoff=False, echo_dmg=0, killing_blow=False, aggro=0, version=1),
     "Sowing Dread": dict(combat_type="ranged",dmg=2, heal=0, block=0, grants_range=True, dot=True,
@@ -243,19 +243,36 @@ CARDS[BONEGUARD_OFFERING_BOOSTED]["heal"] = -HP_FOR_DMG_COST
 
 
 def orderings(hand):
-    """All 3-card sequences for a hand -- if Boneguard's Offering is present, also includes
-    every sequence with it swapped for its boosted variant, so best_line_for_hand picks
-    whichever is actually better automatically, same as it already does for any other choice
-    (e.g. Warrior's Guardian/Champion). No separate search path needed, unlike Death Pact's
-    original draft."""
+    """All 3-card sequences for a hand -- if Boneguard's Offering (or its leveled replacement)
+    is present, also includes every sequence with it swapped for its boosted variant, so
+    best_line_for_hand picks whichever is actually better automatically, same as it already
+    does for any other choice (e.g. Warrior's Guardian/Champion).
+
+    **Never mutate CARDS here** -- a prior version of this function inserted a
+    `"<card> (Boosted)"` entry into the module-level CARDS dict on first sight, using
+    generic HP_FOR_DMG_BONUS/HP_FOR_DMG_COST constants instead of the card's own
+    boosted_dmg/boosted_heal/boosted_block fields. That pre-empted resolve_round's own,
+    correct on-the-fly computation below (it only computes a boosted card's stats if the
+    name ISN'T already in CARDS) and silently shipped wrong numbers for any leveled
+    blood-magic card (verified: Boneguard's Bargain (Boosted) computed dmg=3/heal=-4
+    instead of the intended dmg=4/heal=-3). Reverted 2026-09-01. This function only ever
+    returns card-name strings; resolve_round is the one place a boosted card's actual
+    stats get computed, exactly once, correctly, from that card's own dict."""
     base = list(itertools.permutations(hand, 3))
-    if BONEGUARD_OFFERING not in hand:
+
+    # Dynamically find which card in hand actually HAS the blood_magic tag,
+    # so if leveling renames "Boneguard's Offering" to "Boneguard's Bargain", this doesn't silently break.
+    blood_card = next((name for name in hand if "Boosted" not in name and CARDS.get(name, {}).get("blood_magic")), None)
+
+    if not blood_card:
         return base
+
+    boosted_card = f"{blood_card} (Boosted)"
     boosted = []
     for seq in base:
-        if BONEGUARD_OFFERING in seq:
-            idx = seq.index(BONEGUARD_OFFERING)
-            boosted.append(seq[:idx] + (BONEGUARD_OFFERING_BOOSTED,) + seq[idx + 1:])
+        if blood_card in seq:
+            idx = seq.index(blood_card)
+            boosted.append(seq[:idx] + (boosted_card,) + seq[idx + 1:])
     return base + boosted
 
 
@@ -275,7 +292,17 @@ def resolve_round(state, card_name, stance, round_num, mob_pattern, mob_hp_total
     card both deal damage in the same round, Block absorbs the Echo first (since it resolves
     first), and whatever's left over -- possibly nothing -- reduces this round's own card
     damage. Every point of Block is single-use within the round, first hit served first."""
-    card = CARDS[card_name]
+    if "(Boosted)" in card_name and card_name not in CARDS:
+        base_name = card_name.replace(" (Boosted)", "")
+        base_card = CARDS[base_name]
+        card = dict(base_card)
+        card["dmg"] = base_card.get("boosted_dmg", HP_FOR_DMG_BONUS)
+        card["heal"] = base_card.get("boosted_heal", -HP_FOR_DMG_COST)
+        if "boosted_block" in base_card:
+            card["block"] = base_card["boosted_block"]
+    else:
+        card = CARDS[card_name]
+        
     mob_atk, mob_block, mob_type = mob_pattern[round_num]
     remaining_block = mob_block  # depletes as it absorbs damage this round, first-come-first-served
 
@@ -287,8 +314,8 @@ def resolve_round(state, card_name, stance, round_num, mob_pattern, mob_hp_total
         new_remaining -= (echo_dmg - absorbed)
 
     dmg, heal, block = card["dmg"], card["heal"], card["block"]
-    if card["dot_payoff"]:
-        dmg += state.dot_played_before
+    if card.get("dot_payoff"):
+        dmg += state.dot_played_before * card.get("dot_multiplier", 1)
 
     new_hp = min(hero_max_hp, hero_hp + heal)
 

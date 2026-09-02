@@ -113,6 +113,7 @@ class ZoneBoardState:
     once a Deal has happened for this Zone this turn, since Deal is a full, unconditional
     refresh of every Node, not a partial one."""
     dealt: dict = field(default_factory=dict)
+    gathering_tokens: dict = field(default_factory=dict)  # node_name -> token type
 
 
 @dataclass

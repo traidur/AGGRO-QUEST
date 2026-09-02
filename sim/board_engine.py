@@ -1882,8 +1882,9 @@ def run_competitive_chain(class_names_list, strategy, rng, max_rounds,
                 while True:
                     town_actions = get_town_actions(hero, purchase_queues[hero_idx], board)
                     buyable = next((a for a in town_actions if a["type"] == "buy"), None)
+                    buy_food = next((a for a in town_actions if a["type"] == "buy_consumable" and a["item_name"] == "food"), None)
                     take = next((a for a in town_actions if a["type"] == "take_quest"), None)
-                    chosen = take if take else (buyable if buyable else next(a for a in town_actions if a["type"] == "leave_town"))
+                    chosen = take if take else (buyable if buyable else (buy_food if buy_food else next(a for a in town_actions if a["type"] == "leave_town")))
                     still_in_town = apply_town_action(hero, chosen, purchase_queues[hero_idx], board, rng)
                     if not still_in_town:
                         break

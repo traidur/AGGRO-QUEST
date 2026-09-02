@@ -1,0 +1,216 @@
+{
+  "quests": {
+    "Pilfered Goods": {
+      "tier": "Level 1",
+      "required": 2,
+      "base_xp": 2,
+      "gold_ladder": [
+        4,
+        2,
+        1,
+        0
+      ]
+    },
+    "Syndicate Ledger": {
+      "tier": "Level 1",
+      "required": 2,
+      "base_xp": 2,
+      "gold_ladder": [
+        4,
+        2,
+        1,
+        0
+      ]
+    },
+    "Contraband Crates": {
+      "tier": "Level 1",
+      "required": 2,
+      "base_xp": 2,
+      "gold_ladder": [
+        4,
+        2,
+        1,
+        0
+      ]
+    },
+    "Stolen Signet": {
+      "tier": "Level 1",
+      "required": 2,
+      "base_xp": 2,
+      "gold_ladder": [
+        4,
+        2,
+        1,
+        0
+      ]
+    },
+    "Smuggled Cargo": {
+      "tier": "Level 1",
+      "required": 2,
+      "base_xp": 2,
+      "gold_ladder": [
+        4,
+        2,
+        1,
+        0
+      ]
+    },
+    "Forged Ledger": {
+      "tier": "Level 1",
+      "required": 2,
+      "base_xp": 2,
+      "gold_ladder": [
+        4,
+        2,
+        1,
+        0
+      ]
+    },
+    "Plundered Chest": {
+      "tier": "Level 1",
+      "required": 2,
+      "base_xp": 2,
+      "gold_ladder": [
+        4,
+        2,
+        1,
+        0
+      ]
+    },
+    "Buried Treasure": {
+      "tier": "Level 1",
+      "required": 2,
+      "base_xp": 2,
+      "gold_ladder": [
+        4,
+        2,
+        1,
+        0
+      ]
+    },
+    "Royal Signets": {
+      "tier": "Level 2",
+      "required": 2,
+      "base_xp": 2,
+      "gold_ladder": [
+        4,
+        2,
+        1,
+        0
+      ]
+    },
+    "Consecrated Ash": {
+      "tier": "Level 2",
+      "required": 3,
+      "base_xp": 3,
+      "gold_ladder": [
+        5,
+        3,
+        2,
+        0
+      ]
+    },
+    "Ashen Vestments": {
+      "tier": "Level 2",
+      "required": 4,
+      "base_xp": 4,
+      "gold_ladder": [
+        7,
+        4,
+        2,
+        0
+      ]
+    },
+    "Shattered Broadswords": {
+      "tier": "Level 2",
+      "required": 5,
+      "base_xp": 5,
+      "gold_ladder": [
+        9,
+        5,
+        3,
+        0
+      ]
+    },
+    "Rusted Mail": {
+      "tier": "Level 2",
+      "required": 2,
+      "base_xp": 2,
+      "gold_ladder": [
+        4,
+        2,
+        1,
+        0
+      ]
+    },
+    "Tarnished Crests": {
+      "tier": "Level 2",
+      "required": 3,
+      "base_xp": 3,
+      "gold_ladder": [
+        5,
+        3,
+        2,
+        0
+      ]
+    },
+    "Blessed Lamp Oil": {
+      "tier": "Level 2",
+      "required": 4,
+      "base_xp": 4,
+      "gold_ladder": [
+        7,
+        4,
+        2,
+        0
+      ]
+    },
+    "Gilded Penance": {
+      "tier": "Level 2",
+      "required": 5,
+      "base_xp": 5,
+      "gold_ladder": [
+        9,
+        5,
+        3,
+        0
+      ]
+    }
+  },
+  "consumables": {
+    "Food": {
+      "cost": 4,
+      "effect": "Fully restores HP.\nCan be eaten anywhere."
+    },
+    "Potion": {
+      "cost": 3,
+      "effect": "Restores 8 HP mid-trip."
+    },
+    "Scroll of Vanquishing": {
+      "cost": 5,
+      "effect": "Guaranteed win, no combat played.\nStandard-tier mobs only."
+    },
+    "Smoke Bomb": {
+      "cost": 3,
+      "effect": "Guaranteed flee, no reward.\nCan back out of a Border toll."
+    },
+    "Preserving Charm": {
+      "cost": 5,
+      "effect": "Resets one active quest's\ndecay stage to 0 at Town."
+    }
+  },
+  "loot": {
+    "Red Loot": {
+      "color": "#b71c1c",
+      "desc": "Quest Loot Token"
+    },
+    "Blue Loot": {
+      "color": "#0d47a1",
+      "desc": "Quest Loot Token"
+    },
+    "Green Loot": {
+      "color": "#1b5e20",
+      "desc": "Quest Loot Token"
+    }
+  }
+}

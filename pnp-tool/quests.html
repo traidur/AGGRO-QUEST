@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>QUEST — Quests & Items PnP</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Crimson+Pro:wght@400;600;700&family=Barlow+Condensed:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/src/quests.css">
+  </head>
+  <body>
+    <div class="ui-bar" id="uiBar">
+      <div class="ui-left">
+        <h1 style="color: white; font-family: 'Cinzel', serif; margin-right: 20px; font-size: 16pt;">QUEST <span style="font-size: 12pt; color: #aaa;">Items</span></h1>
+        
+        <div id="filterControls" class="filter-controls">
+          <button class="btn btn-filter active" data-tab="quests">Quests</button>
+          <button class="btn btn-filter" data-tab="loot">Quest Loot</button>
+          <button class="btn btn-filter" data-tab="consumables">Consumables</button>
+        </div>
+
+        <div id="multiplierControls" style="display: flex; gap: 12px; margin-left: 20px; align-items: center;">
+          <label style="color: #fff; font-size: 14px; font-weight: bold; font-family: 'Barlow Condensed', sans-serif;">COPIES:</label>
+          <label style="color: #ccc; font-size: 12px; display: flex; align-items: center; gap: 4px; font-family: 'Barlow Condensed', sans-serif;">
+            Multiplier <input type="number" id="qtyMultiplier" value="1" min="1" max="20" style="width: 40px; background: #333; color: white; border: 1px solid #555; border-radius: 4px; padding: 2px 4px;">
+          </label>
+        </div>
+      </div>
+      <div class="ui-right">
+        <a href="/" class="btn" style="text-decoration: none; margin-right: 12px; background: #37474F;">Home</a>
+        <a href="/heroes.html" class="btn" style="text-decoration: none; margin-right: 12px; background: #37474F;">Heroes</a>
+        <a href="/mobs.html" class="btn" style="text-decoration: none; margin-right: 12px; background: #37474F;">Mobs</a>
+        <button class="btn btn-primary" onclick="window.print()">Print Sheets</button>
+      </div>
+    </div>
+    
+    <div class="sheet-container" id="sheetsContainer"></div>
+    <script type="module" src="/src/quests.js"></script>
+  </body>
+</html>

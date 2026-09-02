@@ -249,52 +249,12 @@ Not discussed or checked against anything yet:
   does committing to the whole chain read as something else turn-wise (e.g. one committed
   "turn" that resolves 3 rounds of combat internally).
 
-### Gathering items at nodes — a second, distraction-flavored collection axis alongside questing, raised 2026-08-24, not evaluated or decided
-
-Raised 2026-08-24. Not yet scoped to specific items, zones, or a redemption cost table —
-recorded here so the idea and the reasoning behind its settled parts aren't lost, not because
-the whole thing is locked.
-
-**The core idea:** when a mob is dealt to a node (see "Zone-node mob dealing" above), a
-gathering item (ore, herb, skin, etc.) is also visibly dealt to that same node, for every hero
-present to see. Whoever defeats the mob there takes the gathering item. Collecting enough of a
-given item, plus some gold, lets a hero buy something at a discount back in Town — ore toward
-plate/mail armor, skins toward leather, herbs toward potions or similar, tying directly into the
-still-unbuilt weapons/armor system (tasks #25/#26). Gathering-item quality scales by Zone level,
-same escalation pattern the existing quest-loot tables already use.
-
-**Explicitly not a redundant copy of quest loot, by design, not by accident.** The shape (defeat
-mob at node -> collect token -> redeem at Town) rhymes with the existing quest-loot economy, but
-the stated intent is deliberate: questing is the core loop, gathering is optional "cherry on
-top" texture for players who want it, not a second primary resource competing for the same
-strategic weight. Whether that intent survives contact with an actual Bag-slot/inventory
-placement decision (still open, see below) is the thing that will really prove it out, not just
-the stated design goal.
-
-**Refresh rule, decided, and it's the mechanism that actually makes this a distinct system, not
-just quest loot with a different redemption target:** unlike mobs, which redeal fresh at every
-node at the start of every turn regardless of outcome, a gathering token is sticky -- it stays
-in place, unclaimed, until a hero actually defeats the mob guarding it. It's only redealt the
-turn *after* it was collected. This means a node ends up running two independently-cycling
-pieces of state at once (mob refreshes every turn; gathering token only refreshes on capture),
-which needs to be stated as an explicit rule once this is built, not left implicit. It also
-directly rules out an earlier version of the idea (the gathering item printed on the mob card
-itself, since multiple physical copies of a mob exist in the deck) -- a token tied to a specific
-mob card can't persist independently of that card being redealt every turn, so gathering items
-need their own zone-scoped pool, decoupled from mob identity entirely, sourced the same way the
-"Zone-node mob dealing" entry above already sources mobs.
-
-**Contested resource, decided:** goes to the priority hero, first-come-first-served -- reuses
-the same priority-token mechanism already built for contested mob nodes, not a new mechanism.
-
-**Not discussed or checked against anything yet:**
-- The actual redemption mechanic and its cost table -- "2 herb + 1 gold -> a discount" is
-  illustrative only, not a balanced proposal for any specific item or price.
-- Whether gathering items live in the existing Bag (competing with quest loot, consumables, and
-  Bag Upgrades for the same limited slots) or need their own inventory space entirely -- this is
-  probably the single biggest open question for whether "cherry on top, not a second primary
-  resource" actually holds up at the table, since Bag-slot competition is exactly what would
-  turn it into a second primary resource in practice.
+### Gathering items at nodes
+The dealing/sticky-refresh mechanic and Bag-slot placement are resolved and locked into the
+Game Round sequence in `DESIGN_DOC.md` (Phase 1/5/6). **Still genuinely open, restored here
+2026-09-01 after being deleted as if fully resolved (it wasn't):**
+- The actual redemption mechanic and its cost table -- "2 herb + 1 gold -> a discount" was
+  always illustrative only, not a balanced proposal for any specific item or price.
 - How this ties into the weapons/armor system once that gets designed (task #25) and built
   (task #26) -- gathering items are meant to feed it, but that system doesn't exist yet, so the
   redemption side of this idea is blocked on it either way.
@@ -454,108 +414,20 @@ not win rate, is what actually differentiates a class's real matchups):**
   whether the structure itself should be revisited later. Treating the former as the working
   assumption unless something concrete argues otherwise.
 
-**Turn phase order, decided:**
-1. **Deal.** Only zones with a hero currently present get dealt to — an unoccupied zone's
-   nodes aren't tracked or refreshed at all. Every node in an occupied zone gets a fresh
-   card from that level's shared deck, unconditionally (see step 5 — this is a full refresh
-   every turn, not a partial one).
-2. **Move and declare.** Every hero moves and declares their target node simultaneously (this
-   is also the resolution to the Claim-phase question above).
-3. **Resolve contested nodes.** Priority (First Player / rotating token) only matters where
-   two or more heroes land on the same node the same turn. Whoever's first sees the mob
-   already dealt there; whoever's second or later at that same node draws a fresh
-   replacement blind (see the blind-refill rule above).
-4. **Resolve pulls.** Each hero plays out their combat pull(s) against whatever's now sitting
-   at their declared node.
-5. **End-of-turn cleanup.** Every mob card currently on the board in an occupied zone goes to
-   discard — played or not, engaged or ignored. Nothing persists into next turn; a mob you
-   didn't get to this turn is simply gone, replaced by a fresh deal at step 1 next turn, not
-   held over. Discarded cards stay in discard until the deck runs dry and reshuffles, same as
-   any other card removed from the active deck.
+**Blind refills draw from the full level deck, Elites included -- no special-case exception**
+(restored 2026-09-01, deleted along with the rest of this section's tail as if fully resolved --
+this specific dependency wasn't). `macro_sim.py`'s existing `_pull_exceeds_risk` risk-tolerance
+check already covers the consequence -- a player who doesn't like the level's known Elite odds
+simply declines to contest that node this turn, same as any other lethal-pull decision.
 
-**Node refill, decided:** replace, not stack. A node always holds exactly one current mob;
-dealing a new one over an unclaimed mob simply replaces it. No node-congestion sub-system.
-**Exception, co-op only:** see "Multi-mob co-op nodes vs. single-Elite nodes" below -- in
-co-op play specifically, a node can hold more than one simultaneous mob. Solo and competitive
-play never see this; a node there always holds exactly one mob, no exception.
-
-**Turn order for multiple heroes at the same zone, decided, and this is also the resolution
-to Open Question #1 above (the Claim phase's failure mode):** turns are simultaneous —
-every hero moves and declares their node at the same time. The token only breaks ties when
-two or more heroes land on the *same* node the same round. Co-op groups self-organize who
-goes in what order by table agreement. Competitive play uses a rotating "pass the buck"
-Player-One token that shifts one seat to the left every round, giving a straight 1-2-3
-priority count from whoever's holding it that round (not fixed to one player, and not a
-sequential-turn-order system — it only matters for resolving an actual node conflict).
-Whoever's first at a contested node sees the mob already dealt there (fully visible, same
-as the normal per-turn deal) before committing. Whoever's second (etc.) at that *same* node
-the *same* round draws a fresh replacement blind — no preview before committing.
-
-**This blind-refill case is a deliberate, narrow exception to this project's otherwise
-strict "no hidden information, no dice" combat pillar** (HP, mob intents, everything else
-always visible everywhere else in the design) — not an oversight, and not a general
-reintroduction of hidden information. It only applies to a same-turn re-deal at an
-already-claimed node, and it does real design work: it gives the priority/turn-order
-mechanic actual stakes (going first isn't just "you act first," it's "you get full
-information and whoever pulls behind you at the same node doesn't"), which is a sharper
-answer to Question #1 than a flat priority rule alone would have been.
-
-**Loot is sourced from the Node, not the Mob** — deliberately, after considering and
-rejecting mob-sourced loot as "randomness on top of randomness" (which mob shows up is
-already random; making what it drops *also* random independently stacks two layers of
-uncertainty with no decision in between). Instead, a quest card prints a fixed instruction
-("Silver Trinkets drop from Node A or B") that never needs to reference which specific mob
-is currently dealt there — matches the project's established bias toward flat, no-hidden-
-conditional rules. When two active quests share an eligible node and a kill happens there,
-the player chooses which quest's loot they receive — a real decision, and it interacts
-usefully with the existing 2-slot Bag capacity squeeze (pick whichever you need more of).
-
-**Elite Spikes, and level decks as an explicit recipe rather than a raw tier pull, decided:**
-mob tiers are scoped by level (e.g. a "Tier 1 Standard" pool, eventually a "Tier 1 Elite"
-pool once Spike-tier mobs exist, then Tier 2 versions of both later). A level's actual deck
-is its own authored recipe built from those pools, not just "draw from one tier" -- see the
-worked Tier 1 example above (18 Standard + 0/3 Elite + 1/2 Spice, level-scoped, shared by
-that level's 2 zones) for the concrete numbers. This replaces treating `MOB_TIERS`'s two
-pools as the only unit a node can draw from; the deck-building step itself becomes the
-authored content, of which a pure-Standard deck is just the simplest case. **Deck
-composition (how many of each mob, including how many Elites) is public knowledge** --
-printed at the level, not hidden -- so contesting a node with Elites mixed in is a
-calculable risk, not a blind unknown, matching how risk is handled everywhere else in this
-project.
-
-**Blind refills draw from the full level deck, Elites included -- no special-case
-exception.** An earlier draft (from an external design pass) proposed Elites could never be
-drawn on a blind refill, redirected to a held state instead -- rejected as unnecessary
-complexity once traced through: it would have needed a new card-lifecycle state (where does
-a skipped Elite go, is it visible before its deferred deal, does it override the node's
-normal next-turn deal) with no clean answer to any of those questions. The simpler rule
-needs none of that machinery: a blind refill is just a real draw from the whole deck, and
-`macro_sim.py`'s existing `_pull_exceeds_risk` risk-tolerance check already covers the
-consequence -- a player (or the simulated agent) who doesn't like the level's known Elite
-odds simply declines to contest that node this turn, exactly like any other lethal-pull
-decision already modeled. Nothing new to build here beyond not carving Elites out of the
-pool.
-
-**Blocked on task #20 (deriving Spike-tier mob stats) for real validation.** The whole
-premise -- that facing an Elite on a blind pull is a real, playable-around gamble rather
-than a disguised trap -- depends on Spike's actual numbers, which don't exist yet. Once they
-do, the thing to check is a **survival rate** (not win rate) for a fresh, full-HP hero
-against a Tier-1 Elite: what fraction of hands leave the hero above 0 HP, even if they can't
-win outright. This is a direct extension of the existing hand-level kill-feasibility check
-(`CLASS_BALANCE_GUIDE.md`'s tool inventory -- the same kind of check that found "8 of 15
-hands can't kill Brute" for early Paladin), just reframed around survival instead of victory.
-If most hands can survive (even while fleeing/losing the fight), "play defensively" is a
-real lever and this design holds up. If a meaningful fraction of hands are simply
-unsurvivable regardless of play, this reintroduces the exact unfair-trap problem the
-rejected held-Elite exception was originally trying to prevent, and needs revisiting.
-
-Not yet built — this is a real addition to the macro-loop engine (zone/node state, turn-based
-dealing logic, deck-recipe authoring), sized more like a new subsystem than a parameter
-change. The rules themselves are now specified in enough detail to build from (tier/level/
-zone structure, deck composition and ratios for Tier 1, the full turn-phase sequence) — what
-remains is implementation, not further design decisions, for everything except Tier 2/3's
-actual numbers (blocked on those tiers' mob pools not existing yet) and Elite Spikes'
-survival-rate validation (blocked on task #20). No task tracked for the build yet.
+**Blocked on task #20 (deriving Spike-tier mob stats) for real validation.** The whole premise --
+that facing an Elite on a blind pull is a real, playable-around gamble rather than a disguised
+trap -- depends on Spike's actual numbers, which don't exist yet. Once they do, the thing to
+check is a **survival rate** (not win rate) for a fresh, full-HP hero against a Tier-1 Elite:
+what fraction of hands leave the hero above 0 HP, even if they can't win outright. If a
+meaningful fraction of hands are simply unsurvivable regardless of play, this reintroduces the
+exact unfair-trap problem the rejected held-Elite exception was trying to prevent, and needs
+revisiting.
 
 ### Border Nodes and Scouted Pull
 
@@ -669,44 +541,38 @@ dominates (fewer turns, zero combat risk, for a small Gold cost).
 
 ### What a turn is (locked 2026-08-20)
 
-Never stated as one canonical rule before this — the pieces existed scattered across the
-Border Node entry and the simulator's own trip-chain logic, but nothing pulled them together
-across every node type. A turn is a hero selecting a travel-appropriate node reachable from
-where they currently stand, and executing that node's action — travel itself is free and
-costs no separate turn (Golden Rule 1), so a turn is defined by the action, not the movement.
-Per node type:
+**Restored 2026-09-01** -- deleted in full along with the rest of this file's turn-phase-order
+prose, but `DESIGN_DOC.md`'s locked 90-turn full-game pacing target explicitly cites this
+section by name as its definition of a turn -- that reference was left dangling. A turn is a
+hero selecting a travel-appropriate node reachable from where they currently stand, and
+executing that node's action -- travel itself is free and costs no separate turn (Golden Rule
+1), so a turn is defined by the action, not the movement. Per node type:
 
 - **Quest node:** one pull is one turn. Matches the simulator's own `pulls` counter directly.
-- **Town:** a hero may do as much business as they want in one visit — turn in any number of
-  complete quests, sell loot, buy any number of consumables/Bag Upgrades — and declares their
+- **Town:** a hero may do as much business as they want in one visit -- turn in any number of
+  complete quests, sell loot, buy any number of consumables/Bag Upgrades -- and declares their
   turn ended when they're done. One turn total per Town visit, no matter how much gets done
   there.
-- **Border Node:** one turn, same as any other node — the Scouted Pull toll pull is the
+- **Border Node:** one turn, same as any other node -- the Scouted Pull toll pull is the
   action taken there. Surviving it lands the hero *on* the Border Node itself, not across it
-  into the destination Zone (see the Border Nodes entry above for why this was wrong twice
-  before landing here) — the next turn is an ordinary, free node choice from that position,
-  same as any other node-to-node move.
-- **Class Trainer:** same structure as Town — buy as many upgrade cards as affordable in one
+  into the destination Zone -- the next turn is an ordinary, free node choice from that
+  position, same as any other node-to-node move.
+- **Class Trainer:** same structure as Town -- buy as many upgrade cards as affordable in one
   visit, declare the turn ended when done. One turn total per visit.
-- **Corpse recovery:** the forced first pull back at the death node (see "Death and corpse
-  recovery" in DESIGN_DOC.md) is just an ordinary quest-node pull under this rule — one turn,
-  nothing special about it turn-wise. Travel from the respawn Town to the death node is free,
-  same as any other movement.
-- **Elite node:** not a distinct node type, so it has no turn structure of its own. Elites
-  don't have a real map node at all yet (see the "Co-op multi-hero vs. Elite/multi-mob nodes"
-  entry below for where they actually live — inside a node's dealt mob pool, not a separate
-  location). ("Market Row" used to be listed here too, on the assumption it would fold into a
-  Town-visit turn if it was ever built separately — retired 2026-08-22, since the Class Trainer
-  already IS Market Row under a different name; see DESIGN_DOC.md Section VII.)
+- **Corpse recovery:** the forced first pull back at the death node is just an ordinary
+  quest-node pull under this rule -- one turn, nothing special about it turn-wise. Travel from
+  the respawn Town to the death node is free, same as any other movement.
+- **Elite node:** not a distinct node type, so it has no turn structure of its own -- Elites
+  live inside a node's dealt mob pool, not a separate location.
 
-**Why this matters beyond bookkeeping:** the simulator's existing "Gold after a fixed number
-of trips" metric is not a fair unit for comparing classes, since a trip's real length (pulls,
-Town visits, crossings) varies a lot per class and per run. Turns (as defined here) are the
-actual comparable unit of play — a metric like Gold-per-turn is what should be used going
-forward for any cross-class or cross-level comparison, not Gold-per-trip or Gold-per-fixed-
-trip-count. Not yet built into `macro_sim.py`'s reporting -- currently only `pulls` is tracked
-per trip; Town/Trainer/Border-crossing turns aren't counted as their own units anywhere in the
-simulator yet.
+**Why this matters beyond bookkeeping:** the simulator's existing "Gold after a fixed number of
+trips" metric is not a fair unit for comparing classes, since a trip's real length (pulls, Town
+visits, crossings) varies a lot per class and per run. Turns (as defined here) are the actual
+comparable unit of play -- a metric like Gold-per-turn is what should be used going forward for
+any cross-class or cross-level comparison, not Gold-per-trip or Gold-per-fixed-trip-count.
+**Not yet built into `macro_sim.py`'s reporting** -- currently only `pulls` is tracked per trip;
+Town/Trainer/Border-crossing turns aren't counted as their own units anywhere in the simulator
+yet.
 
 ### Co-op multi-hero vs. Elite/multi-mob nodes (a "Hogger battle")
 
@@ -903,3 +769,4 @@ On top of being redundant, it caused real, repeated harm to this session's own t
 **Decided:** removed from the sim entirely — not left dormant at a default value, the code itself is gone (`DURABILITY_ATK_PER_STACK`, `durability_stacks`, and the mob-ATK-boost logic in `run_trip`).
 
 **What this does NOT settle:** the general Durability pillar concept in `DESIGN_DOC.md` §3 (gear wear, Town-only repair) is not rejected — only this specific trigger mechanism is. If a future need arises for something that forces a trip to end independent of Bag/Food/Water scarcity, Durability-the-concept is still on the table, but it needs a fresh, deliberately-chosen trigger rather than reviving this one by default. Bag/restorative scarcity is, for now, the sole mechanism bounding trip length — see the Food/Water sweep data (this session) for what that actually produces per class.
+

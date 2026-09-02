@@ -9,3 +9,6 @@ Always read and strictly follow the instructions and rules in `CLAUDE.md` before
 - Never write code blocks or modify project files on the first turn.
 - Always propose a textual explanation or implementation plan first.
 - Wait for explicit user confirmation before executing any actions.
+
+# Cross-Agent Handoffs
+When asked to update AI_HANDOFF.md, you MUST read its internal 'RULES - READ FIRST' section before making any edits. The handoff file is strictly for process/status and second opinions, NEVER for logging design decisions or rules. Always insert new entries at the top (reverse chronological) and prune aggressively.

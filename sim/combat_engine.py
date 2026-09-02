@@ -118,8 +118,11 @@ def _card_variants(state: PullState, hand_card_name: str) -> list:
     the boosted HP-for-damage virtual card, see condensed_necromancer.py's orderings()). Both
     variants come from the SAME hand card (the boosted one is never itself drawable), so this
     is the one place that duality needs exposing as two distinct legal actions."""
-    if state.class_name == "necromancer" and hand_card_name == N.BONEGUARD_OFFERING:
-        return [N.BONEGUARD_OFFERING, N.BONEGUARD_OFFERING_BOOSTED]
+    if state.class_name == "necromancer":
+        mod = CARD_SOURCE["necromancer"]
+        if mod.CARDS.get(hand_card_name, {}).get("blood_magic"):
+            return [hand_card_name, f"{hand_card_name} (Boosted)"]
+
     return [hand_card_name]
 
 

@@ -15,21 +15,14 @@ Nodes, including Town itself, and intra-Zone movement between any of them
 is free (0 cost -- Golden Rule 1, no movement tax). The actual cost of
 visiting Town is Decaying Bounty quest decay, not distance.
 
-Bag model: a slot holds a mix of whatever loot is won while it's "open" --
-not one-type-per-slot ("identical cards stack infinitely" describes what
-happens with duplicates, it isn't a restriction against mixing). The bag
-is now persistent state across a whole chain of trips, not reset each
-call, because Town only does specific, limited things to it (see below) --
-everything else about the bag carries forward exactly as the hero left it.
+Bag model (Rescaled 2026-08-25): The bag is a 6-slot capacity system. Food occupies
+3 slots. Every other item (Potions, Loot, Consumables) occupies exactly 1 slot 
+(`ITEM_STACK_CAP = 1`). Nothing stacks. The bag is persistent state across a whole
+chain of trips, not reset each call.
 
-**Fixed 2026-08-22** -- this used to describe a real divergence: DESIGN_DOC.md claimed the
-capped/no-closing loot model was already locked while this file still ran the old
-uncapped/closable one. Measured directly before fixing it (`_bag_model_baseline.py`): under the
-old model, bag-deadlock (`_bag_has_room` returning False) never fired once in 3000+ turn-samples
-per class, and a single loot slot was observed holding up to 11 items. `_add_loot`/
-`_accessible_count`/`_remove_loot` now share one unified mechanism (`_add_item`/`_remove_item`,
-see below) with Potions and every other non-Food consumable: any unlocked slot holds up to
-`ITEM_STACK_CAP` (3) items total, any mix, Food never stacks and no longer closes anything.
+**Fixed 2026-08-25** -- migrated from the old 2-slot/stacking model to the 6-slot/no-stacking 
+model. `_add_item`/`_remove_item` unified mechanisms were retained, but `ITEM_STACK_CAP` was 
+dropped from 3 to 1 to reflect the physical redesign (one token = one physical slot).
 Bag Upgrade price and Potion price were both tuned against the OLD model and have not yet been
 re-swept against this corrected one -- treat both as unlocked/unvalidated until that happens.
 

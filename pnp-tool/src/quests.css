@@ -1,0 +1,257 @@
+body {
+  margin: 0;
+  padding: 0;
+  background: #222;
+  font-family: sans-serif;
+  color: #333;
+}
+
+.ui-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 60px;
+  background: #111;
+  border-bottom: 2px solid #444;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 20px;
+  z-index: 1000;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+}
+
+.ui-left, .ui-right {
+  display: flex;
+  align-items: center;
+}
+
+.btn {
+  background: #333;
+  color: #fff;
+  border: 1px solid #555;
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.btn:hover {
+  background: #444;
+}
+
+.btn-primary {
+  background: #1976D2;
+  border-color: #0D47A1;
+}
+.btn-primary:hover {
+  background: #1565C0;
+}
+
+.filter-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.filter-controls .active {
+  background: #00695C;
+  border-color: #004D40;
+}
+
+.sheet-container {
+  margin-top: 80px;
+  padding-bottom: 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.sheet {
+  background: white;
+  width: 8.5in;
+  height: 11in;
+  margin: 0 auto;
+  box-shadow: 0 0 10px rgba(0,0,0,0.5);
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  padding: 0.25in;
+  box-sizing: border-box;
+}
+
+@media print {
+  body {
+    background: white;
+  }
+  .ui-bar {
+    display: none !important;
+  }
+  .sheet-container {
+    margin: 0;
+    padding: 0;
+    gap: 0;
+  }
+  .sheet {
+    box-shadow: none;
+    margin: 0;
+    page-break-after: always;
+  }
+}
+
+/* POKER SIZE (2.5" x 3.5") */
+.card-poker {
+  width: 2.5in;
+  height: 3.5in;
+  box-sizing: border-box;
+  border: 1px dashed #ccc;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.card-poker .safe-zone {
+  margin: 0.125in;
+  width: calc(100% - 0.25in);
+  height: calc(100% - 0.25in);
+  border: 1px solid #000;
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  position: relative;
+}
+
+.quest-header {
+  background: #2c3e50;
+  color: white;
+  padding: 6px;
+  text-align: center;
+  font-family: 'Cinzel', serif;
+  border-bottom: 2px solid #f39c12;
+}
+.quest-title {
+  font-size: 11pt;
+  font-weight: bold;
+}
+.quest-tier {
+  font-size: 8pt;
+  color: #ccc;
+  font-family: 'Barlow Condensed', sans-serif;
+}
+.quest-body {
+  padding: 10px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Crimson Pro', serif;
+}
+.req-circle {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #c0392b;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16pt;
+  font-weight: bold;
+  margin-bottom: 10px;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 2px #c0392b;
+}
+.ladder-box {
+  background: #ecf0f1;
+  border: 1px solid #bdc3c7;
+  border-radius: 4px;
+  width: 100%;
+  margin-top: 15px;
+}
+.ladder-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 8px;
+  border-bottom: 1px solid #bdc3c7;
+  font-size: 10pt;
+}
+.ladder-row:last-child {
+  border-bottom: none;
+}
+.quest-footer {
+  text-align: center;
+  padding: 6px;
+  background: #ecf0f1;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: bold;
+  font-size: 10pt;
+  border-top: 1px solid #bdc3c7;
+}
+
+/* MINI SIZE (1.625" x 2.5") */
+.card-mini {
+  width: 1.625in;
+  height: 2.5in;
+  box-sizing: border-box;
+  border: 1px dashed #ccc;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.card-mini .safe-zone {
+  margin: 0.125in;
+  width: calc(100% - 0.25in);
+  height: calc(100% - 0.25in);
+  border: 1px solid #000;
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  position: relative;
+}
+
+.mini-header {
+  color: white;
+  padding: 4px;
+  text-align: center;
+  font-family: 'Cinzel', serif;
+  font-size: 8pt;
+  font-weight: bold;
+}
+.mini-body {
+  padding: 6px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-family: 'Crimson Pro', serif;
+  font-size: 8pt;
+}
+.mini-cost {
+  position: absolute;
+  top: -8px;
+  left: -8px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #f1c40f;
+  color: #333;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10pt;
+  font-weight: bold;
+  font-family: 'Barlow Condensed', sans-serif;
+  border: 1px solid #000;
+  z-index: 10;
+}
