@@ -200,8 +200,11 @@ redundant advantage on top of evasion-nullification for no real reason.
 
 ## V. Co-op — Aggro & the Party Pull
 
-Multiple heroes (2-4, any class mix) fight a shared threat together, co-op only. Still 3
-rounds, one card per hero per round.
+Multiple heroes (2-4, any distinct class) fight a shared threat together, co-op only. Still 3
+rounds, one card per hero per round. **No duplicate classes in one group (locked 2026-09-01,
+resolving "any class mix"'s prior ambiguity on this point)** — the physical components only
+include one deck per class, so a group can never field two heroes of the same class at the
+table; this isn't a game-balance rule, it's a hard physical-component constraint.
 
 **Aggro.** Each card carries a flat, printed Aggro value (0-4), locked per card in every
 class's own `CARDS` dict — this is a narrow, deliberate exception to "no aggro/targeting system
@@ -407,26 +410,20 @@ end, not just designed on paper.
   wholesale (flat `[4,2,1,0]` for required 2-4, `[9,5,3,0]` at required 5) purely so the
   mechanic has *some* real numbers to run, explicitly flagged in-code as not the real derivation.
 
-**Loot chain, revised — colored quest tokens, any mix per slot, capped at 3.** Each active
+**Loot chain, revised - colored quest tokens, any mix.** Each active
 quest is assigned a color (printed on the quest card, or marked with a colored token on it).
 Loot earned for that quest is represented by a token of the matching color, placed into any
-slot with room — the color identifies which quest it belongs to; the slot itself is what
-counts against Bag capacity, the same as a Food or Potion would. **A slot holds up to 3
-tokens total, any mix of colors** — deliberately *not* restricted to one color per slot: a
+slot with room - the color identifies which quest it belongs to. **A slot holds exactly 1 
+token/item** - there is no same-slot stacking (`ITEM_STACK_CAP = 1`). A
 same-color-only rule would tie which node a player can profitably pull at to their current
 Bag state (each node maps to one quest's color), quietly punishing a player for chasing a
 favorable mob matchup at a different node just because their Bag is already partway into a
 different quest's color. Keeping colors freely mixable keeps node choice (about the mob
-matchup) and Bag capacity (about token count) fully independent, the way they should be. The
-cap of 3 itself is derived, not guessed — it's the smallest stacking limit under which every
-quest in the current table (requiring 2, 3, 4, or 5 loot) is still completable inside a
-2-slot Bag, while still forcing a real choice: the two smaller quests (Pilfered Goods,
-Syndicate Ledger) comfortably coexist with a consumable in the other slot, while the two
-bigger ones (Contraband Crates, Stolen Signet) force giving that consumable slot up entirely
-to hold enough tokens. Running out of slots (every slot full, locked, or holding an unused
+matchup) and Bag capacity (about token count) fully independent, the way they should be.
+Running out of slots (every slot full, locked, or holding an unused
 consumable) means no more loot of any kind can be collected until a quest turn-in or sale
 frees space. This replaces the previous "one open slot accepts any mix of loot types, Food
-closes it" model entirely — colored tokens don't need a "closed" state at all, since each
+closes it" model entirely - colored tokens don't need a "closed" state at all, since each
 quest's progress is now readable directly off the tokens' colors, regardless of which slot(s)
 they end up sharing space in.
 
@@ -571,7 +568,53 @@ until the measured cost landed at ~4.5 trips / ~27 pulls / ~25 XP on average aga
 the 6-mob Standard roster gets enough repetition to master before moving on. Stale as of the 6th
 mob (Scout) and 7th class (Runecaster) — should be re-swept, not assumed still exact.
 
-## VII. Progression — NOT YET BUILT
+## VII. The Game Round
+
+This is the definitive, chronological flow of a single Game Round.
+
+### Phase 1: The Deal & Preparation
+- **The Deal:** Only occupied Zones are dealt to. (If a hero is standing on a Border Node, *both* Zones connected to that border are dealt to).
+  - Every Node in an occupied Zone is dealt 1 fresh Mob Card face-up.
+  - If a Node does *not* currently have a Gathering Token, 1 fresh Gathering Token (Herb, Ore, Skin) is dealt to it.
+- **Preparation:** Now that players can see the exact board state, they may use items from their bag (e.g., healing with Potions, buffing with a Whetstone) before deciding where to commit.
+
+### Phase 2: Move & Declare
+- **Movement is free.** Moving your pawn to any reachable node does not cost an Action.
+- **Flight Paths:** Generic point-to-point travel between any two connected Flight Master nodes costs 2 Gold, but is still considered free movement.
+- **The Action:** Players simultaneously move their pawn and declare exactly one Action for the Round:
+  - **Quest Node:** Declare intent to fight the visible mob and claim its loot.
+  - **Town:** Declare intent to conduct Town business.
+  - **Class Trainer:** Declare intent to purchase upgrades.
+  - **Border Node:** Declare intent to cross a border (the Action is a Scouted Pull toll).
+
+> [!NOTE]
+> **Simultaneous Play:** Everything from Phase 3 onward (Resolution, Combat, Rewards, Cleanup) happens completely simultaneously for all heroes. There is no turn order outside of the specific Priority checks for contested nodes.
+
+### Phase 3: Resolution (Non-Combat & Initiation)
+- **Town & Trainer Actions:** Players who declared Town or a Class Trainer resolve their business now (buy, sell, turn in quests, buy upgrades). Their action is now complete until Cleanup.
+- **Uncontested Nodes:** If only one player declared a specific Quest Node, they lock in to fight the visible mob.
+- **Contested Nodes:** If two or more players declare the exact same Quest Node, they enter the Initiation Flow:
+  1. **Priority Order:** The player with the highest priority chooses Peace or War.
+  2. **War (PvP):** The Initiator challenges a specific player. The PvP Duel initiates.
+     - *Bystander Rule:* The PvE mob ignores the duelists. The highest-priority non-dueling player gets to fight the PvE mob.
+  3. **Peace (PvE):** The highest priority player claims the visible mob. Everyone else who declared that node suffers a **Blind Pull** (draws a fresh mob from the deck with no preview).
+
+### Phase 4: Combat
+- **The Reaction Window (PvP Only):** Because PvP introduces sudden new information (a human opponent), duelists have a brief window to use non-Food consumables (e.g., Potions, Smoke Bombs) right before combat begins.
+- Players resolve their PvE pulls (or PvP duels) simultaneously using the standard 3-round card combat system.
+
+### Phase 5: The Post-Combat Reward Phase
+For every player that won a PvE combat pull, resolve rewards in this exact order:
+1. **The Base Payout:** Gain +1 Gold.
+2. **The Quest Drop:** If the Node matches your active quest color, claim 1 Quest Token (occupies 1 Bag slot).
+3. **The Board Drop (Gathering):** If you fought the visible mob, claim the Gathering Token sitting on that Node (occupies 1 Bag slot). *(Blind Pulls do not award gathering tokens).*
+4. **The Mob Drop (Random Loot):** If the defeated Mob Card has a Loot Drop icon, draw 1 card from the Zone-appropriate Loot Deck. (Elite/Boss mobs have a Double Loot icon; draw 2 cards). These items occupy 1 Bag slot each.
+
+### Phase 6: Cleanup
+- All unbeaten Mob Cards in occupied zones are swept to the discard pile. (They do not persist).
+- **Sticky Gathering:** Gathering Tokens are **not** swept. If no one claimed them, they remain on the board for the next Round.
+
+## VIII. Progression — NOT YET BUILT
 
 **Nothing past Level 2 is implemented or tested in the simulator** (`sim/macro_sim.py` has no
 Level 3-6, no Cull, no Final Boss check). Kept here as stated design intent, not current rules:
@@ -626,7 +669,7 @@ see `LEVELING_GUIDE.md`'s "Purchased upgrade order" entry for the full reasoning
   composition printed and public on the zone card, so contesting a node with Elites mixed in is
   a calculable risk, not a blind draw. Decided in principle (`OPEN_QUESTIONS.md`), not built.
 
-## VIII. Component & Physical Implementation
+## IX. Component & Physical Implementation
 
 What an actual physical prototype needs, based on the current locked rules above:
 
@@ -636,14 +679,21 @@ What an actual physical prototype needs, based on the current locked rules above
   mob info, ever). A melee/ranged type icon (Section IV).
 - **HP trackers:** one per hero, plus a shared mob HP tracker per pull (or per active mob, in a
   co-op multi-mob fight — Section V).
-- **Bag:** physical slots (2 to start, upgradeable — the exact target size is still open, see
-  `OPEN_QUESTIONS.md`), each holding either one Food, up to 2 Potions, or up to 3 Quest Loot
-  tokens in any mix of colors.
-- **Quest Loot tokens:** one single generic component, not a distinct token per zone/quest —
-  color-matched to whichever quest card is currently marked that color (a printed color, or a
-  colored marker placed on the quest card at pickup).
-- **Quest log:** exactly 3 slots, each tracking its current decay tier (Gold/Silver/Bronze),
-  and now also its assigned color for token-matching.
+- **Bag:** physical slots (6 to start, upgradeable). Food physically occupies 3 slots. Every other item (Potions, Quest Loot tokens, consumables) occupies exactly 1 slot. Nothing stacks.
+- **Quest Loot tokens:** one single generic component per color (Red/Green/Blue), not a
+  distinct token per zone/quest — locked 2026-09-01, resolving the earlier "printed color vs.
+  colored marker" ambiguity: **the hero's tracker board (see below) has exactly 3 colored quest
+  slots, and the physical quest card itself is what sits in a slot** — no separate token or
+  marker on the card. Whichever slot a card occupies IS that quest's color for as long as it's
+  active on that hero's board; a completed pull's loot token is just whichever color the
+  satisfied quest's card currently sits in.
+- **Hero tracker board:** one per player — HP dial, whatever else is personal to that hero (see
+  `OPEN_QUESTIONS.md`'s "Per-class matchup info" entry), and **3 colored quest slots** (Red/
+  Green/Blue), giving `ACTIVE_QUEST_COUNT = 3` a physical home at the table instead of being
+  purely a simulator invariant. **Slot assignment, locked 2026-09-01:** free choice — when a
+  hero picks up a new active quest, they place its card into any currently-empty slot. No fixed
+  assignment order. A slot empties (and its color becomes available again) when that quest is
+  turned in or dropped.
 - **Gold and XP counters.**
 - **Aggro reference (co-op only):** each card's printed Aggro value (0-4) is enough on its own —
   no extra token system needed beyond what's already printed on the card.
@@ -760,7 +810,14 @@ entries where a sub-item is still explicitly marked open:
   and caused real test-process bugs on top of that. The general idea (gear wear, Town-only
   repair) remains open if a new trigger is ever proposed — don't reuse the old one.
 
-## VIII. Competitive PvP (The Duel)
+
+**The Tiered Loot Decks (Random Mob Drops)**
+Random mob drops are handled via tiered decks of mini-cards (e.g., a Level 1 Loot Deck, a Level 2 Loot Deck), allowing the economy to scale natively as heroes progress to harder Zones. 
+- **The Drop Rate:** Exactly 33% of Standard Mob cards (6 per 18-card deck) are printed with a "Loot Drop" icon. For pristine balance, exactly 1 copy of each of the 6 unique standard mobs gets the icon. This ensures that every draw from the Loot Deck is a guaranteed positive reward, rather than stuffing the deck with "Empty Pockets" cards.
+- **Elite/Boss Scaling:** Elite and Boss mobs feature a "Double Loot" icon, granting 2 draws from the appropriate Loot Deck upon defeat.
+- **Deck Depletion:** The physical Loot Decks should be printed with enough cards to comfortably supply 4 players. If a deck ever runs completely empty, simply reshuffle the discard pile (used Potions, sold items).
+
+## X. Competitive PvP (The Duel)
 
 **Locked 2026-08-28.** PvP is an opt-in mechanic that occurs strictly during the resolution of Contested Nodes in Competitive Mode. It resolves conflicts between players attempting to claim the same mob and loot.
 

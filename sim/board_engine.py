@@ -403,6 +403,11 @@ def _town_automatic_setup(hero, class_name, strategy, rng, board, restock=True, 
     # mid-call -- the same live-lookup discipline run_one_trip's own win_rate uses.
     pool = M.LEVEL2_QUESTS if hero.xp >= M.LEVEL2_XP_THRESHOLD else M.QUESTS
     valid_quest_zones = M.LEVEL2_QUEST_ZONES if hero.xp >= M.LEVEL2_XP_THRESHOLD else M.LEVEL1_QUEST_ZONES
+    # Restock the town market if it's below capacity -- standard card-game cycling.
+    # draw_unique_quest already reshuffles quest_discard into quest_bag when the bag is empty,
+    # but nobody calls it when the market is already at 0 and no hero is taking from it.
+    if board and zone_id in board.town_markets and len(board.town_markets[zone_id]) < 3:
+        board.draw_unique_quest(board.town_markets[zone_id], 3 - len(board.town_markets[zone_id]), rng)
     if not hero.active_quests and zone_id in valid_quest_zones:
         if pool is M.LEVEL2_QUESTS:
             if refill_quests:
@@ -1873,7 +1878,7 @@ def run_competitive_chain(class_names_list, strategy, rng, max_rounds,
     purchase_queues = {i: M._build_purchase_queue(class_names_list[i], 0) for i in range(n)}
     level_decks = {1: B.LevelDeck.new(1, rng), 2: B.LevelDeck.new(2, rng)}
     board = B.BoardState(mode="competitive", heroes=heroes, zones={}, level_decks=level_decks)
-    board.setup_quests(rng)
+    board.setup_quests(rng, copies_per_quest=max(3, n))
 
     for _round_num in range(max_rounds):
         for hero_idx, hero in enumerate(board.heroes):

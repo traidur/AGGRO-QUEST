@@ -168,9 +168,9 @@ class BoardState:
     quest_discard: list = field(default_factory=list)
     town_markets: dict = field(default_factory=lambda: {3: [], 4: []})
 
-    def setup_quests(self, rng):
+    def setup_quests(self, rng, copies_per_quest=3):
         import macro_sim as M
-        self.quest_bag = list(M.LEVEL2_QUESTS.keys()) * 3
+        self.quest_bag = list(M.LEVEL2_QUESTS.keys()) * copies_per_quest
         rng.shuffle(self.quest_bag)
         self.quest_discard = []
         self.town_markets = {3: [], 4: []}

@@ -459,6 +459,10 @@ LEVEL2_MANDATORY = {
     "runecaster": (N, "Tidal Ward", "Tidal Ward [Lv 2]",
                    dict(dmg=0, heal=2, block=3, grants_range=False, chain_bonus_if_prev=None,
                         chain_bonus_dmg=0, echo_dmg=0, echo_heal=0, aggro=1)),
+    "necromancer": (Nc, "Boneguard's Offering", "Boneguard's Bargain",
+                    dict(combat_type="melee", dmg=1, heal=0, block=2, grants_range=True, dot=False,
+                         dot_payoff=False, echo_dmg=0, killing_blow=False, blood_magic=True,
+                         boosted_dmg=4, boosted_heal=-3, boosted_block=2, aggro=0, version=2)),
 }
 LEVEL2_PURCHASED_ORDER = {
     "warrior": [
@@ -516,6 +520,14 @@ LEVEL2_PURCHASED_ORDER = {
          chain_bonus_if_prev=None, chain_bonus_dmg=0, echo_dmg=2, echo_heal=1, aggro=0)),
         ("Windstrike", "Windstrike [Lv 2]", dict(dmg=6, heal=0, block=0, grants_range=False,
          chain_bonus_if_prev=None, chain_bonus_dmg=0, echo_dmg=0, echo_heal=0, aggro=3)),
+    ],
+    "necromancer": [
+        ("Soul Harvest", "Soul Feast", dict(combat_type="ranged", dmg=4, heal=2, block=0, grants_range=False,
+         killing_blow=False, dot=False, dot_payoff=False, echo_dmg=0, aggro=0, version=2)),
+        ("Sowing Dread", "Sowing Dread [Lv 2]", dict(combat_type="ranged", dmg=3, heal=0, block=0, grants_range=True,
+         killing_blow=False, dot=True, dot_payoff=False, echo_dmg=0, aggro=0, version=2)),
+        ("Reap", "Grim Reap", dict(combat_type="ranged", dmg=4, heal=0, block=0, grants_range=False,
+         killing_blow=False, dot=False, dot_payoff=True, dot_multiplier=2, echo_dmg=0, aggro=0, version=3)),
     ],
 }
 RISK_TOLERANCE = 0.15  # fraction of hands allowed to be lethal, when this pull would complete a quest
