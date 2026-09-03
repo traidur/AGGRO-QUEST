@@ -25,6 +25,7 @@ instead of writing a new diagnostic script from scratch.**
 | `CLASS_BALANCE_GUIDE.md` | Process doc for per-pull card/mob balance — how to balance a class once its 6-card kit already exists, the diagnostic toolkit, methodology. |
 | `LEVELING_GUIDE.md` | Process doc for the hero power curve across levels — how a class should get stronger leveling up, the required validation checks (cost%, pulls-before-death), how to generate valid upgrade cards. Not yet applied to real card numbers for any class. |
 | `MACRO_LOOP_GUIDE.md` | Process doc for the Town/Bag/Quest/Gold layer — how the reward formulas, risk policy, and pricing were derived and validated. |
+| `PVP_BALANCE_GUIDE.md` | Process doc for Competitive PvP (`DESIGN_DOC.md` Section X) — the true PvP baseline (`sim/sim_pvp.py` + `sim/playtest_board_web.py`), rejected experimental branches, and Battle Hardened starting-token derivation history. |
 | `OPEN_QUESTIONS.md` | Design tensions and unresolved mechanics, with a Resolved section for settled ones and their reasoning. |
 | `CONDENSED_COMBAT.md` | The condensed per-pull combat model itself. |
 | `CARD_REFERENCE.md` | Human-readable, tabletop-facing card text for every locked class — generated from each class's real `CARDS` dict, never hand-edited. Regenerate via `sim/generate_card_reference.py` after any card change. |
@@ -65,6 +66,7 @@ SOTG — same discipline AGGRO's SOTG uses.
 |---|---|
 | A settled per-class card/mob balance decision, with reasoning | `CLASS_BALANCE_GUIDE.md` |
 | A settled macro-loop economy decision (pricing, reward formulas, risk policy), with reasoning | `MACRO_LOOP_GUIDE.md` |
+| A settled PvP balance decision (token counts, combat_type tagging, rejected PvP mechanics), with reasoning | `PVP_BALANCE_GUIDE.md` |
 | An open design tension with no decision yet | `OPEN_QUESTIONS.md`, Unresolved section |
 | A design tension that just got settled | Move it from `OPEN_QUESTIONS.md`'s Unresolved to Resolved section, with the resolution and reasoning |
 | A mistake a fresh AI session would very likely repeat | `SOTG.md` — propose it, wait for approval |

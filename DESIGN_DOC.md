@@ -851,9 +851,17 @@ To balance the mathematical disparity between PvE-tuned sustain tanks and burst 
 
 1. **Unlocked Execute:** The Warrior's *Execute* card does not require the opponent to be <= 50% HP during a PvP duel. It is freely playable at any time for its baseline 6 damage.
 2. **Starting Battle Hardened Tokens:** To prevent a "rough patch" at the beginning of a campaign where naturally weaker PvP classes get stomped while waiting for the pity-timer to kick in, classes begin the game with an innate stack of Battle Hardened Tokens:
-   * **2 Starting Tokens:** Rogue, Necromancer, Warrior, Runecaster
-   * **1 Starting Token:** Paladin
-   * **0 Starting Tokens:** Wizard, Cleric, Ranger, Druid
+   * **3 Starting Tokens:** Necromancer
+   * **2 Starting Tokens:** Rogue, Warrior
+   * **1 Starting Token:** Ranger, Wizard, Cleric, Runecaster
+   * **0 Starting Tokens:** Paladin, Druid
+
+   Synced 2026-09-02 to the live values in `sim/playtest_board_web.py` (the running game),
+   which had drifted from this table. Necromancer's `2→3` bump is explained in
+   `AI_HANDOFF.md`'s 2026-08-30 entry (re-derived via `sim/sim_avg_tokens.py` after fixing an
+   evasion-trap bug in its kit). The other moves (Runecaster `2→1`, Paladin `1→0`, Ranger/
+   Wizard/Cleric `0→1`) matched the live code with no recovered rationale — flagging here in
+   case the original reasoning resurfaces and needs reconciling.
 3. **The Pendulum Mechanic:** Each token adds **+1** to a player's final score for all future PvP duels. After a duel concludes, the **Winner discards exactly ONE** of their Battle Hardened Tokens, and the **Loser gains exactly ONE** Battle Hardened Token.
 
 > **[DESIGNER NOTE]: The Rubber-Banding Pendulum**

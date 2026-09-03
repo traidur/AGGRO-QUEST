@@ -112,6 +112,13 @@ Gold, trip chaining) — the macro loop is the real game; combat is the toll gat
   alongside it, or just call `macro_sim.py`'s `compare_card_change`, which runs both and prints
   the correct verdict. See `MACRO_LOOP_GUIDE.md`'s "Clean vs. aggregate metrics" for the
   incident this came from.
+- **For PvP, `sim/sim_pvp.py` + `sim/playtest_board_web.py` are the true baseline — don't
+  trust a PvP script by its name alone.** A committed script named `sim_final_pvp.py`
+  implemented two mechanics ("Glancing Blows" half-damage evasion, a universal Unlocked
+  Execute) that had already been explicitly rejected by the user; it and its output file were
+  deleted 2026-09-02 once this was caught, but the general lesson generalizes: check
+  `PVP_BALANCE_GUIDE.md` (and, failing that, `AI_HANDOFF.md`'s dated entries) for which PvP
+  script is current before reading one cold and reporting its output as real.
 - **Necromancer no longer has any in-pull randomness.** Boneguard's Offering's Death Pact
   was reworked from its original random-draw rule into a flat, deterministic "may lose 4 HP
   to deal 3 extra damage" — same card name throughout, only the rule changed (don't call the
