@@ -82,8 +82,8 @@ HP=2, no longer the extreme outlier of earlier passes). Equilibrium clean. Solar
 no longer hidden-domination-flagged. Nature's Wildguard's unplayed rate 35.6%, down from a
 42-56% range across earlier kit variants, though still the kit's most-skipped card.
 
-**Not yet done:** Aggro values (placeholder 0 below except Grizzly's given 4) -- assigned per
-this project's standard build order, after balance lock, not before.
+**Aggro values locked 2026-09-05** (direct user review, card-by-card): Shapeshift: Grizzly 4
+(given earlier), Maul 4, Swipe 3, Solar Flare 2, Moonbeam 2, Nature's Wildguard 2.
 
 **Fixed a real macro-loop underperformance, found via the same investigation that fixed
 Rogue/Ranger (2026-08-19), but a genuinely different shape.** Druid sat dead last in the roster
@@ -144,11 +144,11 @@ DRUID_HP = 15
 # CARD_REFERENCE.md's own note for the convention.
 CARDS = {
     "Shapeshift: Grizzly": dict(combat_type="melee",dmg=2, heal=0, block=3, tag="shapeshift", aggro=4, version=1),
-    "Maul": dict(combat_type="melee",dmg=2, heal=0, block=2, tag="shapeshift", aggro=0, version=1),
-    "Swipe": dict(combat_type="melee",dmg=3, heal=0, block=0, tag="shapeshift", aggro=0, version=1),
-    "Solar Flare": dict(combat_type="ranged",dmg=5, heal=0, block=0, tag="eclipse", aggro=0, version=1),
-    "Moonbeam": dict(combat_type="ranged",dmg=5, heal=1, block=0, tag="eclipse", aggro=0, version=1),
-    "Nature's Wildguard": dict(combat_type="melee",dmg=0, heal=2, block=2, tag="eclipse", aggro=0,
+    "Maul": dict(combat_type="melee",dmg=2, heal=0, block=2, tag="shapeshift", aggro=4, version=1),
+    "Swipe": dict(combat_type="melee",dmg=3, heal=0, block=0, tag="shapeshift", aggro=3, version=1),
+    "Solar Flare": dict(combat_type="ranged",dmg=5, heal=0, block=0, tag="eclipse", aggro=2, version=1),
+    "Moonbeam": dict(combat_type="ranged",dmg=5, heal=1, block=0, tag="eclipse", aggro=2, version=1),
+    "Nature's Wildguard": dict(combat_type="melee",dmg=0, heal=2, block=2, tag="eclipse", aggro=2,
                                   heal_scales_with_eclipse=True, version=1),
 }
 DECK = list(CARDS.keys())

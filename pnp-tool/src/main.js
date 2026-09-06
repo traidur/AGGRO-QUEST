@@ -3,10 +3,13 @@ import cardsData from './cards_text.json'
 
 let activeClass = 'all';
 let activeVersion = 'all';
+let activeLevel = 'all'; // 'all' | '1' | '2'
 const classes = Object.keys(cardsData);
 let productionMode = true;
 
 function init() {
+  document.body.classList.add('hide-images'); // default: images off (matches heroes.html's initial button state)
+
   renderFilters();
   renderSheets();
 
@@ -14,7 +17,7 @@ function init() {
     window.print();
   });
 
-  
+
   const imgBtn = document.getElementById('btn-images');
   if (imgBtn) {
     imgBtn.addEventListener('click', (e) => {
@@ -53,6 +56,10 @@ function renderFilters() {
     });
   });
 
+  // Version tick: a number input (with the browser's native up/down tick arrows), not a
+  // button-per-version list -- a button row silently runs out once enough cards pass a given
+  // version number and nobody remembers to check for missing buttons. A number input scales to
+  // any version that will ever exist, with a "Clear" action for "all" instead of a button.
   let vContainer = document.getElementById('version-filters');
   if (!vContainer) {
     vContainer = document.createElement('div');
@@ -60,16 +67,51 @@ function renderFilters() {
     vContainer.style.marginTop = '10px';
     container.parentNode.appendChild(vContainer);
   }
-  
-  vContainer.innerHTML = `<span style="color:#aaa;margin-right:10px;font-family:sans-serif;font-size:14px;">Version:</span><button class="filter-btn active" data-version="all">All</button>`;
-  vContainer.innerHTML += `<button class="filter-btn" data-version="1">v1</button>`;
-  vContainer.innerHTML += `<button class="filter-btn" data-version="2">v2</button>`;
-  
-  vContainer.querySelectorAll('.filter-btn').forEach(btn => {
+
+  const versions = new Set();
+  classes.forEach(cls => {
+    Object.values(cardsData[cls]).forEach(data => versions.add(data.version || 1));
+  });
+  const maxVersion = Math.max(...versions);
+
+  vContainer.innerHTML = `
+    <span style="color:#aaa;margin-right:10px;font-family:sans-serif;font-size:14px;">Version:</span>
+    <input type="number" id="version-tick" min="1" max="${maxVersion}"
+           placeholder="all" style="width:60px;" value="${activeVersion === 'all' ? '' : activeVersion}">
+    <button class="filter-btn" id="version-clear">All</button>
+  `;
+
+  document.getElementById('version-tick').addEventListener('input', (e) => {
+    const v = e.target.value.trim();
+    activeVersion = v === '' ? 'all' : v;
+    renderSheets();
+  });
+  document.getElementById('version-clear').addEventListener('click', () => {
+    document.getElementById('version-tick').value = '';
+    activeVersion = 'all';
+    renderSheets();
+  });
+
+  // Level filter: Level 1 (base kit) vs. Level 2 (upgrade cards) vs. both -- a different axis
+  // from Version (print revision) entirely, so it's a separate control, not folded into it.
+  let lContainer = document.getElementById('level-filters');
+  if (!lContainer) {
+    lContainer = document.createElement('div');
+    lContainer.id = 'level-filters';
+    lContainer.style.marginTop = '10px';
+    container.parentNode.appendChild(lContainer);
+  }
+  lContainer.innerHTML = `
+    <span style="color:#aaa;margin-right:10px;font-family:sans-serif;font-size:14px;">Level:</span>
+    <button class="filter-btn ${activeLevel === 'all' ? 'active' : ''}" data-level="all">All</button>
+    <button class="filter-btn ${activeLevel === '1' ? 'active' : ''}" data-level="1">Level 1</button>
+    <button class="filter-btn ${activeLevel === '2' ? 'active' : ''}" data-level="2">Level 2</button>
+  `;
+  lContainer.querySelectorAll('.filter-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
-      vContainer.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      lContainer.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
       e.target.classList.add('active');
-      activeVersion = e.target.getAttribute('data-version');
+      activeLevel = e.target.getAttribute('data-level');
       renderSheets();
     });
   });
@@ -109,17 +151,24 @@ function renderSheets() {
 
   let cardsToRender = [];
   
+  const passesFilters = (data) => {
+    if (activeVersion !== 'all' && String(data.version || 1) !== activeVersion) return false;
+    if (activeLevel === '1' && data.level2) return false;
+    if (activeLevel === '2' && !data.level2) return false;
+    return true;
+  };
+
   if (activeClass === 'all') {
     classes.forEach(cls => {
       Object.entries(cardsData[cls]).forEach(([name, data]) => {
-        if (activeVersion === 'all' || String(data.version || 1) === activeVersion) {
+        if (passesFilters(data)) {
           cardsToRender.push({ className: cls, name, data });
         }
       });
     });
   } else {
     Object.entries(cardsData[activeClass]).forEach(([name, data]) => {
-      if (activeVersion === 'all' || String(data.version || 1) === activeVersion) {
+      if (passesFilters(data)) {
         cardsToRender.push({ className: activeClass, name, data });
       }
     });
@@ -247,8 +296,20 @@ function renderCard({ className, name, data }) {
   }
 
   let tagsHtml = rawTags.map(t => `<span class="tag ${getTagClass(t)}">${t}</span>`).join(' ');
-  
-  let typeBarHtml = rawTags.length > 0 ? 
+
+  // Level 2 marker -- mandatory (free, automatic) vs. purchased (costs Gold) get different
+  // colors since a player's mental model of "how do I get this" differs between them. Distinct
+  // from the Version badge in the footer (print-revision tracking), a different axis entirely.
+  let levelBadgeHtml = '';
+  let replacesHtml = '';
+  if (data.level2) {
+    const tierColor = data.tier === 'mandatory' ? '#F9A825' : '#6A1B9A';
+    const tierLabel = data.tier === 'mandatory' ? 'LV2 · FREE' : 'LV2 · PURCHASED';
+    levelBadgeHtml = `<div class="level2-badge" style="background:${tierColor};" title="${data.tier}">${tierLabel}</div>`;
+    replacesHtml = `<div class="replaces-line">Replaces: ${data.replaces}</div>`;
+  }
+
+  let typeBarHtml = rawTags.length > 0 ?
     `<div class="type-bar">${tagsHtml}</div>` : 
     `<div class="type-bar"></div>`;
 
@@ -268,7 +329,7 @@ function renderCard({ className, name, data }) {
               <div class="sub-panel-text">${pText}</div>
             </div>
           `;
-       } else if (p.type === 'weave_source' || p.type === 'weave_payoff') {
+       } else if (p.type === 'weave_source' || p.type === 'weave_payoff' || p.type === 'echo') {
           return `
             <div class="sub-panel panel-magic">
               <div class="sub-panel-label">${p.label}</div>
@@ -352,6 +413,7 @@ function renderCard({ className, name, data }) {
           <div class="card-name">${name}</div>
           <div class="aggro-badge" title="Aggro">A: ${aggroText}</div>
         </div>
+        ${levelBadgeHtml}
         ${typeBarHtml}
         <div class="card-body" style="padding-bottom: 2pt;">
           <div class="split-top" style="border-bottom: none; padding-bottom: 0;">
@@ -379,6 +441,7 @@ function renderCard({ className, name, data }) {
         </div>
         <div class="card-ftr">
           <div class="ftr-divider"></div>
+          ${replacesHtml}
           <div class="ftr-class">${className}${data.version ? ` v${data.version}` : ' v1'}</div>
         </div>
       </div>
@@ -390,6 +453,7 @@ function renderCard({ className, name, data }) {
           <div class="card-name">${name}</div>
           <div class="aggro-badge" title="Aggro">A: ${aggroText}</div>
         </div>
+        ${levelBadgeHtml}
         ${typeBarHtml}
         <div class="art-zone">
           ${artImgHtml}
@@ -401,6 +465,7 @@ function renderCard({ className, name, data }) {
         </div>
         <div class="card-ftr">
           <div class="ftr-divider"></div>
+          ${replacesHtml}
           <div class="ftr-class">${className}${data.version ? ` v${data.version}` : ' v1'}</div>
         </div>
       </div>

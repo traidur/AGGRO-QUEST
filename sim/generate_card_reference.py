@@ -68,6 +68,8 @@ def _warrior_lines():
                 parts.append(f"**{'Guardian' if c['chain_stance']=='G' else 'Champion'} only:** if the previous round's card was {c['chain_requires']}, +{c['chain_bonus']} {target}.")
             text = " ".join(parts)
             aggro = f"Aggro {c['aggro']}" if "aggro" in c else f"Aggro G:{c['aggro_G']} / C:{c['aggro_C']}"
+        if c.get("pvp_note"):
+            text = f"{text} **PvP:** {c['pvp_note']}"
         lines.append((name, text, aggro))
     return lines
 
@@ -101,6 +103,8 @@ def _cleric_lines():
             parts.append(f"Triggers Sacred Balance: heal {C.SACRED_BALANCE_HEAL} HP automatically.")
         if c["max_hp_buff"]:
             parts.append(f"+{c['max_hp_buff']} Max HP for the rest of this pull.")
+        if c.get("echo_dmg"):
+            parts.append(f"At the start of the next round, automatically deal {c['echo_dmg']} more DMG (no card spent).")
         lines.append((name, " ".join(parts), f"Aggro {c['aggro']}"))
     return lines
 
@@ -207,9 +211,8 @@ def _druid_lines():
         if c["block"]:
             parts.append(f"{c['block']} Block.")
         if c["tag"] == "shapeshift" and name != "Shapeshift: Grizzly":
-            parts.append("+1 DMG and +1 Block if Shapeshift: Grizzly was played in an earlier round this pull.")
+            parts.append("+1 DMG and +1 Block per Shapeshift-tagged card already played this pull (requires Shapeshift: Grizzly to have been played first).")
         if name == "Shapeshift: Grizzly":
-            parts.append("Maul/Swipe played in a later round gain +1 DMG/+1 Block.")
             parts.append("Cancels the Eclipse-stacking bonus on any Eclipse-tagged card played in a later round.")
         if c["tag"] == "eclipse":
             if c.get("heal_scales_with_eclipse"):
@@ -235,14 +238,24 @@ def _necromancer_lines():
         if c["grants_range"]:
             parts.append("Grants At Range this round (evades a melee mob's attack).")
         if c["dot_payoff"]:
-            parts.append("+1 DMG per DOT-tagged card played in an earlier round this pull.")
+            mult = c.get("dot_multiplier", 1)
+            parts.append(f"+{mult} DMG per DOT-tagged card played in an earlier round this pull.")
         if c["echo_dmg"]:
             parts.append(f"At the start of the next round, automatically deal {c['echo_dmg']} more DMG (no card spent).")
         if c["killing_blow"]:
             parts.append("If this attack kills the mob, its attack this round is prevented.")
-        if name == Nm.BONEGUARD_OFFERING:
-            parts.append(f"Death Pact: when you play this card, you may lose {Nm.HP_FOR_DMG_COST} HP "
-                         f"to deal {Nm.HP_FOR_DMG_BONUS} extra DMG.")
+        if c.get("blood_magic"):
+            # Reads the card's OWN boosted_dmg/boosted_heal if present (the Level 2 leveled
+            # variant carries its own, different cost/bonus), falling back to the shared base
+            # constants only for the unleveled card, which has no such fields of its own --
+            # checking blood_magic instead of `name == BONEGUARD_OFFERING` so this generalizes
+            # to whatever name Level 2 renames this card to (e.g. Boneguard's Bargain).
+            cost = -c["boosted_heal"] if "boosted_heal" in c else Nm.HP_FOR_DMG_COST
+            bonus = c.get("boosted_dmg", Nm.HP_FOR_DMG_BONUS)
+            parts.append(f"Death Pact: when you play this card, you may lose {cost:g} HP "
+                         f"to deal {bonus:g} extra DMG.")
+        if c.get("pvp_note"):
+            parts.append(f"**PvP:** {c['pvp_note']}")
         lines.append((name, " ".join(parts), f"Aggro {c['aggro']}"))
     return lines
 
@@ -261,6 +274,10 @@ def _tags(card):
     SACRED BALANCE, SPELLWEAVE, INVOCATION, PET, ECHO, FINISHER, OPENER are each named after
     the mechanic itself, not invented ad hoc)."""
     tags = []
+    if card.get("combat_type") == "ranged":
+        tags.append("RANGED")
+    elif card.get("combat_type") == "melee":
+        tags.append("MELEE")
     if card.get("grants_range"):
         tags.append("AT RANGE")
     if card.get("strike"):

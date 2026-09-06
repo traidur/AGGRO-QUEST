@@ -149,8 +149,9 @@ wins/trip~4.31, wins/pull~75.9%, all three inside the pack's range (5.13-5.68 / 
 74.1-78.3%), pulls sitting at the pack's current maximum by deliberate choice (see above).
 macro_sim.py compatibility confirmed via `run_one_trip`.
 
-**Not yet done:** Aggro values (all placeholder 0) -- assigned after balance lock per this
-project's standard build order, not before.
+**Aggro values locked 2026-09-05** (direct user review, card-by-card, per this project's
+standard convention): Boneguard's Offering 3, Soul Harvest 2, Sowing Dread 2, Reap 3, Blight 1,
+Death Blow 4.
 
 **2026-08-30, full rebalance -- two separate findings, resolved in different ways.**
 
@@ -206,8 +207,8 @@ BONEGUARD_OFFERING = "Boneguard's Offering"
 # card played in a strictly earlier round this pull. echo_dmg fires automatically at the
 # start of the next round, no card spent (Blight only). killing_blow prevents the mob's
 # attack this round if this card's damage brings it to <=0 (Death Blow only).
-# aggro: co-op Party Pull targeting value (0-4) -- NOT YET ASSIGNED, placeholder 0 throughout,
-# matching every other class's actual build order (aggro comes after balance lock).
+# aggro: co-op Party Pull targeting value (0-4), locked via direct user review -- see
+# OPEN_QUESTIONS.md's "Co-op multi-hero vs. one Elite" entry.
 BONEGUARD_OFFERING_BOOSTED = "Boneguard's Offering (Boosted)"  # virtual variant, see module docstring
 
 # version: printed-card revision number, bumped only when a card's printed text/numbers
@@ -215,17 +216,19 @@ BONEGUARD_OFFERING_BOOSTED = "Boneguard's Offering (Boosted)"  # virtual variant
 # CARD_REFERENCE.md's own note for the convention.
 CARDS = {
     BONEGUARD_OFFERING: dict(combat_type="melee",dmg=0, heal=0, block=2, grants_range=True, dot=False,
-                              dot_payoff=False, echo_dmg=0, killing_blow=False, blood_magic=True, aggro=0, version=1),
+                              dot_payoff=False, echo_dmg=0, killing_blow=False, blood_magic=True, aggro=3,
+                              pvp_note="Death Pact costs no HP in PvP duels -- still deals its bonus damage for free.",
+                              version=2),
     "Soul Harvest": dict(combat_type="ranged",dmg=3, heal=2, block=0, grants_range=False, dot=False,
-                               dot_payoff=False, echo_dmg=0, killing_blow=False, aggro=0, version=1),
+                               dot_payoff=False, echo_dmg=0, killing_blow=False, aggro=2, version=1),
     "Sowing Dread": dict(combat_type="ranged",dmg=2, heal=0, block=0, grants_range=True, dot=True,
-                               dot_payoff=False, echo_dmg=0, killing_blow=False, aggro=0, version=1),
+                               dot_payoff=False, echo_dmg=0, killing_blow=False, aggro=2, version=1),
     "Reap": dict(combat_type="ranged",dmg=4, heal=0, block=0, grants_range=False, dot=False,
-                               dot_payoff=True, echo_dmg=0, killing_blow=False, aggro=0, version=2),
+                               dot_payoff=True, echo_dmg=0, killing_blow=False, aggro=3, version=2),
     "Blight": dict(combat_type="ranged",dmg=1, heal=0, block=0, grants_range=False, dot=True,
-                               dot_payoff=False, echo_dmg=3, killing_blow=False, aggro=0, version=2),
+                               dot_payoff=False, echo_dmg=3, killing_blow=False, aggro=1, version=2),
     "Death Blow": dict(combat_type="ranged",dmg=4, heal=0, block=0, grants_range=False, dot=False,
-                               dot_payoff=False, echo_dmg=0, killing_blow=True, aggro=0, version=1),
+                               dot_payoff=False, echo_dmg=0, killing_blow=True, aggro=4, version=1),
 }
 DECK = list(CARDS.keys())
 ALL_HANDS = list(itertools.combinations(DECK, 4))
@@ -277,7 +280,8 @@ def orderings(hand):
 
 
 def resolve_round(state, card_name, stance, round_num, mob_pattern, mob_hp_total,
-                   mob_hp_remaining, hero_hp, hero_max_hp):
+                   mob_hp_remaining, hero_hp, hero_max_hp, death_pact_free=False,
+                   dot_multiplier_pvp=None):
     """The one place Necromancer's card-effect logic lives. Faithful port of the real,
     current simulate() below -- Blight's echo resolves at the START of this round (from
     state.nc_pending_echo_dmg, set by the PREVIOUS round's card), before this round's own
@@ -291,7 +295,17 @@ def resolve_round(state, card_name, stance, round_num, mob_pattern, mob_hp_total
     ancestry, AGGRO and Slay the Spire both work this way).** When Echo and this round's own
     card both deal damage in the same round, Block absorbs the Echo first (since it resolves
     first), and whatever's left over -- possibly nothing -- reduces this round's own card
-    damage. Every point of Block is single-use within the round, first hit served first."""
+    damage. Every point of Block is single-use within the round, first hit served first.
+
+    death_pact_free: PvP-only, defaults False (every PvE caller is unaffected). When True,
+    Boneguard's Offering (Boosted)'s HP-cost rider (Death Pact) doesn't apply -- see
+    DESIGN_DOC.md Section X's Class-Specific PvP Rules. sim_pvp.py's score is a pure final-HP
+    delta, so self-inflicted HP loss from Death Pact was being credited to the OPPONENT as
+    damage dealt (see PVP_BALANCE_GUIDE.md), making the card strictly worse than not playing it
+    in every duel -- confirmed the solver never chose it. A first measurement of this rule's
+    win-rate impact wrongly showed zero effect (a diagnostic bug -- the override silently never
+    ran, see PVP_BALANCE_GUIDE.md); correctly measured, avg dominant-win rose 4.0% -> 7.8% and
+    most matchups converted from guaranteed losses into genuinely contested hands."""
     if "(Boosted)" in card_name and card_name not in CARDS:
         base_name = card_name.replace(" (Boosted)", "")
         base_card = CARDS[base_name]
@@ -302,7 +316,16 @@ def resolve_round(state, card_name, stance, round_num, mob_pattern, mob_hp_total
             card["block"] = base_card["boosted_block"]
     else:
         card = CARDS[card_name]
-        
+
+    # death_pact_free applies here too, not just the dynamic branch above -- the base kit's
+    # own boosted variant is a STATIC pre-registered CARDS entry (see BONEGUARD_OFFERING_BOOSTED
+    # below), so it always takes the `else` branch above and never reaches the dynamic
+    # heal-override. Copy before mutating -- `card` may be a direct reference into the shared
+    # module-level CARDS dict here, and this must never leak into any other call (PvE or PvP).
+    if death_pact_free and "(Boosted)" in card_name:
+        card = dict(card)
+        card["heal"] = 0
+
     mob_atk, mob_block, mob_type = mob_pattern[round_num]
     remaining_block = mob_block  # depletes as it absorbs damage this round, first-come-first-served
 
@@ -315,7 +338,8 @@ def resolve_round(state, card_name, stance, round_num, mob_pattern, mob_hp_total
 
     dmg, heal, block = card["dmg"], card["heal"], card["block"]
     if card.get("dot_payoff"):
-        dmg += state.dot_played_before * card.get("dot_multiplier", 1)
+        mult = dot_multiplier_pvp if dot_multiplier_pvp is not None else card.get("dot_multiplier", 1)
+        dmg += state.dot_played_before * mult
 
     new_hp = min(hero_max_hp, hero_hp + heal)
 

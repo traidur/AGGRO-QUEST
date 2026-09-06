@@ -281,7 +281,7 @@ with *only* Evasion and Riposte applied:
 Block sweep (damage fixed at 4) both tested independently against the true mandatory-only
 baseline. Damage is the only lever that moves win margin (block stays flat at -3.2 across its
 whole range, matching every other pure-Block sweep this guide has ever run). **First lock
-attempt (superseded below): Backstab and Dodge -> Backstab and Dodge [Lv 2], damage 4->5,
+attempt (superseded below): Backstab and Dodge -> Piercing Backstab, damage 4->5,
 Block unchanged at 2.** Cost margin +0.1, win margin -2.6, pulls margin +0.27 -- a deliberately
 conservative pick short of where win margin would saturate (dmg=7, -1.6).
 
@@ -313,6 +313,24 @@ above.
 true-isolation numbers** -- flagged here explicitly rather than silently left as-is, since its
 contaminated win margin (-0.7) and true win margin (-3.2) are a real, large gap the user should
 see before treating 3/5 as final.
+
+**Resolved 2026-09-05: this guide never actually had a combined, all-4-cards validation for
+Rogue at all** (confirmed by direct search -- every number above is a single card added to a
+partial baseline, never the full stacked slate). Re-measured directly, isolating each purchased
+card cleanly against the true mandatory-only baseline: Quicker Slash alone (cost -1.9, win -0.6,
+pulls -0.34) and Piercing Backstab alone (cost -1.1, win -2.9, pulls -0.15) both match
+their already-recorded numbers above (small differences are Monte Carlo noise on the
+3000-trial pulls metric only, not real). **Relentless Ambush's isolated win margin re-confirmed
+at -3.2 -- identical to mandatory alone, i.e. genuinely zero measurable win-margin contribution**,
+resolving the flag above: the `bonus_rounds=(0,1)` mechanic does help cost/pulls a little
+(-2.4->-1.8, -0.47->-0.33) but not win rate at all.
+
+**First-ever full combined slate (mandatory + all 3 purchased): cost -0.5, win -0.6, pulls
++0.03.** The reason win margin doesn't close further than -0.6 is now traceable directly --
+that number is almost entirely Quicker Slash's own contribution; Relentless Ambush and Backstab
+and Dodge together add essentially nothing further to win margin once stacked, only to
+cost/pulls. **Accepted as Rogue's landing spot** rather than re-tuned further -- comparable in
+shape to Paladin's own re-locked -0.6 win margin, not an outlier.
 
 ## Fifth class worked example: Ranger
 
@@ -437,7 +455,7 @@ win margin flat at -3.2 throughout) -- and buffing it to block=1 would make it n
 identical to Crippling Shot's own base stats (dmg=2/block=1/grants_range=True), a real
 duplicate-identity problem flagged directly by the user, not just a numbers concern.
 
-**Locked: Crippling Shot -> Crippling Shot [Lv 2], Block 1->2** (damage held at 2). Deliberately
+**Locked: Crippling Shot -> Debilitating Shot, Block 1->2** (damage held at 2). Deliberately
 not Withdrawing Hip Shot's matching lever, specifically to keep the two cards' identities
 distinct rather than converging them. Margin in isolation (mandatory-only baseline): cost -0.8,
 win -3.2 (flat, as expected for a pure-Block bump), pulls +0.15 -- the smallest, safest of the
@@ -445,7 +463,7 @@ three untouched cards' minimum bumps by a wide margin (compare Wolf's own smalle
 pulls +0.83 above).
 
 **Final four-upgrade total (mandatory Beast's Stand + Bullseye + Deadeye/Point Blank Shot +
-Crippling Shot [Lv 2], all stacked):** cost 18.2% (margin -0.2), win 94.9% (margin -0.6), pulls
+Debilitating Shot, all stacked):** cost 18.2% (margin -0.2), win 94.9% (margin -0.6), pulls
 6.35 (margin +0.26). Still trailing Paladin's own final reference (+0.7/-0.7/+0.55) on cost and
 pulls, win margin nearly identical -- no overshoot at any step across the whole slate.
 
@@ -464,6 +482,18 @@ attempt too.** Explicit plan going forward: check the running cumulative cost/wi
 margins against Paladin's own final locked numbers (cost +0.7, win -0.7, pulls +0.55) as a
 rough ceiling reference at every step, not just at the final chart, so an overshoot gets
 caught early rather than after the whole slate is already locked.
+
+**Checked 2026-09-05 against the 2026-08-30 rebalance (which explicitly named Ranger as one of
+the five classes it touched) -- confirmed clean, no fix needed, unlike Paladin/Runecaster's own
+re-checks.** Every upgraded card's delta held up: Bullseye and Debilitating Shot's base
+cards were never touched by the rebalance; Deadeye/Point Blank Shot's `dmg_if_prev_range` was
+already correctly re-derived (old 7->8 became new-base(5)+1=6, matching production exactly);
+Beast's Stand's `dmg_if_wolf` was left unchanged at 5 in the dict, which happens to still
+deliver a valid (if accidental) +1 over the rebalance-cut base of 4. Fresh measurement
+(cost +0.1, win -0.3, pulls +0.42) differs from the historically recorded target (-0.2/-0.6/
++0.26), but the cause is Withdrawing Hip Shot -- a card with no Level 2 upgrade at all, whose
+own base damage (2->3) was bumped as the rebalance's own compensation for the Sniper/Point
+Blank Shot cut. Same category as Wizard's own clean re-check, not Paladin's or Runecaster's.
 
 ## Sixth class worked example: Wizard
 
@@ -639,6 +669,15 @@ runs away, more than 2.5x past it. **Explicitly not re-tuned this session** -- t
 call, given how hard these small per-card swings are to keep track of cumulatively once several
 of them stack. Flagged here so a future pass doesn't mistake this for an oversight.
 
+**Superseded 2026-08-31 (commit `bec74b6`, not run through this guide's own procedure -- found
+via git log during the 2026-09-04/05 cross-class leveling-drift investigation, not remembered):**
+Fire Ball [Lv 2] was replaced with **Arcane Volley -> Arcane Barrage** (dmg (6,7)->(6,8)) as the
+second purchased upgrade, one day after the 2026-08-30 roster-wide rebalance. Re-measured fresh:
+cost +0.2, win -0.2, pulls +0.31 -- the win-margin overshoot flagged above is gone, and every
+metric now sits comfortably inside the rest of the roster's own fresh-measured spread (Warrior
++2.3/+0.8/+0.34, Cleric -1.5/+1.3/+0.02, Ranger +0.1/-0.3/+0.42), not an outlier. Left as-is --
+this is the current, correct, working slate, just never written up here until now.
+
 **Side tangent this session, not Wizard-specific: a cross-class armor-pierce retrospective.**
 Prompted by Fire Blast's finding, checked which already-locked Level 2 upgrades (across Warrior,
 Cleric, Paladin, Rogue, Ranger) were flat damage bumps that could instead have kept damage flat
@@ -649,7 +688,7 @@ damage, the larger the fraction lost to block and the more pierce can recover: W
 Dominate (pre-bump dmg=1) topped the list at 30.2% of its own damage lost to block on average.
 
 One real change came out of this and was locked into Rogue (see its own worked example above,
-"Revised" paragraph added 2026-08-20): **Backstab and Dodge [Lv 2]'s damage held at 4** (not
+"Revised" paragraph added 2026-08-20): **Piercing Backstab's damage held at 4** (not
 the first-attempt 5) **plus `armor_pierce`** -- deliberately the unbumped-damage variant over
 the numerically stronger 5+pierce combination, same "leave real margin" discipline. **Evasion
 and Riposte (Rogue's mandatory) was swept the same way but explicitly NOT changed** -- dmg=2+
@@ -1197,7 +1236,7 @@ still-different number again in true isolation. Chasing that contradiction down 
 margin saturates at only +0.9** (not +1.9), first reached at ceiling=18, tied three ways
 (base=4/echo=3, base=5/echo=2, base=6/echo=1).
 
-**Locked: Void Mark -> Void Mark [Lv 2], base damage 3->4, gains echo_dmg=1** ("4 DMG now, 1
+**Locked: Void Mark -> Void Death Mark, base damage 3->4, gains echo_dmg=1** ("4 DMG now, 1
 more automatically next round," 5 total over its life) -- the *original* candidate value, kept
 deliberately rather than moved to one of the higher-margin, saturated options the corrected
 sweep surfaced. A `[Lv 2]` tag, not a full rename -- unlike Void Storm, this stays the same
@@ -1212,7 +1251,7 @@ saturated value at once.
 
 **Cleric's four-upgrade slate is complete, matching Warrior's shape (1 mandatory + 3
 purchased):** Greater Heal (mandatory, heal=4, no Block), Holy Fiery Fortitude (damage 3->4),
-Void Storm (damage 6->7), Void Mark [Lv 2] (base damage 3->4, echo_dmg=1). Cleansing Barrier and
+Void Storm (damage 6->7), Void Death Mark (base damage 3->4, echo_dmg=1). Cleansing Barrier and
 Smite remain unupgraded, same reasoning as Warrior's Execute -- both already close to always
 being played, leaving little room for a change to matter.
 
@@ -1225,7 +1264,7 @@ step:**
 | Greater Heal (mandatory only) | -4.1 | -6.1 | -0.27 |
 | Greater Heal + Holy Fiery Fortitude | -2.6 | -1.3 | -0.09 |
 | Greater Heal + Void Storm (dmg=7) | -2.5 | -4.5 | -0.02 |
-| Greater Heal + Void Mark [Lv 2] (4/1) | -4.5 | -0.3 | -0.36 |
+| Greater Heal + Void Death Mark (4/1) | -4.5 | -0.3 | -0.36 |
 | Greater Heal + all 3 purchased | -1.5 | +1.6 | +0.12 |
 
 Also re-checked Greater Heal at heal=5 before finalizing (a real, considered alternative, not
@@ -1301,7 +1340,7 @@ of Sanctuary alone):** Invocation of Grace, 37.8% unplayed -- now the clear top 
 Light second at 26.7%, Holy Fortress a distant third at 15.6%, Bastion's Hammer still weak at
 5.6%). Swept damage 4->8: win margin saturates at dmg=7 (+0.3, rising slightly to +0.6 at
 dmg=8) -- the only purchased-upgrade candidate that can push win margin *positive* on its own.
-**Locked: Invocation of Grace -> Invocation of Grace [Lv 2], damage 4->5** -- short of the dmg=7 saturation point, a
+**Locked: Invocation of Grace -> Greater Invocation of Grace, damage 4->5** -- short of the dmg=7 saturation point, a
 deliberately conservative pick (win margin -1.3 alone, not yet positive) matching the same
 "don't take the strongest legal value just because it's available" discipline Cleric's Void Mark
 used.
@@ -1338,13 +1377,63 @@ step:**
 | Baseline (no upgrades) | -4.6 | -4.1 | -0.78 |
 | Mandatory only (Invoking Aura of Sanctuary) | -0.7 | -4.1 | -0.04 |
 | Mandatory + Sanctified Light (heal 4) alone | -0.4 | -4.1 | +0.56 |
-| Mandatory + Invocation of Grace [Lv 2] (dmg 5) alone | -0.4 | -1.3 | +0.02 |
+| Mandatory + Greater Invocation of Grace (dmg 5) alone | -0.4 | -1.3 | +0.02 |
 | Mandatory + Bastion's Breaker (dmg 7) alone | 0.0 | -3.2 | +0.10 |
 | Mandatory + all 3 purchased | +0.7 | -0.7 | +0.55 |
 
 Cost and pulls margins land solidly positive. Win margin does not fully close (-0.7), unlike
 Warrior and Cleric, which both closed to positive with everything stacked -- flagged, not
 resolved; accepted as this class's landing spot rather than pushed further.
+
+**Re-locked 2026-09-05, after the numbers above went stale.** The 2026-08-30 "worst-pair
+round2-breadth" rebalance (see `CLASS_BALANCE_GUIDE.md`) cut Might of the Aegis (4->3) and
+Bastion's Hammer (6->4), doubled `INVOCATION_PER_STRIKE_BONUS` (1->2) to compensate, and added a
+new base Block=1 to Sacred Light (renamed Vigil of Light) -- none of it aware that leveling had
+already built `grants_aura_block` on top of the same shared per-STRIKE constant, or that Bastion's
+Breaker/Sanctified Light's own deltas were now anchored to obsolete base numbers. Re-measured
+fresh: cost margin ballooned to +4.6, win margin regressed to -3.8, pulls margin to +3.18 --
+found via a live, code-first re-run (`leveling_validation.level_comparison_table` against the
+production `LEVEL2_MANDATORY`/`LEVEL2_PURCHASED_ORDER` dicts directly), not by trusting this
+table.
+
+**Root cause was two separate bugs, not one:**
+1. `grants_aura_block`'s Block bonus was silently reading `INVOCATION_PER_STRIKE_BONUS` --
+   the *damage*-bonus constant, doubled by the rebalance for reasons that had nothing to do with
+   Level 2's Block mechanic. Fixed by giving it its own dedicated constant,
+   `INVOCATION_AURA_BLOCK_BONUS = 1`, restored to its original validated value and decoupled
+   from whatever the damage-side constant does in the future (`condensed_paladin.py`).
+2. Bastion's Hammer and Vigil of Light's own base Level 1 values moved out from under their
+   Level 2 upgrades independent of the constant bug -- their deltas were already correctly
+   re-anchored to the new base by the time this was found (Bastion's Breaker = new base + 1,
+   matching the original validated delta), but the class's *overall* damage output still fell,
+   because Might of the Aegis's own base cut (4->3) was never compensated for by any Level 2
+   card at all.
+
+**Combination sweep** (mandatory fixed with the corrected constant; 7 candidate purchased-slot
+combinations x mandatory Block 0 or 1, `sim/_paladin_relevel_sweep.py`) confirmed the guide's own
+established pattern held exactly: win margin was byte-identical between the Block=0 and Block=1
+variant of every combo tested -- the mandatory's own flat Block bump never touched win rate,
+only cost/pulls, matching Rogue's/Wizard's/Druid's own "damage is the only lever that moves win
+margin" findings elsewhere in this guide.
+
+**Re-locked slate (replaces the one above): mandatory Invoking Aura of Sanctuary drops its own
+flat Block bump (Block 1->0, keeping `grants_aura_block`'s per-STRIKE Block mirroring intact);
+purchased slots become Wrath of the Aegis (dmg 3->4), Divine Fortress (dmg 3->4),
+Greater Invocation of Grace (dmg 4->5) -- Bastion's Breaker and Sanctified Light are dropped from
+the slate entirely, Bastion's Hammer and Vigil of Light stay at their Level 1 printed values.**
+Every purchased card is now a flat, uniform +1 damage bump, the simplest possible shape.
+
+| Kit | Cost margin | Win margin | Pulls margin |
+|---|---|---|---|
+| Re-locked (mandatory + all 3 purchased) | +2.1 | -0.6 | +0.78 |
+
+Win margin (-0.6) is now the closest of any locked pass in this guide to its own target (-0.7).
+Cost and pulls still overshoot more than the original 2026-08-19 lock did (+0.7/+0.55) -- a real,
+open gap, left as this class's new landing spot for now rather than chased further, the same
+kind of accepted-shortfall call already made once for this exact class. Every other already-
+leveled class's own numbers shifted somewhat from their own recorded values too once measured
+fresh against the current roster (see the cross-class leveling-drift investigation, 2026-09-04)
+-- Paladin was simply the worst-affected, not uniquely broken.
 
 ## Purchased-upgrade pricing, locked (2026-08-20)
 
@@ -1376,9 +1465,9 @@ again, don't assume it still holds.
 | Warrior | Vanguard Blade [Lv 2] | 8G |
 | Cleric | Holy Fiery Fortitude | 8G |
 | Cleric | Void Storm | 8G |
-| Cleric | Void Mark [Lv 2] | 8G |
+| Cleric | Void Death Mark | 8G |
 | Paladin | Sanctified Light | 8G |
-| Paladin | Invocation of Grace [Lv 2] | 8G |
+| Paladin | Greater Invocation of Grace | 8G |
 | Paladin | Bastion's Breaker | 8G |
 
 A player buying all 3 of a class's purchased upgrades needs 24G total, well past the ~12G a
@@ -1572,13 +1661,151 @@ outcome, which is exactly why cost/pulls move while win sits flat. Call of the G
 moves win the most but drags cost and pulls along more than double what Windstrike does per unit
 of win gained.
 
-**Locked, by explicit user choice: Windstrike -> Windstrike [Lv 2], dmg 5->6, every other field
+**Locked, by explicit user choice: Windstrike -> Hurricane Strike, dmg 5->6, every other field
 unchanged.** Smallest footprint of the equilibrium-clear options for a win-focused ask. Final
 four-upgrade slate (mandatory + all 3 purchased), measured directly through the real
 `board_engine._level2_swaps_for` wiring: cost -0.6, win +1.2, pulls +0.29, equilibrium clear on
 all 6 Standard mobs -- pulls margin lands alongside Ranger's (+0.26) and Wizard's (+0.25) own
 final locked slates, no overshoot despite this card not having a diagnosed-weakness justification
 the way the first two did.
+
+**Re-locked 2026-09-05, after the numbers above went stale.** The same 2026-08-30 rebalance that
+hit Paladin also touched Runecaster directly (Chain Lightning 6->4, Call of the Glacier 3->4) and
+landed a same-day mob-Block-pooling engine fix specifically affecting Echo mechanics -- Earth
+Strike Rune [Lv 2] is one of Runecaster's 4 upgraded cards and is an Echo card, so its real
+combat math shifted even though its own printed numbers never moved. Fresh measurement: cost
++1.9, win -1.6, pulls +0.76 (recorded target was -0.6/+1.2/+0.29).
+
+**Combination sweep** (`sim/_runecaster_relevel_sweep.py`, mandatory held fixed, 8 candidate
+purchased-slot combinations including two cards -- Chain Lightning and Call of the Glacier --
+that had never been leveled before) found something Paladin's case didn't have: **win margin
+measured exactly -1.6 across every combination tried that kept Lightning Bolt in the slate**,
+regardless of which other two cards were upgraded or by how much. Not a lever problem the way
+Paladin's `grants_aura_block` coupling bug was -- this reads as a genuine structural floor for
+this class's current hand distribution, the same shape as Paladin's own Bastion's Hammer finding
+("never gets win margin above -3.2 no matter how high damage goes"). Accepted rather than chased
+further, mirroring this class's own original lock already accepting a non-zero shortfall (just
+the opposite sign, then +1.2 over target, now -1.6 under it).
+
+Since win margin doesn't respond to slot choice, picked the combination that helps cost/pulls
+instead, at zero win-margin cost: **Earth Strike Rune [Lv 2] is dropped from the slate (Earth
+Strike Rune reverts to its Level 1 printed values, no Level 2 treatment); Chain Lightning gains
+a new upgrade, Chain Lightning -> Chain Lightning [Lv 2], dmg 4->5.** Lightning Bolt [Lv 2] and
+Hurricane Strike are unchanged from the original lock.
+
+| Kit | Cost margin | Win margin | Pulls margin |
+|---|---|---|---|
+| Re-locked (mandatory + Lightning Bolt [Lv 2] + Hurricane Strike + Chain Lightning [Lv 2]) | +1.2 | -1.6 | +0.65 |
+
+Cost margin improved from +1.9 to +1.2 and pulls from +0.76 to +0.65, both moving toward their
+targets; win margin is unchanged (confirmed identical before and after, since it doesn't respond
+to purchased-slot choice at all for this class right now). Still a real, open gap on win margin
+-- left as this class's accepted landing spot, same as Paladin's cost/pulls overshoot.
+
+## Eighth class worked example: Druid (locked 2026-09-05, drafted with Gemini, audited before locking)
+
+**Origin, worth stating plainly:** unlike every other class above, this slate was not built
+through this guide's own step-by-step procedure inside this session -- it was drafted externally
+(with Gemini) and brought in for review. Confirmed Druid's base kit was untouched by the
+2026-08-30 roster-wide rebalance (unlike Paladin/Cleric/Ranger/Wizard/Runecaster, `version=1`
+added to every card in that commit but no dmg/heal/block value moved), so unlike those classes
+this slate isn't built on a stale foundation -- the base numbers it was designed against still
+match live production exactly, checked card-by-card before trusting anything else.
+
+**Locked slate:**
+- Mandatory: Nature's Wildguard -> Nature's Rampart, Block 2->3 (heal/tag/
+  heal_scales_with_eclipse unchanged).
+- Purchased: Solar Flare -> Greater Solar Flare, dmg 5->6. Swipe -> Savage Swipe, dmg 3->4 (no
+  bespoke bonus -- rides the class's own native Shapeshift-stacking mechanic, already locked
+  independently of leveling, see `CARD_REFERENCE.md`'s Druid section). Moonbeam -> Greater
+  Moonbeam, dmg 5->6 (heal unchanged).
+
+**Renamed 2026-09-05** (naming pass across the whole roster, see below): Nature's Wildguard
+[Lv 2] -> Nature's Rampart, Solar Flare [Lv 2] -> Greater Solar Flare, Swipe [Lv 2] -> Savage
+Swipe, Moonbeam [Lv 2] -> Greater Moonbeam. Numbers unchanged, names only.
+
+**Headline numbers, verified accurate by direct re-measurement:** cost margin +1.7, win margin
+-3.5, pulls margin +0.63 (absolute L2 numbers: cost 23.3%, win 96.5%, pulls 6.46) -- matched the
+external draft's own claimed figures exactly.
+
+**The per-card reasoning trail that came with the draft did not hold up, and was corrected
+before locking, not copied in as-is:**
+- **Mandatory claimed to "completely close" the cost gap on its own -- it doesn't.** Measured in
+  isolation against the true baseline (-3.3): mandatory alone reaches -1.0, a real and
+  substantial improvement, but still short of closed. Full closure (+1.7) only happens once all
+  3 purchased upgrades are stacked on top. Same "damage bumps cost too, not just win" dynamic
+  already found in Paladin's own re-lock this session -- a pure Block lever moved win margin
+  exactly zero (confirmed: -8.6 before and after mandatory alone), consistent with every other
+  pure-Block sweep this guide has ever run.
+- **Solar Flare was claimed to close 3.2pp of win margin on its own -- the true, properly
+  isolated number (mandatory-only baseline, not stacked on top of an already-decided candidate)
+  is +1.3pp, less than half the claim.** Summing the draft's own stated per-card contributions
+  (3.2 + 2.6, before even counting Moonbeam) already exceeds the real combined total for all
+  three cards together (+5.1pp, -8.6 to -3.5) -- the exact contamination signature this guide has
+  now independently caught for Cleric, Rogue, and Paladin: a candidate swept against a baseline
+  that already had a different, not-yet-locked candidate's change present, not the true
+  mandatory-only starting point.
+- **Swipe's claimed contribution (+2.6pp) checked out exactly** against the properly isolated
+  measurement -- not every number in the draft was wrong, just Solar Flare's.
+- **Moonbeam's contribution was correctly left unquantified in the draft** ("rounding out the
+  offense" rather than a specific pp figure) -- measured at +1.3pp isolated, the same size as
+  Solar Flare's real (not claimed) number, both being identical flat Eclipse dmg+1 bumps.
+
+**Verification chain used:** `condensed_druid.CARDS` read fresh and diffed against the draft's
+quoted base values (exact match, all 4 cards) before trusting anything downstream; full slate
+re-measured via `leveling_validation.leveled_kit` + `cost_pct_for_level`/`win_rate_for_level`/
+`pulls_before_death` against the real Level 2 mob pool; each purchased card's isolated
+contribution re-measured against a clean mandatory-only baseline, the same procedure this guide
+already requires and has caught violations of four separate times now.
+
+## Level 2 naming pass -- every generic `[Lv 2]`-tagged card given a real name (2026-09-05)
+
+Audited every locked Level 2 upgrade across all 9 classes: 16 of 36 were sitting on the generic
+`name [Lv 2]` tag (a flat numeric bump, no new identity) rather than a real name, plus one
+(Wizard's mandatory) had somehow kept the *exact same name as its own base card* with no tag or
+distinction at all -- `condensed_wizard.py`'s Fire Blast and its Level 2 upgrade were both
+literally called "Fire Blast," indistinguishable on a physical deck. Renamed 13 cards; 3 stayed
+on the generic tag deliberately because they're referenced *by name* in another card's own combo
+text (**Vanguard Blade**, checked by Vanguard Shield's text; **Chain Lightning**, checked by
+Lightning Bolt's; and **Tidal Ward**, not cross-referenced but left alone by choice) -- renaming
+those would silently break the referencing card's rules text unless it were updated too, so they
+were left as `[Lv 2]` rather than risk that.
+
+| Class | Old | New |
+|---|---|---|
+| Wizard | Fire Blast (no tag at all) | **Fire Spear** |
+| Cleric | Void Mark [Lv 2] | **Void Death Mark** |
+| Rogue | Backstab and Dodge [Lv 2] | **Piercing Backstab** |
+| Paladin | Might of the Aegis [Lv 2] | **Wrath of the Aegis** |
+| Paladin | Holy Fortress [Lv 2] | **Divine Fortress** |
+| Paladin | Invocation of Grace [Lv 2] | **Greater Invocation of Grace** |
+| Ranger | Crippling Shot [Lv 2] | **Debilitating Shot** |
+| Runecaster | Windstrike [Lv 2] | **Hurricane Strike** |
+| Necromancer | Sowing Dread [Lv 2] | **Sowing Greater Dread** |
+| Druid | Nature's Wildguard [Lv 2] | **Nature's Rampart** |
+| Druid | Solar Flare [Lv 2] | **Greater Solar Flare** |
+| Druid | Moonbeam [Lv 2] | **Greater Moonbeam** |
+| Druid | Swipe [Lv 2] | **Savage Swipe** |
+
+Numbers unchanged for every renamed card -- this pass touched names only, verified by re-running
+`macro_sim.LEVEL2_MANDATORY`/`LEVEL2_PURCHASED_ORDER` and a full-roster PvE regression
+(`condensed_trip.full_report`) after every edit, all clean.
+
+**A real, previously-unnoticed bug was found and fixed while pulling this data, unrelated to
+naming: Lightning Bolt [Lv 2]'s combo bonus (`chain_bonus_dmg`) was silently zeroed** in commit
+`0dfee7f` (2026-08-30, titled "Fix Necromancer PvP evasion trap and update starting tokens" --
+nothing to do with Runecaster), six days after the card was correctly locked at
+`chain_bonus_dmg=1` with the explicit note "combo bonus left alone after confirming it's a dead
+lever." The zeroing was never mentioned in that commit's message and sits in the diff right next
+to an unrelated, intentional Cleric change -- almost certainly an accidental edit picked up while
+touching an adjacent line, not a real decision. Restored to `chain_bonus_dmg=1`, matching the
+original, actually-decided value. Lightning Bolt [Lv 2] itself keeps its generic tag (see above,
+not renamed) -- this was a numbers fix only.
+
+Version-tracking note: none of these renamed cards' `LEVEL2_MANDATORY`/`LEVEL2_PURCHASED_ORDER`
+dicts carry a `version` field, matching every other class's Level 2 entries except Necromancer's
+(the only class that already tracks this) -- left as a pre-existing, project-wide gap rather than
+adding it inconsistently to only the cards touched here.
 
 ## Tier 2/3 mechanic candidates for future upgrade cards -- raised 2026-08-24, not evaluated or decided
 

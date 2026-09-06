@@ -293,10 +293,10 @@ Toll travel *is* also built and tested (`sim/macro_sim.py`, 2026-08-20) — see 
 locked" note below for the two-Town map shape this was validated against and why an earlier
 single-Town version got replaced. Not to be confused with the free intra-Zone movement above.
 
-**Starting map, locked (revised 2026-08-20): two Zones, one Border Node, a Town in each.**
-Zone 1 (the starting zone) holds Town — Bag/Food/Potion purchases, quest turn-in, the Bag
-Upgrade. Zone 2, reached via the single Border Node connecting them, holds **both** a second
-Town and the **Class Trainer** — purchased (Level-2+) upgrade cards are bought at the Trainer
+**Starting map, naming locked (2026-09-03): two Zones, one Border Node, a Town in each.**
+**Zone 1 (The Gilded Coast)**, the starting zone, holds **The Smugglers' Roost** (Town) — Bag/Food/Potion purchases, quest turn-in, the Bag
+Upgrade. **Zone 2 (The Syndicate Straits)**, reached via **Thorne's Toll** (the Border Node connecting them), holds **both** a second
+Town (**Port Ironguard**) and the **Class Trainer** (**The Syndicate Master**) — purchased (Level-2+) upgrade cards are bought at the Trainer
 specifically, not folded into Town's shopping list, but "a town is a town is a town": every
 other amenity (turn-in, decay, Bag Upgrade, Food/Potion restock) works identically at either
 Town, with no zone restriction on which quest's loot can be turned in where. A trip can end at
@@ -850,19 +850,19 @@ To support evasion mechanics in PvP, every damage-dealing class card carries a k
 To balance the mathematical disparity between PvE-tuned sustain tanks and burst classes in a 3-round sprint, PvP relies on the dynamic Battle Hardened token system:
 
 1. **Unlocked Execute:** The Warrior's *Execute* card does not require the opponent to be <= 50% HP during a PvP duel. It is freely playable at any time for its baseline 6 damage.
-2. **Starting Battle Hardened Tokens:** To prevent a "rough patch" at the beginning of a campaign where naturally weaker PvP classes get stomped while waiting for the pity-timer to kick in, classes begin the game with an innate stack of Battle Hardened Tokens:
-   * **3 Starting Tokens:** Necromancer
-   * **2 Starting Tokens:** Rogue, Warrior
-   * **1 Starting Token:** Ranger, Wizard, Cleric, Runecaster
-   * **0 Starting Tokens:** Paladin, Druid
+2. **Death Pact costs no HP in duels:** The Necromancer's *Boneguard's Offering (Boosted)* "Death Pact" rider (normally: lose 4 HP to deal 3 extra damage) does not cost any HP during a PvP duel — it still deals its bonus damage for free. Reasoning: PvP score is a pure final-HP delta, so a self-inflicted HP loss was being credited to the *opponent* as damage dealt, making the card strictly worse than not playing it in every duel (see `PVP_BALANCE_GUIDE.md`).
+3. **Starting Battle Hardened Tokens:** To prevent a "rough patch" at the beginning of a campaign where naturally weaker PvP classes get stomped while waiting for the pity-timer to kick in, classes begin the game with an innate stack of Battle Hardened Tokens:
+   * **2 Starting Tokens:** Rogue, Warrior, Necromancer
+   * **1 Starting Token:** Ranger, Runecaster
+   * **0 Starting Tokens:** Wizard, Cleric, Paladin, Druid
 
-   Synced 2026-09-02 to the live values in `sim/playtest_board_web.py` (the running game),
-   which had drifted from this table. Necromancer's `2→3` bump is explained in
-   `AI_HANDOFF.md`'s 2026-08-30 entry (re-derived via `sim/sim_avg_tokens.py` after fixing an
-   evasion-trap bug in its kit). The other moves (Runecaster `2→1`, Paladin `1→0`, Ranger/
-   Wizard/Cleric `0→1`) matched the live code with no recovered rationale — flagging here in
-   case the original reasoning resurfaces and needs reconciling.
-3. **The Pendulum Mechanic:** Each token adds **+1** to a player's final score for all future PvP duels. After a duel concludes, the **Winner discards exactly ONE** of their Battle Hardened Tokens, and the **Loser gains exactly ONE** Battle Hardened Token.
+   Re-derived 2026-09-04 via `sim/sim_avg_tokens.py` after locking the Death Pact PvP rule
+   above — Necromancer `3→2` (its old 3-token count was sized for a 4.08 steady-state bleed
+   that the Death Pact fix cut to 1.71, closer to Warrior/Rogue's own 1.78/1.85 than to its old
+   tier) and Wizard/Cleric `1→0` (both measured at 0.36/0.16 steady-state, closer to Paladin/
+   Druid's 0.20/0.19 than to Ranger/Runecaster's ~1). See `PVP_BALANCE_GUIDE.md` for the full
+   before/after table.
+4. **The Pendulum Mechanic:** Each token adds **+1** to a player's final score for all future PvP duels. After a duel concludes, the **Winner discards exactly ONE** of their Battle Hardened Tokens, and the **Loser gains exactly ONE** Battle Hardened Token.
 
 > **[DESIGNER NOTE]: The Rubber-Banding Pendulum**
 > Because the Winner and Loser are adjusted independently, the token economy acts as a mathematically perfect pendulum that forces players to "take turns" winning. A heavily countered underdog naturally hovers around a higher token count, slowly bleeding tokens when they win and instantly regaining them when they lose. This guarantees true, long-term 50/50 parity across all 72 class matchups, completely eliminating the need for complex static modifiers or 9x9 lookup tables.

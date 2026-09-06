@@ -116,7 +116,7 @@ CARDS = {
     "Backstab and Dodge": dict(combat_type="melee",kind="plain", dmg=4, block=2, strike=True, aggro=3, version=1),
     "Evasion": dict(combat_type="melee",kind="plain", dmg=0, block=10, strike=False, aggro=1, version=1),
     "Quick Slash": dict(combat_type="melee",kind="plain", dmg=3, block=0, strike=True, aggro=2, version=1),
-    "Ambush": dict(combat_type="melee",kind="opener", dmg=3, round1_dmg=5, block=0, strike=True, aggro=3, version=1),
+    "Ambush": dict(combat_type="ranged",kind="opener", dmg=3, round1_dmg=5, block=0, strike=True, aggro=3, version=2),
     "Cutthroat": dict(combat_type="melee",kind="finisher", curve={0: 2, 1: 3, 2: 6}, block=0, strike=False, killing_blow=True, aggro=4, version=1),
     "Envenom": dict(combat_type="ranged",kind="finisher", curve={0: 3, 1: 4, 2: 5}, block=0, strike=False, killing_blow=True, aggro=2, version=1),
 }

@@ -17,8 +17,7 @@ def cached_duel(cA, s_A, cB, s_B):
     k = (cA, s_A, cB, s_B)
     if k not in cache:
         dA, dB = PvP.resolve_duel(cA, s_A, cB, s_B)
-        # Add Max HP advantage per sim_pvp.py logic
-        cache[k] = (dA + CLASSES[cA][2]) - (dB + CLASSES[cB][2])
+        cache[k] = dA - dB
     return cache[k]
 
 for cA in class_names:

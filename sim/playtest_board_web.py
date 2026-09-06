@@ -376,11 +376,9 @@ def _new_hero(class_name, rng):
     mod = M.CARD_SOURCE[class_name]
     max_hp = float(getattr(mod, M.HP_ATTR[class_name]))
     start_tokens = 0
-    if class_name == "necromancer":
-        start_tokens = 3
-    elif class_name in ("rogue", "warrior"):
+    if class_name in ("rogue", "warrior", "necromancer"):
         start_tokens = 2
-    elif class_name in ("ranger", "wizard", "cleric", "runecaster"):
+    elif class_name in ("ranger", "runecaster"):
         start_tokens = 1
         
     hero = HeroBoardState(class_name=class_name, hp=max_hp, max_hp=max_hp, position=(1, "town"),

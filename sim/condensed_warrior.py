@@ -36,9 +36,9 @@ WARRIOR_HP = 18
 # change -- lets a physical deck owner tell which cards need reprinting. See
 # CARD_REFERENCE.md's own note for the convention.
 CARDS = {
-    "Heavy Swing":     dict(combat_type="melee", G=(2, 0), C=(4, 0), sunder=False, execute_finisher=False,
+    "Heavy Swing":     dict(combat_type="ranged", G=(2, 0), C=(4, 0), sunder=False, execute_finisher=False,
                              chain_stance=None, chain_bonus=0, chain_target=None, chain_requires=None,
-                             aggro=2, version=1),
+                             aggro=2, version=2),
     "Sundering Blow":  dict(combat_type="melee", G=(1, 0), C=(1, 0), sunder=True,  execute_finisher=False,
                              chain_stance=None, chain_bonus=0, chain_target=None, chain_requires=None,
                              aggro=4, version=1),
@@ -47,9 +47,11 @@ CARDS = {
     # flat fallback value, this line is simply not a legal choice until the
     # mob is wounded). No stance asymmetry: G/C values unused, see
     # execute_finisher handling in _sim_from.
-    "Execute":         dict(combat_type="melee", G=None, C=None,     sunder=False, execute_finisher=True,
+    "Execute":         dict(combat_type="ranged", G=None, C=None,     sunder=False, execute_finisher=True,
                              chain_stance=None, chain_bonus=0, chain_target=None, chain_requires=None,
-                             killing_blow=True, aggro=3, version=1),
+                             killing_blow=True, aggro=3,
+                             pvp_note="Playable at any time in PvP duels -- the 50% HP requirement doesn't apply.",
+                             version=3),
     # Same baseline in either stance now (2 DMG + 2 Block, trimmed from 3) --
     # stance only changes whether the bonus is reachable. Block trimmed
     # specifically because it was the real driver of multi-pull sustain
@@ -95,18 +97,23 @@ STANCE_SEQS = stance_sequences()
 
 
 def resolve_round(state, card_name, stance, round_num, mob_pattern, mob_hp_total,
-                   mob_hp_remaining, hero_hp, hero_max_hp):
+                   mob_hp_remaining, hero_hp, hero_max_hp, execute_unlocked=False):
     """The one place Warrior's card-effect logic lives -- simulate() below and any future
     turn-by-turn caller (combat_engine.py) both call ONLY this, never duplicate it. Faithful
     port of the old _sim_from's per-round branch (verified byte-for-byte against it via
     sim/verify_combat_engine.py), just restructured to resolve one round at a time instead of
     recursing through all 3. Returns None if the play is illegal this round (Execute above
     50% mob HP) -- matches _sim_from's old (False, -inf, rnd) sentinel via simulate()'s own
-    handling below, not by returning a fake outcome here."""
+    handling below, not by returning a fake outcome here.
+
+    execute_unlocked: PvP-only, defaults False (every PvE caller is unaffected). When True,
+    bypasses the 50%-HP gate per DESIGN_DOC.md Section X's Class-Specific PvP Rules ("Unlocked
+    Execute" -- freely playable at any time in a PvP duel). sim_pvp.py sets this via
+    functools.partial when building its CLASSES table; do not set it anywhere PvE-facing."""
     card = CARDS[card_name]
 
     if card["execute_finisher"]:
-        if mob_hp_remaining <= mob_hp_total * 0.5:
+        if execute_unlocked or mob_hp_remaining <= mob_hp_total * 0.5:
             dmg, block = 6, 0
         else:
             return None  # illegal

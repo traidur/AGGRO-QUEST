@@ -3,9 +3,11 @@
     "Heavy Swing": {
       "text": "**Guardian:** 2 DMG, 0 Block. **Champion:** 4 DMG, 0 Block.",
       "aggro": "Aggro 2",
-      "tags": [],
+      "tags": [
+        "RANGED"
+      ],
       "split": true,
-      "version": 1,
+      "version": 2,
       "guardian_text": "**2 DMG**, **0 Block**.",
       "champion_text": "**4 DMG**, **0 Block**.",
       "aggro_G": 2,
@@ -21,24 +23,27 @@
       "text": "**1 DMG**, **0 Block**. Marks the mob Sundered: all your later damaging cards this pull deal +2 DMG.",
       "aggro": "Aggro 4",
       "tags": [
+        "MELEE",
         "SUNDER"
       ],
       "split": false,
       "version": 1
     },
     "Execute": {
-      "text": "6 DMG. Only playable once the mob is at 50% HP or lower. If this kills the mob, its attack this round is prevented.",
+      "text": "6 DMG. Only playable once the mob is at 50% HP or lower. If this kills the mob, its attack this round is prevented. **PvP:** Playable at any time in PvP duels -- the 50% HP requirement doesn't apply.",
       "aggro": "Aggro 3",
       "tags": [
+        "RANGED",
         "KILLING BLOW"
       ],
       "split": false,
-      "version": 1
+      "version": 3
     },
     "Vanguard Shield": {
       "text": "**Guardian:** 2 DMG, 2 Block. **Champion:** 2 DMG, 2 Block. **Guardian only:** if the previous round's card was Vanguard Blade, +2 Block.",
       "aggro": "Aggro G:4 / C:2",
       "tags": [
+        "MELEE",
         "COMBO"
       ],
       "split": true,
@@ -59,7 +64,9 @@
     "Shield Block": {
       "text": "**Guardian:** 0 DMG, 5 Block. **Champion:** 0 DMG, 0 Block.",
       "aggro": "Aggro G:4 / C:0",
-      "tags": [],
+      "tags": [
+        "MELEE"
+      ],
       "split": true,
       "version": 1,
       "guardian_text": "**0 DMG**, **5 Block**.",
@@ -74,6 +81,7 @@
       "text": "**Guardian:** 3 DMG, 2 Block. **Champion:** 3 DMG, 0 Block. **Champion only:** if the previous round's card was Vanguard Shield, +2 DMG.",
       "aggro": "Aggro 3",
       "tags": [
+        "MELEE",
         "COMBO"
       ],
       "split": true,
@@ -89,6 +97,83 @@
         "dmg": 3,
         "block": 2
       }
+    },
+    "Shield Bash": {
+      "text": "**Guardian:** 1 DMG, 5 Block. **Champion:** 2 DMG, 2 Block.",
+      "aggro": "Aggro G:4 / C:0",
+      "tags": [],
+      "split": true,
+      "version": 1,
+      "guardian_text": "**1 DMG**, **5 Block**.",
+      "champion_text": "**2 DMG**, **2 Block**.",
+      "aggro_G": 4,
+      "aggro_C": 0,
+      "badges_C": {
+        "dmg": 2,
+        "block": 2
+      },
+      "badges_G": {
+        "dmg": 1,
+        "block": 5
+      },
+      "level2": true,
+      "tier": "mandatory",
+      "replaces": "Shield Block"
+    },
+    "Dominate": {
+      "text": "**2 DMG**, **0 Block**. Marks the mob Sundered: all your later damaging cards this pull deal +2 DMG.",
+      "aggro": "Aggro 4",
+      "tags": [
+        "SUNDER"
+      ],
+      "split": false,
+      "version": 1,
+      "level2": true,
+      "tier": "purchased",
+      "replaces": "Sundering Blow"
+    },
+    "Colossal Swing": {
+      "text": "**Guardian:** 2 DMG, 0 Block. **Champion:** 5 DMG, 0 Block.",
+      "aggro": "Aggro 2",
+      "tags": [],
+      "split": true,
+      "version": 1,
+      "guardian_text": "**2 DMG**, **0 Block**.",
+      "champion_text": "**5 DMG**, **0 Block**.",
+      "aggro_G": 2,
+      "aggro_C": 2,
+      "badges_C": {
+        "dmg": 5
+      },
+      "badges_G": {
+        "dmg": 2
+      },
+      "level2": true,
+      "tier": "purchased",
+      "replaces": "Heavy Swing"
+    },
+    "Vanguard Blade [Lv 2]": {
+      "text": "**Guardian:** 4 DMG, 2 Block. **Champion:** 4 DMG, 0 Block. **Champion only:** if the previous round's card was Vanguard Shield, +2 DMG.",
+      "aggro": "Aggro 3",
+      "tags": [
+        "COMBO"
+      ],
+      "split": true,
+      "version": 1,
+      "guardian_text": "**4 DMG**, **2 Block**.",
+      "champion_text": "**4 DMG**, **0 Block**. If the previous round's card was Vanguard Shield, **+2 DMG**.",
+      "aggro_G": 3,
+      "aggro_C": 3,
+      "badges_C": {
+        "dmg": 4
+      },
+      "badges_G": {
+        "dmg": 4,
+        "block": 2
+      },
+      "level2": true,
+      "tier": "purchased",
+      "replaces": "Vanguard Blade"
     }
   },
   "wizard": {
@@ -96,6 +181,7 @@
       "text": "3 DMG. Arms Weave: your next eligible payoff card gets its boosted damage.",
       "aggro": "Aggro 1",
       "tags": [
+        "RANGED",
         "SPELLWEAVE: SOURCE"
       ],
       "split": false,
@@ -119,6 +205,7 @@
       "text": "6 DMG (7 DMG if Weave is armed).",
       "aggro": "Aggro 3",
       "tags": [
+        "RANGED",
         "SPELLWEAVE"
       ],
       "split": false,
@@ -137,6 +224,7 @@
       "text": "1 DMG. 1 Block. Grants At Range this round (evades a melee mob's attack). Arms Weave: your next eligible payoff card gets its boosted damage.",
       "aggro": "Aggro 3",
       "tags": [
+        "MELEE",
         "AT RANGE",
         "SPELLWEAVE: SOURCE"
       ],
@@ -168,6 +256,7 @@
       "text": "10 Block. Arms Weave: your next eligible payoff card gets its boosted damage.",
       "aggro": "Aggro 2",
       "tags": [
+        "MELEE",
         "SPELLWEAVE: SOURCE"
       ],
       "split": false,
@@ -191,6 +280,7 @@
       "text": "5 DMG (7 DMG if Weave is armed).",
       "aggro": "Aggro 3",
       "tags": [
+        "RANGED",
         "SPELLWEAVE"
       ],
       "split": false,
@@ -209,6 +299,7 @@
       "text": "2 DMG (5 DMG if Weave is armed). Grants At Range this round (evades a melee mob's attack).",
       "aggro": "Aggro 3",
       "tags": [
+        "RANGED",
         "AT RANGE",
         "SPELLWEAVE"
       ],
@@ -229,13 +320,128 @@
           "text": "Grants At Range this round (evades a melee mob's attack)."
         }
       ]
+    },
+    "Fire Spear": {
+      "text": "4 DMG. Arms Weave: your next eligible payoff card gets its boosted damage.",
+      "aggro": "Aggro 1",
+      "tags": [
+        "SPELLWEAVE: SOURCE"
+      ],
+      "split": false,
+      "version": 1,
+      "badges": {
+        "dmg": "4"
+      },
+      "panels": [
+        {
+          "type": "base",
+          "text": "**4 DMG**."
+        },
+        {
+          "type": "weave_source",
+          "label": "SPELLWEAVE",
+          "text": "Arms Weave: your next eligible payoff card gets its boosted damage."
+        },
+        {
+          "type": "rider",
+          "label": "PIERCE",
+          "text": "Ignores the mob's Block entirely."
+        }
+      ],
+      "level2": true,
+      "tier": "mandatory",
+      "replaces": "Fire Blast"
+    },
+    "Arcane Barrage": {
+      "text": "6 DMG (8 DMG if Weave is armed).",
+      "aggro": "Aggro 3",
+      "tags": [
+        "SPELLWEAVE"
+      ],
+      "split": false,
+      "version": 1,
+      "badges": {
+        "dmg": "6|8"
+      },
+      "panels": [
+        {
+          "type": "base",
+          "text": "**6 DMG** OR <span class=\"magic-text\">**8 DMG**</span> if SPELLWEAVE is armed."
+        }
+      ],
+      "level2": true,
+      "tier": "purchased",
+      "replaces": "Arcane Volley"
+    },
+    "Ice Palisade": {
+      "text": "1 DMG. 10 Block. Arms Weave: your next eligible payoff card gets its boosted damage.",
+      "aggro": "Aggro 2",
+      "tags": [
+        "SPELLWEAVE: SOURCE"
+      ],
+      "split": false,
+      "version": 1,
+      "badges": {
+        "dmg": "1",
+        "block": "10"
+      },
+      "panels": [
+        {
+          "type": "base",
+          "text": "**1 DMG**. **10 Block**."
+        },
+        {
+          "type": "weave_source",
+          "label": "SPELLWEAVE",
+          "text": "Arms Weave: your next eligible payoff card gets its boosted damage."
+        }
+      ],
+      "level2": true,
+      "tier": "purchased",
+      "replaces": "Ice Barricade"
+    },
+    "Deep Freeze": {
+      "text": "2 DMG. 2 Block. Grants At Range this round (evades a melee mob's attack). Arms Weave: your next eligible payoff card gets its boosted damage.",
+      "aggro": "Aggro 3",
+      "tags": [
+        "AT RANGE",
+        "SPELLWEAVE: SOURCE"
+      ],
+      "split": false,
+      "version": 1,
+      "badges": {
+        "dmg": "2",
+        "block": "2",
+        "range": true
+      },
+      "panels": [
+        {
+          "type": "base",
+          "text": "**2 DMG**. **2 Block**."
+        },
+        {
+          "type": "positioning",
+          "label": "POSITIONING",
+          "text": "Grants At Range this round (evades a melee mob's attack)."
+        },
+        {
+          "type": "weave_source",
+          "label": "SPELLWEAVE",
+          "text": "Arms Weave: your next eligible payoff card gets its boosted damage."
+        }
+      ],
+      "level2": true,
+      "tier": "purchased",
+      "replaces": "Snap Freeze"
     }
   },
   "cleric": {
     "Void Mark": {
       "text": "3 DMG.",
       "aggro": "Aggro 1",
-      "tags": [],
+      "tags": [
+        "RANGED"
+      ],
       "split": false,
       "version": 1,
       "badges": {
@@ -252,6 +458,7 @@
       "text": "5 DMG. Triggers Sacred Balance: heal 1 HP automatically.",
       "aggro": "Aggro 2",
       "tags": [
+        "RANGED",
         "SACRED BALANCE"
       ],
       "split": false,
@@ -274,7 +481,9 @@
     "Call of the Void": {
       "text": "5 DMG.",
       "aggro": "Aggro 3",
-      "tags": [],
+      "tags": [
+        "RANGED"
+      ],
       "split": false,
       "version": 2,
       "badges": {
@@ -290,7 +499,9 @@
     "Cleansing Barrier": {
       "text": "3 DMG. 5 Block.",
       "aggro": "Aggro 1",
-      "tags": [],
+      "tags": [
+        "MELEE"
+      ],
       "split": false,
       "version": 1,
       "badges": {
@@ -307,7 +518,9 @@
     "Fiery Fortitude": {
       "text": "3 DMG. Heal 2 HP. +2 Max HP for the rest of this pull.",
       "aggro": "Aggro 2",
-      "tags": [],
+      "tags": [
+        "MELEE"
+      ],
       "split": false,
       "version": 1,
       "badges": {
@@ -329,7 +542,9 @@
     "Heal": {
       "text": "Heal 3 HP.",
       "aggro": "Aggro 3",
-      "tags": [],
+      "tags": [
+        "RANGED"
+      ],
       "split": false,
       "version": 1,
       "badges": {
@@ -341,6 +556,96 @@
           "text": "Heal **3 HP**."
         }
       ]
+    },
+    "Greater Heal": {
+      "text": "Heal 4 HP.",
+      "aggro": "Aggro 3",
+      "tags": [],
+      "split": false,
+      "version": 1,
+      "badges": {
+        "heal": 4
+      },
+      "panels": [
+        {
+          "type": "base",
+          "text": "Heal **4 HP**."
+        }
+      ],
+      "level2": true,
+      "tier": "mandatory",
+      "replaces": "Heal"
+    },
+    "Holy Fiery Fortitude": {
+      "text": "4 DMG. Heal 2 HP. +2 Max HP for the rest of this pull.",
+      "aggro": "Aggro 2",
+      "tags": [],
+      "split": false,
+      "version": 1,
+      "badges": {
+        "dmg": "4",
+        "heal": 2
+      },
+      "panels": [
+        {
+          "type": "base",
+          "text": "**4 DMG**. Heal **2 HP**."
+        },
+        {
+          "type": "buff",
+          "label": "FORTITUDE",
+          "text": "**+2 Max HP** for the rest of this pull."
+        }
+      ],
+      "level2": true,
+      "tier": "purchased",
+      "replaces": "Fiery Fortitude"
+    },
+    "Void Storm": {
+      "text": "6 DMG.",
+      "aggro": "Aggro 3",
+      "tags": [],
+      "split": false,
+      "version": 1,
+      "badges": {
+        "dmg": "6"
+      },
+      "panels": [
+        {
+          "type": "base",
+          "text": "**6 DMG**."
+        }
+      ],
+      "level2": true,
+      "tier": "purchased",
+      "replaces": "Call of the Void"
+    },
+    "Void Death Mark": {
+      "text": "4 DMG. At the start of the next round, automatically deal 1 more DMG (no card spent).",
+      "aggro": "Aggro 1",
+      "tags": [
+        "ECHO"
+      ],
+      "split": false,
+      "version": 1,
+      "badges": {
+        "dmg": "4",
+        "delayed_dmg": "1"
+      },
+      "panels": [
+        {
+          "type": "base",
+          "text": "**4 DMG**."
+        },
+        {
+          "type": "echo",
+          "label": "ECHO",
+          "text": "At the start of the next round, automatically deal **1 more DMG** (no card spent)."
+        }
+      ],
+      "level2": true,
+      "tier": "purchased",
+      "replaces": "Void Mark"
     }
   },
   "paladin": {
@@ -348,6 +653,7 @@
       "text": "3 DMG. 2 Block.",
       "aggro": "Aggro 4",
       "tags": [
+        "MELEE",
         "STRIKE"
       ],
       "split": false,
@@ -367,6 +673,7 @@
       "text": "4 DMG.",
       "aggro": "Aggro 2",
       "tags": [
+        "MELEE",
         "STRIKE"
       ],
       "split": false,
@@ -384,7 +691,9 @@
     "Vigil of Light": {
       "text": "Heal 3 HP. 1 Block.",
       "aggro": "Aggro 2",
-      "tags": [],
+      "tags": [
+        "RANGED"
+      ],
       "split": false,
       "version": 2,
       "badges": {
@@ -401,7 +710,9 @@
     "Holy Fortress": {
       "text": "3 DMG. 4 Block.",
       "aggro": "Aggro 4",
-      "tags": [],
+      "tags": [
+        "MELEE"
+      ],
       "split": false,
       "version": 2,
       "badges": {
@@ -419,6 +730,7 @@
       "text": "Deal 3 DMG, +2 DMG per STRIKE card already played earlier this pull. Every STRIKE card played afterward also deals +2 DMG when played. Only the first Invocation card played each pull gets any bonus (backward or forward) -- a second one is legal to play but deals/heals its flat base only and never becomes Active.",
       "aggro": "Aggro 3",
       "tags": [
+        "RANGED",
         "INVOCATION"
       ],
       "split": false,
@@ -442,6 +754,7 @@
       "text": "Deal 4 DMG. Heal 2 HP per STRIKE card already played earlier this pull. Every STRIKE card played afterward also heals +2 HP when played. Only the first Invocation card played each pull gets any bonus (backward or forward) -- a second one is legal to play but deals/heals its flat base only and never becomes Active.",
       "aggro": "Aggro 3",
       "tags": [
+        "RANGED",
         "INVOCATION"
       ],
       "split": false,
@@ -460,6 +773,105 @@
           "text": "Heal **2 HP** per STRIKE card already played earlier this pull. Every STRIKE card played afterward also heals **+2 HP** when played. (Only one Invocation card may ever be played per pull.)"
         }
       ]
+    },
+    "Invoking Aura of Sanctuary": {
+      "text": "Deal 3 DMG, +2 DMG per STRIKE card already played earlier this pull. Every STRIKE card played afterward also deals +2 DMG when played. Only the first Invocation card played each pull gets any bonus (backward or forward) -- a second one is legal to play but deals/heals its flat base only and never becomes Active.",
+      "aggro": "Aggro 3",
+      "tags": [
+        "INVOCATION"
+      ],
+      "split": false,
+      "version": 1,
+      "badges": {
+        "dmg": "3"
+      },
+      "panels": [
+        {
+          "type": "base",
+          "text": "**3 DMG**."
+        },
+        {
+          "type": "invocation",
+          "label": "INVOCATION",
+          "text": "**+2 DMG** per STRIKE card already played earlier this pull. Every STRIKE card played afterward also deals **+2 DMG** when played. (Only one Invocation card may ever be played per pull.)"
+        },
+        {
+          "type": "invocation",
+          "label": "AURA",
+          "text": "Every STRIKE card played afterward also gains +1 Block per STRIKE card already played this pull, while this Invocation is active."
+        }
+      ],
+      "level2": true,
+      "tier": "mandatory",
+      "replaces": "Invocation of Sanctuary"
+    },
+    "Wrath of the Aegis": {
+      "text": "4 DMG. 2 Block.",
+      "aggro": "Aggro 4",
+      "tags": [
+        "STRIKE"
+      ],
+      "split": false,
+      "version": 1,
+      "badges": {
+        "dmg": "4",
+        "block": "2"
+      },
+      "panels": [
+        {
+          "type": "base",
+          "text": "**4 DMG**. **2 Block**."
+        }
+      ],
+      "level2": true,
+      "tier": "purchased",
+      "replaces": "Might of the Aegis"
+    },
+    "Greater Invocation of Grace": {
+      "text": "Deal 5 DMG. Heal 2 HP per STRIKE card already played earlier this pull. Every STRIKE card played afterward also heals +2 HP when played. Only the first Invocation card played each pull gets any bonus (backward or forward) -- a second one is legal to play but deals/heals its flat base only and never becomes Active.",
+      "aggro": "Aggro 3",
+      "tags": [
+        "INVOCATION"
+      ],
+      "split": false,
+      "version": 1,
+      "badges": {
+        "dmg": "5"
+      },
+      "panels": [
+        {
+          "type": "base",
+          "text": "**5 DMG**."
+        },
+        {
+          "type": "invocation",
+          "label": "INVOCATION",
+          "text": "Heal **2 HP** per STRIKE card already played earlier this pull. Every STRIKE card played afterward also heals **+2 HP** when played. (Only one Invocation card may ever be played per pull.)"
+        }
+      ],
+      "level2": true,
+      "tier": "purchased",
+      "replaces": "Invocation of Grace"
+    },
+    "Divine Fortress": {
+      "text": "4 DMG. 4 Block.",
+      "aggro": "Aggro 4",
+      "tags": [],
+      "split": false,
+      "version": 1,
+      "badges": {
+        "dmg": "4",
+        "block": "4"
+      },
+      "panels": [
+        {
+          "type": "base",
+          "text": "**4 DMG**. **4 Block**."
+        }
+      ],
+      "level2": true,
+      "tier": "purchased",
+      "replaces": "Holy Fortress"
     }
   },
   "rogue": {
@@ -467,6 +879,7 @@
       "text": "4 DMG. 2 Block.",
       "aggro": "Aggro 3",
       "tags": [
+        "MELEE",
         "STRIKE"
       ],
       "split": false,
@@ -485,7 +898,9 @@
     "Evasion": {
       "text": "0 DMG. 10 Block.",
       "aggro": "Aggro 1",
-      "tags": [],
+      "tags": [
+        "MELEE"
+      ],
       "split": false,
       "version": 1,
       "badges": {
@@ -502,6 +917,7 @@
       "text": "3 DMG.",
       "aggro": "Aggro 2",
       "tags": [
+        "MELEE",
         "STRIKE"
       ],
       "split": false,
@@ -520,11 +936,12 @@
       "text": "3 DMG (5 DMG if played in round 1).",
       "aggro": "Aggro 3",
       "tags": [
+        "RANGED",
         "STRIKE",
         "OPENER"
       ],
       "split": false,
-      "version": 1,
+      "version": 2,
       "badges": {
         "dmg": "3|5"
       },
@@ -539,6 +956,7 @@
       "text": "Deals 2/3/6 DMG based on STRIKE cards played since your last finisher (0/1/2). Resets the count to 0. If this attack kills the mob, its attack this round is prevented.",
       "aggro": "Aggro 4",
       "tags": [
+        "MELEE",
         "KILLING BLOW",
         "FINISHER"
       ],
@@ -564,6 +982,7 @@
       "text": "Deals 3/4/5 DMG based on STRIKE cards played since your last finisher (0/1/2). Resets the count to 0. If this attack kills the mob, its attack this round is prevented.",
       "aggro": "Aggro 2",
       "tags": [
+        "RANGED",
         "KILLING BLOW",
         "FINISHER"
       ],
@@ -584,6 +1003,91 @@
           "text": "If this kills the mob, it deals no damage this round."
         }
       ]
+    },
+    "Evasion and Riposte": {
+      "text": "2 DMG. 10 Block.",
+      "aggro": "Aggro 1",
+      "tags": [],
+      "split": false,
+      "version": 1,
+      "badges": {
+        "dmg": "2",
+        "block": "10"
+      },
+      "panels": [
+        {
+          "type": "base",
+          "text": "**2 DMG**. **10 Block**."
+        }
+      ],
+      "level2": true,
+      "tier": "mandatory",
+      "replaces": "Evasion"
+    },
+    "Quicker Slash": {
+      "text": "4 DMG.",
+      "aggro": "Aggro 2",
+      "tags": [
+        "STRIKE"
+      ],
+      "split": false,
+      "version": 1,
+      "badges": {
+        "dmg": "4"
+      },
+      "panels": [
+        {
+          "type": "base",
+          "text": "**4 DMG**."
+        }
+      ],
+      "level2": true,
+      "tier": "purchased",
+      "replaces": "Quick Slash"
+    },
+    "Relentless Ambush": {
+      "text": "3 DMG (5 DMG if played in round 1).",
+      "aggro": "Aggro 3",
+      "tags": [
+        "STRIKE",
+        "OPENER"
+      ],
+      "split": false,
+      "version": 1,
+      "badges": {
+        "dmg": "3|5"
+      },
+      "panels": [
+        {
+          "type": "base",
+          "text": "**3 DMG** OR <span class=\"combo-text\">**5 DMG**</span> if played in round 1."
+        }
+      ],
+      "level2": true,
+      "tier": "purchased",
+      "replaces": "Ambush"
+    },
+    "Piercing Backstab": {
+      "text": "4 DMG. 2 Block.",
+      "aggro": "Aggro 3",
+      "tags": [
+        "STRIKE"
+      ],
+      "split": false,
+      "version": 1,
+      "badges": {
+        "dmg": "4",
+        "block": "2"
+      },
+      "panels": [
+        {
+          "type": "base",
+          "text": "**4 DMG**. **2 Block**. Ignores the mob's Block entirely."
+        }
+      ],
+      "level2": true,
+      "tier": "purchased",
+      "replaces": "Backstab and Dodge"
     }
   },
   "ranger": {
@@ -591,6 +1095,7 @@
       "text": "4 DMG. 1 Block. Activates the Wolf: from this round on (including this one), gain +1 Block every round for the rest of the pull, stacking with any Block your card grants that round.",
       "aggro": "Aggro 2",
       "tags": [
+        "MELEE",
         "PET",
         "PERSISTENT"
       ],
@@ -606,6 +1111,7 @@
       "text": "3 DMG. Grants At Range this round (evades a melee mob's attack).",
       "aggro": "Aggro 2",
       "tags": [
+        "RANGED",
         "AT RANGE"
       ],
       "split": false,
@@ -619,6 +1125,7 @@
       "text": "5 DMG if the previous round's card granted At Range, 4 DMG otherwise.",
       "aggro": "Aggro 3",
       "tags": [
+        "RANGED",
         "COMBO"
       ],
       "split": false,
@@ -631,6 +1138,7 @@
       "text": "4 DMG if the Wolf is active, 2 DMG otherwise.",
       "aggro": "Aggro 3",
       "tags": [
+        "MELEE",
         "PET"
       ],
       "split": false,
@@ -642,7 +1150,9 @@
     "Sure Shot": {
       "text": "4 DMG.",
       "aggro": "Aggro 2",
-      "tags": [],
+      "tags": [
+        "RANGED"
+      ],
       "split": false,
       "version": 1,
       "badges": {
@@ -653,6 +1163,7 @@
       "text": "2 DMG. 1 Block. Grants At Range this round (evades a melee mob's attack).",
       "aggro": "Aggro 3",
       "tags": [
+        "RANGED",
         "AT RANGE"
       ],
       "split": false,
@@ -662,13 +1173,76 @@
         "block": "1",
         "range": true
       }
+    },
+    "Beast's Stand": {
+      "text": "5 DMG if the Wolf is active, 2 DMG otherwise. 1 Block.",
+      "aggro": "Aggro 3",
+      "tags": [
+        "PET"
+      ],
+      "split": false,
+      "version": 1,
+      "badges": {
+        "dmg": "2|5",
+        "block": "1"
+      },
+      "level2": true,
+      "tier": "mandatory",
+      "replaces": "Beast's Challenge"
+    },
+    "Bullseye": {
+      "text": "5 DMG.",
+      "aggro": "Aggro 2",
+      "tags": [],
+      "split": false,
+      "version": 1,
+      "badges": {
+        "dmg": "5"
+      },
+      "level2": true,
+      "tier": "purchased",
+      "replaces": "Sure Shot"
+    },
+    "Deadeye/Point Blank Shot": {
+      "text": "6 DMG if the previous round's card granted At Range, 4 DMG otherwise.",
+      "aggro": "Aggro 3",
+      "tags": [
+        "COMBO"
+      ],
+      "split": false,
+      "version": 1,
+      "badges": {
+        "dmg": "4|6"
+      },
+      "level2": true,
+      "tier": "purchased",
+      "replaces": "Sniper/Point Blank Shot"
+    },
+    "Debilitating Shot": {
+      "text": "2 DMG. 2 Block. Grants At Range this round (evades a melee mob's attack).",
+      "aggro": "Aggro 3",
+      "tags": [
+        "AT RANGE"
+      ],
+      "split": false,
+      "version": 1,
+      "badges": {
+        "dmg": "2",
+        "block": "2",
+        "range": true
+      },
+      "level2": true,
+      "tier": "purchased",
+      "replaces": "Crippling Shot"
     }
   },
   "runecaster": {
     "Chain Lightning": {
       "text": "4 DMG.",
       "aggro": "Aggro 3",
-      "tags": [],
+      "tags": [
+        "RANGED"
+      ],
       "split": false,
       "version": 2,
       "badges": {
@@ -679,6 +1253,7 @@
       "text": "3 DMG. +1 DMG if the previous round's card was Chain Lightning.",
       "aggro": "Aggro 2",
       "tags": [
+        "RANGED",
         "COMBO"
       ],
       "split": false,
@@ -691,6 +1266,7 @@
       "text": "4 DMG. Grants At Range this round (evades a melee mob's attack).",
       "aggro": "Aggro 3",
       "tags": [
+        "RANGED",
         "AT RANGE"
       ],
       "split": false,
@@ -703,7 +1279,9 @@
     "Tidal Ward": {
       "text": "Heal 2 HP. 2 Block.",
       "aggro": "Aggro 1",
-      "tags": [],
+      "tags": [
+        "MELEE"
+      ],
       "split": false,
       "version": 1,
       "badges": {
@@ -714,7 +1292,9 @@
     "Windstrike": {
       "text": "5 DMG.",
       "aggro": "Aggro 3",
-      "tags": [],
+      "tags": [
+        "MELEE"
+      ],
       "split": false,
       "version": 1,
       "badges": {
@@ -725,6 +1305,7 @@
       "text": "2 DMG. Heal 1 HP. At the start of the next round, automatically deal 1 more DMG and heal 1 more HP (no card spent).",
       "aggro": "Aggro 0",
       "tags": [
+        "MELEE",
         "ECHO"
       ],
       "split": false,
@@ -735,13 +1316,69 @@
         "delayed_dmg": "1",
         "delayed_heal": "1"
       }
+    },
+    "Tidal Ward [Lv 2]": {
+      "text": "Heal 2 HP. 3 Block.",
+      "aggro": "Aggro 1",
+      "tags": [],
+      "split": false,
+      "version": 1,
+      "badges": {
+        "heal": 2,
+        "block": "3"
+      },
+      "level2": true,
+      "tier": "mandatory",
+      "replaces": "Tidal Ward"
+    },
+    "Lightning Bolt [Lv 2]": {
+      "text": "4 DMG. +1 DMG if the previous round's card was Chain Lightning.",
+      "aggro": "Aggro 2",
+      "tags": [
+        "COMBO"
+      ],
+      "split": false,
+      "version": 1,
+      "badges": {
+        "dmg": "4|5"
+      },
+      "level2": true,
+      "tier": "purchased",
+      "replaces": "Lightning Bolt"
+    },
+    "Hurricane Strike": {
+      "text": "6 DMG.",
+      "aggro": "Aggro 3",
+      "tags": [],
+      "split": false,
+      "version": 1,
+      "badges": {
+        "dmg": "6"
+      },
+      "level2": true,
+      "tier": "purchased",
+      "replaces": "Windstrike"
+    },
+    "Chain Lightning [Lv 2]": {
+      "text": "5 DMG.",
+      "aggro": "Aggro 3",
+      "tags": [],
+      "split": false,
+      "version": 1,
+      "badges": {
+        "dmg": "5"
+      },
+      "level2": true,
+      "tier": "purchased",
+      "replaces": "Chain Lightning"
     }
   },
   "druid": {
     "Shapeshift: Grizzly": {
-      "text": "2 DMG. 3 Block. Maul/Swipe played in a later round gain +1 DMG/+1 Block. Cancels the Eclipse-stacking bonus on any Eclipse-tagged card played in a later round.",
+      "text": "2 DMG. 3 Block. Cancels the Eclipse-stacking bonus on any Eclipse-tagged card played in a later round.",
       "aggro": "Aggro 4",
       "tags": [
+        "MELEE",
         "SHAPESHIFT"
       ],
       "split": false,
@@ -752,9 +1389,10 @@
       }
     },
     "Maul": {
-      "text": "2 DMG. 2 Block. +1 DMG and +1 Block if Shapeshift: Grizzly was played in an earlier round this pull.",
-      "aggro": "Aggro 0",
+      "text": "2 DMG. 2 Block. +1 DMG and +1 Block per Shapeshift-tagged card already played this pull (requires Shapeshift: Grizzly to have been played first).",
+      "aggro": "Aggro 4",
       "tags": [
+        "MELEE",
         "SHAPESHIFT"
       ],
       "split": false,
@@ -765,9 +1403,10 @@
       }
     },
     "Swipe": {
-      "text": "3 DMG. +1 DMG and +1 Block if Shapeshift: Grizzly was played in an earlier round this pull.",
-      "aggro": "Aggro 0",
+      "text": "3 DMG. +1 DMG and +1 Block per Shapeshift-tagged card already played this pull (requires Shapeshift: Grizzly to have been played first).",
+      "aggro": "Aggro 3",
       "tags": [
+        "MELEE",
         "SHAPESHIFT"
       ],
       "split": false,
@@ -778,8 +1417,9 @@
     },
     "Solar Flare": {
       "text": "5 DMG. +1 DMG per other Eclipse-tagged card played in an earlier round this pull (voided if Shapeshift: Grizzly has already been played).",
-      "aggro": "Aggro 0",
+      "aggro": "Aggro 2",
       "tags": [
+        "RANGED",
         "ECLIPSE"
       ],
       "split": false,
@@ -790,8 +1430,9 @@
     },
     "Moonbeam": {
       "text": "5 DMG. Heal 1 HP. +1 DMG per other Eclipse-tagged card played in an earlier round this pull (voided if Shapeshift: Grizzly has already been played).",
-      "aggro": "Aggro 0",
+      "aggro": "Aggro 2",
       "tags": [
+        "RANGED",
         "ECLIPSE"
       ],
       "split": false,
@@ -803,8 +1444,9 @@
     },
     "Nature's Wildguard": {
       "text": "Heal 2 HP. 2 Block. +1 Heal per other Eclipse-tagged card played in an earlier round this pull (voided if Shapeshift: Grizzly has already been played).",
-      "aggro": "Aggro 0",
+      "aggro": "Aggro 2",
       "tags": [
+        "MELEE",
         "ECLIPSE"
       ],
       "split": false,
@@ -813,17 +1455,84 @@
         "heal": 2,
         "block": "2"
       }
+    },
+    "Nature's Rampart": {
+      "text": "Heal 2 HP. 3 Block. +1 Heal per other Eclipse-tagged card played in an earlier round this pull (voided if Shapeshift: Grizzly has already been played).",
+      "aggro": "Aggro 2",
+      "tags": [
+        "MELEE",
+        "ECLIPSE"
+      ],
+      "split": false,
+      "version": 1,
+      "badges": {
+        "heal": 2,
+        "block": "3"
+      },
+      "level2": true,
+      "tier": "mandatory",
+      "replaces": "Nature's Wildguard"
+    },
+    "Greater Solar Flare": {
+      "text": "6 DMG. +1 DMG per other Eclipse-tagged card played in an earlier round this pull (voided if Shapeshift: Grizzly has already been played).",
+      "aggro": "Aggro 2",
+      "tags": [
+        "RANGED",
+        "ECLIPSE"
+      ],
+      "split": false,
+      "version": 1,
+      "badges": {
+        "dmg": "6"
+      },
+      "level2": true,
+      "tier": "purchased",
+      "replaces": "Solar Flare"
+    },
+    "Savage Swipe": {
+      "text": "4 DMG. +1 DMG and +1 Block per Shapeshift-tagged card already played this pull (requires Shapeshift: Grizzly to have been played first).",
+      "aggro": "Aggro 3",
+      "tags": [
+        "MELEE",
+        "SHAPESHIFT"
+      ],
+      "split": false,
+      "version": 1,
+      "badges": {
+        "dmg": "4"
+      },
+      "level2": true,
+      "tier": "purchased",
+      "replaces": "Swipe"
+    },
+    "Greater Moonbeam": {
+      "text": "6 DMG. Heal 1 HP. +1 DMG per other Eclipse-tagged card played in an earlier round this pull (voided if Shapeshift: Grizzly has already been played).",
+      "aggro": "Aggro 2",
+      "tags": [
+        "RANGED",
+        "ECLIPSE"
+      ],
+      "split": false,
+      "version": 1,
+      "badges": {
+        "dmg": "6",
+        "heal": 1
+      },
+      "level2": true,
+      "tier": "purchased",
+      "replaces": "Moonbeam"
     }
   },
   "necromancer": {
     "Boneguard's Offering": {
-      "text": "2 Block. Grants At Range this round (evades a melee mob's attack). Death Pact: when you play this card, you may lose 4 HP to deal 3 extra DMG.",
-      "aggro": "Aggro 0",
+      "text": "2 Block. Grants At Range this round (evades a melee mob's attack). Death Pact: when you play this card, you may lose 4 HP to deal 3 extra DMG. **PvP:** Death Pact costs no HP in PvP duels -- still deals its bonus damage for free.",
+      "aggro": "Aggro 3",
       "tags": [
+        "MELEE",
         "AT RANGE"
       ],
       "split": false,
-      "version": 1,
+      "version": 2,
       "badges": {
         "block": "2",
         "range": true
@@ -831,8 +1540,10 @@
     },
     "Soul Harvest": {
       "text": "3 DMG. Heal 2 HP.",
-      "aggro": "Aggro 0",
-      "tags": [],
+      "aggro": "Aggro 2",
+      "tags": [
+        "RANGED"
+      ],
       "split": false,
       "version": 1,
       "badges": {
@@ -842,8 +1553,9 @@
     },
     "Sowing Dread": {
       "text": "2 DMG. Grants At Range this round (evades a melee mob's attack).",
-      "aggro": "Aggro 0",
+      "aggro": "Aggro 2",
       "tags": [
+        "RANGED",
         "AT RANGE",
         "DOT"
       ],
@@ -856,8 +1568,10 @@
     },
     "Reap": {
       "text": "4 DMG. +1 DMG per DOT-tagged card played in an earlier round this pull.",
-      "aggro": "Aggro 0",
-      "tags": [],
+      "aggro": "Aggro 3",
+      "tags": [
+        "RANGED"
+      ],
       "split": false,
       "version": 2,
       "badges": {
@@ -866,8 +1580,9 @@
     },
     "Blight": {
       "text": "1 DMG. At the start of the next round, automatically deal 3 more DMG (no card spent).",
-      "aggro": "Aggro 0",
+      "aggro": "Aggro 1",
       "tags": [
+        "RANGED",
         "ECHO",
         "DOT"
       ],
@@ -880,8 +1595,9 @@
     },
     "Death Blow": {
       "text": "4 DMG. If this attack kills the mob, its attack this round is prevented.",
-      "aggro": "Aggro 0",
+      "aggro": "Aggro 4",
       "tags": [
+        "RANGED",
         "KILLING BLOW"
       ],
       "split": false,
@@ -889,6 +1605,73 @@
       "badges": {
         "dmg": "4"
       }
+    },
+    "Boneguard's Bargain": {
+      "text": "1 DMG. 2 Block. Grants At Range this round (evades a melee mob's attack). Death Pact: when you play this card, you may lose 3 HP to deal 4 extra DMG.",
+      "aggro": "Aggro 3",
+      "tags": [
+        "MELEE",
+        "AT RANGE"
+      ],
+      "split": false,
+      "version": 2,
+      "badges": {
+        "dmg": "1",
+        "block": "2",
+        "range": true
+      },
+      "level2": true,
+      "tier": "mandatory",
+      "replaces": "Boneguard's Offering"
+    },
+    "Soul Feast": {
+      "text": "4 DMG. Heal 2 HP.",
+      "aggro": "Aggro 2",
+      "tags": [
+        "RANGED"
+      ],
+      "split": false,
+      "version": 2,
+      "badges": {
+        "dmg": "4",
+        "heal": 2
+      },
+      "level2": true,
+      "tier": "purchased",
+      "replaces": "Soul Harvest"
+    },
+    "Sowing Greater Dread": {
+      "text": "3 DMG. Grants At Range this round (evades a melee mob's attack).",
+      "aggro": "Aggro 2",
+      "tags": [
+        "RANGED",
+        "AT RANGE",
+        "DOT"
+      ],
+      "split": false,
+      "version": 2,
+      "badges": {
+        "dmg": "3",
+        "range": true
+      },
+      "level2": true,
+      "tier": "purchased",
+      "replaces": "Sowing Dread"
+    },
+    "Grim Reap": {
+      "text": "4 DMG. +2 DMG per DOT-tagged card played in an earlier round this pull.",
+      "aggro": "Aggro 3",
+      "tags": [
+        "RANGED"
+      ],
+      "split": false,
+      "version": 3,
+      "badges": {
+        "dmg": "4"
+      },
+      "level2": true,
+      "tier": "purchased",
+      "replaces": "Reap"
     }
   }
 }

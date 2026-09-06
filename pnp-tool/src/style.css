@@ -184,6 +184,11 @@ body {
 .ftr-divider { flex: 1; height: 0.5pt; background: rgba(255,255,255,0.2); margin: 0 5pt; }
 .ftr-class { font-family: 'Barlow Condensed', sans-serif; font-size: 8pt; font-weight: 700; letter-spacing: 0.8pt; text-transform: uppercase; color: rgba(255,255,255,0.7); flex-shrink: 0; }
 
+/* LEVEL 2 UPGRADE CARDS -- gold (mandatory, free/automatic) vs. purple (purchased, costs Gold)
+   colors are set inline per-card (data.tier), this just handles the shared shape/position. */
+.level2-badge { text-align: center; font-family: 'Barlow Condensed', sans-serif; font-size: 7pt; font-weight: 700; letter-spacing: 0.6pt; text-transform: uppercase; color: #fff; padding: 1.5pt 0; }
+.replaces-line { font-family: 'Barlow Condensed', sans-serif; font-size: 6.5pt; font-style: italic; color: rgba(255,255,255,0.65); white-space: nowrap; margin-right: 5pt; flex-shrink: 0; }
+
 /* CLASS COLORS */
 .cls-warrior  .card-hdr, .cls-warrior  .mini-hdr { background: linear-gradient(135deg, #3d2b0e, #c79c6e); } .cls-warrior  .card-ftr { background: var(--warrior); } .cls-warrior  .art-zone { background: var(--warrior-light); } .cls-warrior  .divider { background: var(--warrior); opacity: 0.25; }
 .cls-rogue    .card-hdr, .cls-rogue    .mini-hdr { background: linear-gradient(135deg, #2a2200, #8a7400); } .cls-rogue    .card-ftr { background: var(--rogue); } .cls-rogue    .art-zone { background: var(--rogue-light); } .cls-rogue    .divider { background: var(--rogue); opacity: 0.25; }

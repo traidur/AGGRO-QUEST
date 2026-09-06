@@ -69,6 +69,18 @@ PALADIN_HP = 17  # locked: settled at Warrior-1 after the Sacred Light/HP dial-b
 
 INVOCATION_PER_STRIKE_BONUS = 2  # 2026-08-30: raised from 1 -- see rebalance note above.
 
+# grants_aura_block's Block bonus is deliberately its OWN constant, not
+# INVOCATION_PER_STRIKE_BONUS -- found 2026-09-04: the 2026-08-30 rebalance doubled
+# INVOCATION_PER_STRIKE_BONUS to compensate for spread-out damage numbers, with zero
+# awareness that Level 2's grants_aura_block field (added in the leveling pass, a separate,
+# later change) read the same constant for its Block bonus. That silently doubled the
+# leveled mandatory upgrade's real strength (validated at 1, running at 2) without anyone
+# touching or re-validating the leveling work at all -- see LEVELING_GUIDE.md's Paladin
+# section for the full trail.
+# Locked back at 1, its original validated value, independent of whatever the damage-side
+# constant does in the future.
+INVOCATION_AURA_BLOCK_BONUS = 1
+
 # dmg/heal/block are flat, unconditional base values. strike=True marks the
 # two cards the Invocation bonus chain keys off. invocation={"sanctuary",
 # "grace",None} marks the two Invocation cards.
@@ -126,7 +138,7 @@ def resolve_round(state, card_name, stance, round_num, mob_pattern, mob_hp_total
             if new_active_invocation == "sanctuary":
                 dmg += INVOCATION_PER_STRIKE_BONUS * state.strikes_played
                 if new_active_grants_aura_block:
-                    block += INVOCATION_PER_STRIKE_BONUS * state.strikes_played
+                    block += INVOCATION_AURA_BLOCK_BONUS * state.strikes_played
             else:
                 heal += INVOCATION_PER_STRIKE_BONUS * state.strikes_played
 
@@ -135,7 +147,7 @@ def resolve_round(state, card_name, stance, round_num, mob_pattern, mob_hp_total
         if state.active_invocation == "sanctuary":
             dmg += INVOCATION_PER_STRIKE_BONUS
             if state.active_grants_aura_block:
-                block += INVOCATION_PER_STRIKE_BONUS
+                block += INVOCATION_AURA_BLOCK_BONUS
         elif state.active_invocation == "grace":
             heal += INVOCATION_PER_STRIKE_BONUS
 

@@ -1,4 +1,5 @@
 import itertools
+import functools
 import numpy as np
 
 import condensed_warrior as warrior
@@ -13,8 +14,13 @@ import condensed_necromancer as necro
 
 from combat_round import RoundState
 
+_warrior_resolve_round_pvp = functools.partial(warrior.resolve_round, execute_unlocked=True)
+_necro_resolve_round_pvp = functools.partial(necro.resolve_round, death_pact_free=True)
+
 CLASSES = {
-    "Warrior": (warrior.CARDS, warrior.resolve_round, warrior.WARRIOR_HP, warrior.ALL_HANDS, warrior.orderings),
+    # PvP-only: Execute's 50%-HP gate is unlocked per DESIGN_DOC.md Section X ("Class-Specific
+    # PvP Rules" #1). Every other class module's plain resolve_round is unchanged.
+    "Warrior": (warrior.CARDS, _warrior_resolve_round_pvp, warrior.WARRIOR_HP, warrior.ALL_HANDS, warrior.orderings),
     "Cleric": (cleric.CARDS, cleric.resolve_round, cleric.CLERIC_HP, cleric.ALL_HANDS, cleric.orderings),
     "Wizard": (wizard.CARDS, wizard.resolve_round, wizard.WIZARD_HP, wizard.ALL_HANDS, wizard.orderings),
     "Paladin": (paladin.CARDS, paladin.resolve_round, paladin.PALADIN_HP, paladin.ALL_HANDS, paladin.orderings),
@@ -22,7 +28,9 @@ CLASSES = {
     "Ranger": (ranger.CARDS, ranger.resolve_round, ranger.RANGER_HP, ranger.ALL_HANDS, ranger.orderings),
     "Runecaster": (runecaster.CARDS, runecaster.resolve_round, runecaster.RUNECASTER_HP, runecaster.ALL_HANDS, runecaster.orderings),
     "Druid": (druid.CARDS, druid.resolve_round, druid.DRUID_HP, druid.ALL_HANDS, druid.orderings),
-    "Necromancer": (necro.CARDS, necro.resolve_round, necro.NECROMANCER_HP, necro.ALL_HANDS, necro.orderings),
+    # PvP-only: Death Pact's HP-cost rider is waived per DESIGN_DOC.md Section X
+    # ("Class-Specific PvP Rules" #2) -- see condensed_necromancer.py's resolve_round docstring.
+    "Necromancer": (necro.CARDS, _necro_resolve_round_pvp, necro.NECROMANCER_HP, necro.ALL_HANDS, necro.orderings),
 }
 
 def get_sequences(class_name, hand):
@@ -120,8 +128,7 @@ def resolve_duel(class_A, seq_A, class_B, seq_B):
             
     dmg_done_by_A = max_hp_B - hp_B
     dmg_done_by_B = max_hp_A - hp_A
-    
-    # NEW WIN CONDITION: Damage Dealt + Max HP
+
     return dmg_done_by_A, dmg_done_by_B
 
 def evaluate_matchup(class_A, class_B):
@@ -139,7 +146,7 @@ def evaluate_matchup(class_A, class_B):
         k = (s_A, s_B)
         if k not in cache:
             dA, dB = resolve_duel(class_A, s_A, class_B, s_B)
-            cache[k] = (dA + CLASSES[class_A][2]) - (dB + CLASSES[class_B][2])
+            cache[k] = dA - dB
         return cache[k]
     
     for i, sA_list in enumerate(seqs_A):

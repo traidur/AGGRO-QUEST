@@ -4,7 +4,7 @@
     "private":  true,
     "type":  "module",
     "scripts":  {
-                    "dev":  "concurrently \"vite\" \"nodemon --watch ../sim -e py --exec python export_text_json.py\"",
+                    "dev":  "concurrently \"vite --host\" \"nodemon --watch ../sim -e py --exec python export_text_json.py\"",
                     "build":  "vite build",
                     "preview":  "vite preview"
                 },
