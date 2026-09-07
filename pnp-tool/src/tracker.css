@@ -1,0 +1,237 @@
+body {
+  margin: 0;
+  padding: 0;
+  background: #222;
+  font-family: sans-serif;
+  color: #333;
+}
+
+.ui-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 60px;
+  background: #111;
+  border-bottom: 2px solid #444;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 20px;
+  z-index: 1000;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+}
+
+.ui-left, .ui-right {
+  display: flex;
+  align-items: center;
+}
+
+.btn {
+  background: #333;
+  color: #fff;
+  border: 1px solid #555;
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.btn:hover {
+  background: #444;
+}
+
+.btn-primary {
+  background: #1976D2;
+  border-color: #0D47A1;
+}
+.btn-primary:hover {
+  background: #1565C0;
+}
+
+.sheet-container {
+  margin-top: 80px;
+  padding-bottom: 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+@media print {
+  body {
+    background: white;
+  }
+  .ui-bar {
+    display: none !important;
+  }
+  .sheet-container {
+    margin: 0;
+    padding: 0;
+    gap: 0;
+  }
+  .tracker-sheet {
+    box-shadow: none;
+    margin: 0;
+    page-break-after: always;
+  }
+}
+
+.tracker-sheet {
+  background: white;
+  width: 8.5in;
+  height: 11in;
+  margin: 0 auto;
+  box-shadow: 0 0 10px rgba(0,0,0,0.5);
+  box-sizing: border-box;
+  padding: 0.3in;
+}
+
+.tracker-safe-zone {
+  width: 100%;
+  height: 100%;
+  border: 2px solid #2c3e50;
+  border-radius: 8px;
+  box-sizing: border-box;
+  padding: 0.25in;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2in;
+}
+
+.tracker-header {
+  text-align: center;
+  border-bottom: 2px solid #f39c12;
+  padding-bottom: 8px;
+}
+.tracker-title {
+  font-family: 'Cinzel', serif;
+  font-size: 28pt;
+  font-weight: bold;
+  color: #2c3e50;
+}
+.tracker-subtitle {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 11pt;
+  color: #888;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.tracker-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.section-hdr {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: bold;
+  font-size: 12pt;
+  color: #2c3e50;
+  background: #ecf0f1;
+  padding: 3px 8px;
+  border-left: 4px solid #f39c12;
+}
+
+.hp-track {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.hp-row {
+  display: flex;
+  gap: 4px;
+}
+.hp-box {
+  flex: 1;
+  border: 1px solid #2c3e50;
+  border-radius: 3px;
+  height: 0.35in;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 10pt;
+  font-weight: bold;
+  color: #555;
+}
+.hp-hint {
+  font-family: 'Crimson Pro', serif;
+  font-size: 9pt;
+  color: #999;
+  font-style: italic;
+}
+
+.tracker-resources {
+  display: flex;
+  gap: 0.2in;
+}
+.resource-box {
+  flex: 1;
+  border: 1px solid #bdc3c7;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.resource-label {
+  background: #34495e;
+  color: white;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: bold;
+  font-size: 10pt;
+  text-align: center;
+  padding: 3px;
+}
+.resource-fill {
+  height: 0.4in;
+}
+
+.matchup-columns {
+  display: flex;
+  gap: 0.2in;
+}
+.matchup-block {
+  flex: 1;
+  border: 1px solid #bdc3c7;
+  border-radius: 4px;
+  padding: 6px 8px;
+}
+.matchup-label {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: bold;
+  font-size: 10pt;
+  color: #2c3e50;
+  margin-bottom: 4px;
+}
+.matchup-row {
+  font-family: 'Crimson Pro', serif;
+  font-size: 9.5pt;
+  padding: 2px 0;
+}
+.matchup-best strong { color: #1e8449; }
+.matchup-worst strong { color: #c0392b; }
+
+.quest-slots {
+  display: flex;
+  gap: 0.2in;
+  justify-content: center;
+}
+.quest-slot {
+  width: 2.5in;
+  height: 3.5in;
+  border: 3px dashed;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.quest-slot span {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: bold;
+  font-size: 10pt;
+  opacity: 0.5;
+}
+.slot-red { border-color: #c0392b; background: #fdecea; }
+.slot-green { border-color: #1e8449; background: #eafaf1; }
+.slot-blue { border-color: #2471a3; background: #eaf2fa; }

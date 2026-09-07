@@ -93,8 +93,8 @@ in the same doc would recreate the exact ambiguity resolved earlier in this desi
 
 ### Grade 1 — kept close to the original draft, lowest risk
 Flat, single-use, single-round bumps: **Honed** (+1 DMG), **Reinforced** (+1 Block), **Blessed**
-(+1 Heal), **Swift** (resolves before the mob's own attack this round). These are the smallest
-possible version of what a Level 2 upgrade already does, just single-use and equipment-sourced
+(+1 Heal). These are the smallest possible version of what a Level 2 upgrade already does, just
+single-use and equipment-sourced
 instead of permanent and card-sourced. Same validation path as any other +1 grain-size change
 this project has ever made — no new mechanism, just needs a sim pass once the redemption
 economy exists to know what price point to test against.
@@ -118,12 +118,6 @@ cleared either. All four still need a dedicated simulator check before any are l
   less of an overturn than an unlimited one, but this still needs an explicit decision (not a
   default yes) on whether equipment is allowed to hand a class back a tool it was deliberately
   built without.
-- **Mimicry** (counts as playing a specific tag — STRIKE/Eclipse/DOT/etc. — for combo purposes)
-  — the one ingredient where single-use narrows the risk least. Rogue's finisher curve,
-  Paladin's Invocation, and Necromancer's DOT-count payoff are all *exact* functions of how many
-  qualifying cards were actually drawn and played — even one guaranteed extra count, once per
-  trip, is a real, calculable shift in a scaling payoff's ceiling, not a vague power boost.
-  Needs the most scrutiny of the four before it's allowed near a real item.
 - **Persistent** (this round's Block carries into the next round) — the one ingredient where
   single-use narrows the risk the *least* in absolute terms, because the danger was never about
   repeatability, it was about the specific failure mode this project has already hit twice
@@ -132,10 +126,6 @@ cleared either. All four still need a dedicated simulator check before any are l
   equilibrium check (`condensed_trip.py`'s existing tooling) against the full mob roster before
   this is trusted, not just a sim of the isolated damage-margin math.
 
-**Kept as lower-risk candidates, not yet checked:** Echo (duplicate a card's base effect) and
-Smoke (force a Flee with no damage this round) — both single-purpose, bounded, and closer in
-shape to existing mechanics (Blight/Earth Strike Rune's Echo tick, Smoke Bomb's existing Flee
-consumable) than the four above.
 
 ## Redemption mechanic — shape locked (2026-09-05), exact materials/pricing not yet locked
 

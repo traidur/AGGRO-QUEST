@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QUEST - PnP Board</title>
+    <link rel="stylesheet" href="src/board.css">
+</head>
+<body>
+    <div class="no-print banner">
+        <h1>QUEST Board Print-and-Play</h1>
+        <p>Press <strong>Ctrl+P</strong> to print. Ensure paper size is set to <strong>Letter</strong> (or A4) and orientation is <strong>Landscape</strong>. Disable margins if your printer allows.</p>
+        <a href="index.html" class="back-link">&larr; Back to PnP Tools</a>
+    </div>
+
+    <!-- PAGE 2: NORTH MAP (Zones 4 & 3) -->
+    <!-- Document order places this first so it prints nicely if double-sided, or just intuitively on table -->
+    <div class="page north-map" id="page-north" data-connections='[
+        ["town4", "waystation4"], ["town4", "cove4"], ["town4", "border34"], ["town4", "flight4"],
+        ["waystation4", "ridge4"], ["cove4", "marsh4"], ["ridge4", "border14"], ["marsh4", "border14"],
+        ["town3", "waystation3"], ["town3", "cove3"], ["town3", "border34"],
+        ["waystation3", "ridge3"], ["cove3", "marsh3"], ["ridge3", "border23"], ["marsh3", "border23"],
+        ["flight4", "flight-north-entry", "flight"]
+    ]'>
+        <svg class="map-lines"></svg>
+        
+        <!-- Decorative Compass/Labels -->
+        <div class="map-title" style="left: 50%; top: 10%;">The Northern Reaches</div>
+        <div class="compass" style="left: 10%; top: 15%;">NW</div>
+        
+        <!-- Offscreen anchor for flight path -->
+        <div class="node offscreen" id="flight-north-entry" style="left: 45%; top: 110%;"></div>
+
+        <!-- ZONE 4 -->
+        <div class="zone-label" style="left: 20%; top: 10%;">The Sunsworn Ascent</div>
+        <div class="node town" id="town4" style="left: 25%; top: 30%;">The Vanguard Camp</div>
+        <div class="node std" id="waystation4" style="left: 38%; top: 45%;">Charred Village</div>
+        <div class="node std" id="cove4" style="left: 15%; top: 50%;">Armory Gates</div>
+        <div class="node std" id="ridge4" style="left: 33%; top: 65%;">Gleaming Citadel</div>
+        <div class="node std" id="marsh4" style="left: 12%; top: 75%;">Sunward Throne</div>
+        <div class="node flight" id="flight4" style="left: 45%; top: 15%;">Flight<br>Master</div>
+
+        <!-- ZONE 3 -->
+        <div class="zone-label" style="left: 80%; top: 10%;">The Pale Wastes</div>
+        <div class="node town" id="town3" style="left: 75%; top: 30%;">The Vanguard Camp</div>
+        <div class="node std" id="waystation3" style="left: 62%; top: 45%;">Mud Trenches</div>
+        <div class="node std" id="cove3" style="left: 85%; top: 50%;">Ruined Abbey</div>
+        <div class="node std" id="ridge3" style="left: 67%; top: 65%;">Pyre Fields</div>
+        <div class="node std" id="marsh3" style="left: 88%; top: 75%;">Broken Bridge</div>
+
+        <!-- BORDER NODES (North Half) -->
+        <div class="node border-node horiz" id="border34" style="left: 50%; top: 30%;">The Furnace Gates</div>
+        <div class="node border-node vert" id="border14" style="left: 22%; top: 92%;">The King's Highway</div>
+        <div class="node border-node vert" id="border23" style="left: 78%; top: 92%;">The Ashen Ascent</div>
+    </div>
+
+    <!-- PAGE 1: SOUTH MAP (Zones 1 & 2) -->
+    <div class="page south-map" id="page-south" data-connections='[
+        ["town1", "waystation1"], ["town1", "cove1"], ["town1", "border12"],
+        ["waystation1", "ridge1"], ["cove1", "marsh1"], ["ridge1", "border14_s"], ["marsh1", "border14_s"],
+        ["town2", "waystation2"], ["town2", "cove2"], ["town2", "border12"], ["town2", "trainer"], ["town2", "flight2"],
+        ["waystation2", "ridge2"], ["cove2", "marsh2"], ["ridge2", "border23_s"], ["marsh2", "border23_s"],
+        ["flight2", "flight-south-exit", "flight"]
+    ]'>
+        <svg class="map-lines"></svg>
+        
+        <div class="map-title" style="left: 50%; top: 90%;">The Southern Coast</div>
+        
+        <!-- Offscreen anchor for flight path -->
+        <div class="node offscreen" id="flight-south-exit" style="left: 40%; top: -10%;"></div>
+
+        <!-- ZONE 1 -->
+        <div class="zone-label" style="left: 20%; top: 90%;">The Gilded Coast</div>
+        <div class="node town" id="town1" style="left: 25%; top: 70%;">The Smugglers' Roost<br>(Start)</div>
+        <div class="node std" id="waystation1" style="left: 38%; top: 55%;">Waystation</div>
+        <div class="node std" id="cove1" style="left: 15%; top: 50%;">Cove</div>
+        <div class="node std" id="ridge1" style="left: 33%; top: 35%;">Ridge</div>
+        <div class="node std" id="marsh1" style="left: 12%; top: 25%;">Marsh</div>
+
+        <!-- ZONE 2 -->
+        <div class="zone-label" style="left: 80%; top: 90%;">The Syndicate Straits</div>
+        <div class="node town" id="town2" style="left: 75%; top: 70%;">Port Ironguard</div>
+        <div class="node std" id="waystation2" style="left: 62%; top: 55%;">Shoal</div>
+        <div class="node std" id="cove2" style="left: 85%; top: 50%;">Lagoon</div>
+        <div class="node std" id="ridge2" style="left: 67%; top: 35%;">Bluff</div>
+        <div class="node std" id="marsh2" style="left: 88%; top: 25%;">Wreckage</div>
+        
+        <div class="node trainer" id="trainer" style="left: 90%; top: 80%;">Trainer</div>
+        <div class="node flight" id="flight2" style="left: 62%; top: 80%;">Flight<br>Master</div>
+
+        <!-- BORDER NODES (South Half) -->
+        <div class="node border-node horiz" id="border12" style="left: 50%; top: 70%;">Thorne's Toll</div>
+        <!-- South half of the vertical borders -->
+        <div class="node border-node vert" id="border14_s" style="left: 22%; top: 8%;">The King's Highway</div>
+        <div class="node border-node vert" id="border23_s" style="left: 78%; top: 8%;">The Ashen Ascent</div>
+    </div>
+
+    <script src="src/board.js"></script>
+</body>
+</html>

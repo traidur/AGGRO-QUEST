@@ -1,0 +1,211 @@
+{
+  "classes": {
+    "Warrior": {
+      "max_hp": 18,
+      "matchup_l1": {
+        "best_1": "Bruiser",
+        "best_1_cost": 15.9,
+        "best_2": "Scout",
+        "best_2_cost": 15.9,
+        "worst_1": "Ambusher",
+        "worst_1_cost": 31.9,
+        "worst_2": "Enforcer",
+        "worst_2_cost": 29.3
+      },
+      "matchup_l2": {
+        "best_1": "Scout",
+        "best_1_cost": 7.8,
+        "best_2": "Grunt",
+        "best_2_cost": 9.6,
+        "worst_1": "Berserker",
+        "worst_1_cost": 57.4,
+        "worst_2": "Warlord",
+        "worst_2_cost": 44.4
+      }
+    },
+    "Wizard": {
+      "max_hp": 14,
+      "matchup_l1": {
+        "best_1": "Raider",
+        "best_1_cost": 9.5,
+        "best_2": "Grunt",
+        "best_2_cost": 19.0,
+        "worst_1": "Scout",
+        "worst_1_cost": 31.4,
+        "worst_2": "Enforcer",
+        "worst_2_cost": 21.4
+      },
+      "matchup_l2": {
+        "best_1": "Raider",
+        "best_1_cost": 8.6,
+        "best_2": "Grunt",
+        "best_2_cost": 12.4,
+        "worst_1": "Warlord",
+        "worst_1_cost": 45.2,
+        "worst_2": "Berserker",
+        "worst_2_cost": 40.0
+      }
+    },
+    "Cleric": {
+      "max_hp": 14,
+      "matchup_l1": {
+        "best_1": "Scout",
+        "best_1_cost": 16.2,
+        "best_2": "Bruiser",
+        "best_2_cost": 20.0,
+        "worst_1": "Ambusher",
+        "worst_1_cost": 36.2,
+        "worst_2": "Enforcer",
+        "worst_2_cost": 27.1
+      },
+      "matchup_l2": {
+        "best_1": "Grunt",
+        "best_1_cost": 14.3,
+        "best_2": "Scout",
+        "best_2_cost": 15.7,
+        "worst_1": "Berserker",
+        "worst_1_cost": 67.1,
+        "worst_2": "Warlord",
+        "worst_2_cost": 61.9
+      }
+    },
+    "Paladin": {
+      "max_hp": 17,
+      "matchup_l1": {
+        "best_1": "Grunt",
+        "best_1_cost": 11.8,
+        "best_2": "Scout",
+        "best_2_cost": 16.9,
+        "worst_1": "Enforcer",
+        "worst_1_cost": 34.5,
+        "worst_2": "Ambusher",
+        "worst_2_cost": 25.1
+      },
+      "matchup_l2": {
+        "best_1": "Scout",
+        "best_1_cost": 5.9,
+        "best_2": "Grunt",
+        "best_2_cost": 7.1,
+        "worst_1": "Berserker",
+        "worst_1_cost": 45.5,
+        "worst_2": "Warlord",
+        "worst_2_cost": 40.8
+      }
+    },
+    "Rogue": {
+      "max_hp": 15,
+      "matchup_l1": {
+        "best_1": "Grunt",
+        "best_1_cost": 10.2,
+        "best_2": "Scout",
+        "best_2_cost": 10.2,
+        "worst_1": "Ambusher",
+        "worst_1_cost": 30.2,
+        "worst_2": "Enforcer",
+        "worst_2_cost": 27.1
+      },
+      "matchup_l2": {
+        "best_1": "Scout",
+        "best_1_cost": 6.7,
+        "best_2": "Grunt",
+        "best_2_cost": 10.2,
+        "worst_1": "Berserker",
+        "worst_1_cost": 68.4,
+        "worst_2": "Warlord",
+        "worst_2_cost": 53.3
+      }
+    },
+    "Ranger": {
+      "max_hp": 15,
+      "matchup_l1": {
+        "best_1": "Bruiser",
+        "best_1_cost": 12.4,
+        "best_2": "Grunt",
+        "best_2_cost": 14.2,
+        "worst_1": "Enforcer",
+        "worst_1_cost": 25.3,
+        "worst_2": "Scout",
+        "worst_2_cost": 21.3
+      },
+      "matchup_l2": {
+        "best_1": "Bruiser",
+        "best_1_cost": 9.3,
+        "best_2": "Grunt",
+        "best_2_cost": 9.8,
+        "worst_1": "Warlord",
+        "worst_1_cost": 44.0,
+        "worst_2": "Berserker",
+        "worst_2_cost": 42.7
+      }
+    },
+    "Runecaster": {
+      "max_hp": 16,
+      "matchup_l1": {
+        "best_1": "Grunt",
+        "best_1_cost": 14.2,
+        "best_2": "Raider",
+        "best_2_cost": 21.2,
+        "worst_1": "Ambusher",
+        "worst_1_cost": 31.7,
+        "worst_2": "Enforcer",
+        "worst_2_cost": 29.2
+      },
+      "matchup_l2": {
+        "best_1": "Grunt",
+        "best_1_cost": 8.8,
+        "best_2": "Bruiser",
+        "best_2_cost": 14.2,
+        "worst_1": "Berserker",
+        "worst_1_cost": 62.9,
+        "worst_2": "Warlord",
+        "worst_2_cost": 58.3
+      }
+    },
+    "Druid": {
+      "max_hp": 15,
+      "matchup_l1": {
+        "best_1": "Grunt",
+        "best_1_cost": 12.0,
+        "best_2": "Scout",
+        "best_2_cost": 23.1,
+        "worst_1": "Enforcer",
+        "worst_1_cost": 35.1,
+        "worst_2": "Ambusher",
+        "worst_2_cost": 27.6
+      },
+      "matchup_l2": {
+        "best_1": "Grunt",
+        "best_1_cost": 12.0,
+        "best_2": "Scout",
+        "best_2_cost": 23.1,
+        "worst_1": "Berserker",
+        "worst_1_cost": 52.9,
+        "worst_2": "Warlord",
+        "worst_2_cost": 46.2
+      }
+    },
+    "Necromancer": {
+      "max_hp": 14,
+      "matchup_l1": {
+        "best_1": "Grunt",
+        "best_1_cost": 17.1,
+        "best_2": "Raider",
+        "best_2_cost": 18.6,
+        "worst_1": "Ambusher",
+        "worst_1_cost": 31.4,
+        "worst_2": "Enforcer",
+        "worst_2_cost": 30.0
+      },
+      "matchup_l2": {
+        "best_1": "Grunt",
+        "best_1_cost": 12.9,
+        "best_2": "Raider",
+        "best_2_cost": 13.8,
+        "worst_1": "Berserker",
+        "worst_1_cost": 55.2,
+        "worst_2": "Warlord",
+        "worst_2_cost": 45.7
+      }
+    }
+  }
+}

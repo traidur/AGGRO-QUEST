@@ -47,6 +47,7 @@
             {% elif a.type == 'take_quest' %}Take Quest: {{ a.quest_name }}
             {% elif a.type == 'buy' %}Buy {{ a.tag }} ({{ a.kind }}) — {{ a.cost }}g
             {% elif a.type == 'buy_consumable' %}Buy {{ a.item_name }} — {{ a.cost }}g
+            {% elif a.type == 'craft_equipment' %}Craft {{ a.recipe.name }} ({{ a.recipe.slot|title }} - {{ a.recipe.rider }}) — {{ a.recipe.cost_gold }}g + {{ a.recipe.cost_items|join(', ') }}
             {% elif a.type == 'use_charm' %}Use Preserving Charm on {{ a.loot }} (reset decay)
             {% else %}{{ a }}
             {% endif %}

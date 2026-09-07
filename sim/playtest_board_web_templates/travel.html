@@ -200,7 +200,7 @@
                      {% if action_idx is not none %}onclick="document.getElementById('travel-idx').value='{{ action_idx }}'; document.getElementById('travel-form').submit();"{% endif %}>
                     {{ node.id.replace('node_', '') }}
                 </div>
-                {% if node.mob %}<div class="mob-label">{{ node.mob }}</div>{% endif %}
+                {% if node.mob %}<div class="mob-label">{{ node.mob }}{% if node.gathering_item %}<br/><span style="color: #aaffaa">{{ node.gathering_item }}</span>{% endif %}</div>{% endif %}
             </div>
             {% endfor %}
 

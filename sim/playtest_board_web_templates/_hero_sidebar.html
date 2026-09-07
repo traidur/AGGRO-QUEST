@@ -66,6 +66,22 @@ Bag/Quest-Log blocks -- one copy instead of four. -->
     </div>
     {% endif %}
 
+    <div class="sidebar-section-hdr">Equipment</div>
+    <div style="font-size: 14px; margin-bottom: 12px;">
+        {% for slot in ['weapon', 'armor', 'trinket'] %}
+        <div style="margin-bottom: 4px;">
+            <strong style="color: #c79c6e; text-transform: capitalize;">{{ slot }}:</strong>
+            {% if hero.equipment[slot] %}
+                <span style="{% if slot in hero.equipment_used %}color: #888; text-decoration: line-through;{% else %}color: #fff;{% endif %}">
+                    {{ hero.equipment[slot] }}
+                </span>
+            {% else %}
+                <span style="color: #777;">None</span>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+
     <div class="sidebar-section-hdr">Bag</div>
     <div class="bag-grid">
         {% for i in range(hero.bag|length) %}

@@ -13,10 +13,24 @@ out = {
     "loot": {}
 }
 
+# Quest -> (node name, zone number), inverted from macro_sim.py's own NODES/NODE_ZONE --
+# the real, locked source of truth (DESIGN_DOC.md's "Node/quest table, locked" sections),
+# never hand-duplicated here so this can't drift out of sync with the actual node map.
+quest_node = {}
+quest_zone = {}
+for node_name, (tier, quest_name) in M.NODES.items():
+    quest_node[quest_name] = node_name
+    quest_zone[quest_name] = M.NODE_ZONE[node_name]
+
+def _node_label(node_name):
+    return node_name.replace("_", " ").title()
+
 # Quests
 for name, data in M.QUESTS.items():
     out["quests"][name] = {
         "tier": "Level 1",
+        "zone": quest_zone.get(name),
+        "node": _node_label(quest_node[name]) if name in quest_node else None,
         "required": data["required"],
         "base_xp": data["base_xp"],
         "gold_ladder": data["gold_ladder"]
@@ -25,6 +39,8 @@ for name, data in M.QUESTS.items():
 for name, data in M.LEVEL2_QUESTS.items():
     out["quests"][name] = {
         "tier": "Level 2",
+        "zone": quest_zone.get(name),
+        "node": _node_label(quest_node[name]) if name in quest_node else None,
         "required": data["required"],
         "base_xp": data["base_xp"],
         "gold_ladder": data["gold_ladder"]

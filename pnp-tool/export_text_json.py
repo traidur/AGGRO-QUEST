@@ -287,21 +287,209 @@ def build_card_obj(cls, title_cls, name, text, aggro):
                     "text": "If this kills the mob, it deals no damage this round."
                 })
         elif c_data["kind"] == "opener":
-            base_text.append(f"**{c_data['dmg']} DMG** OR <span class=\"combo-text\">**{c_data['round1_dmg']} DMG**</span> if played in round 1.")
+            bonus_rounds = c_data.get("bonus_rounds", (0,))
+            round_text = " or ".join(f"round {r + 1}" for r in bonus_rounds)
+            base_text.append(f"**{c_data['dmg']} DMG** OR <span class=\"combo-text\">**{c_data['round1_dmg']} DMG**</span> if played in {round_text}.")
         else:
             if c_data["dmg"]:
                 base_text.append(f"**{c_data['dmg']} DMG**.")
             if c_data["block"]:
                 base_text.append(f"**{c_data['block']} Block**.")
 
+        if base_text:
+            card_obj["panels"].insert(0, {
+                "type": "base",
+                "text": " ".join(base_text)
+            })
+
         if c_data.get("armor_pierce"):
-            base_text.append("Ignores the mob's Block entirely.")
+            card_obj["panels"].append({
+                "type": "rider",
+                "label": "PIERCE",
+                "text": "Ignores the mob's Block entirely."
+            })
+
+    if cls == "ranger":
+        c_data = gcr.CARDS_BY_CLASS["Ranger"][name]
+        card_obj["panels"] = []
+
+        base_text = []
+        if c_data["payoff_prev_range"]:
+            card_obj["panels"].append({
+                "type": "rider",
+                "label": "COMBO",
+                "text": f"**{c_data['dmg_if_prev_range']} DMG** if the previous round's card granted At Range, **{c_data['dmg_else']} DMG** otherwise."
+            })
+        elif c_data.get("payoff_wolf"):
+            card_obj["panels"].append({
+                "type": "rider",
+                "label": "COMBO",
+                "text": f"**{c_data['dmg_if_wolf']} DMG** if the Wolf is active, **{c_data['dmg_else']} DMG** otherwise."
+            })
+        elif c_data["dmg"]:
+            base_text.append(f"**{c_data['dmg']} DMG**.")
+        if c_data["block"]:
+            base_text.append(f"**{c_data['block']} Block**.")
 
         if base_text:
             card_obj["panels"].insert(0, {
                 "type": "base",
                 "text": " ".join(base_text)
             })
+
+        if c_data["beast_bond"]:
+            card_obj["panels"].append({
+                "type": "positioning",
+                "label": "PET",
+                "text": f"Activates the Wolf: from this round on (including this one), gain **+{c_data['beast_block_value']} Block** every round for the rest of the pull, stacking with any Block your card grants that round."
+            })
+        if c_data["grants_range"]:
+            card_obj["panels"].append({
+                "type": "positioning",
+                "label": "POSITIONING",
+                "text": "Grants At Range this round (evades a melee mob's attack)."
+            })
+
+    if cls == "runecaster":
+        c_data = gcr.CARDS_BY_CLASS["Runecaster"][name]
+        card_obj["panels"] = []
+
+        base_text = []
+        if c_data["dmg"]:
+            base_text.append(f"**{c_data['dmg']} DMG**.")
+        if c_data["heal"]:
+            base_text.append(f"Heal **{c_data['heal']} HP**.")
+        if c_data["block"]:
+            base_text.append(f"**{c_data['block']} Block**.")
+        if base_text:
+            card_obj["panels"].append({
+                "type": "base",
+                "text": " ".join(base_text)
+            })
+
+        if c_data["chain_bonus_if_prev"]:
+            card_obj["panels"].append({
+                "type": "rider",
+                "label": "COMBO",
+                "text": f"**+{c_data['chain_bonus_dmg']} DMG** if the previous round's card was {c_data['chain_bonus_if_prev']}."
+            })
+        if c_data["grants_range"]:
+            card_obj["panels"].append({
+                "type": "positioning",
+                "label": "POSITIONING",
+                "text": "Grants At Range this round (evades a melee mob's attack)."
+            })
+        if c_data["echo_dmg"] or c_data["echo_heal"]:
+            bits = []
+            if c_data["echo_dmg"]:
+                bits.append(f"**{c_data['echo_dmg']} more DMG**")
+            if c_data["echo_heal"]:
+                bits.append(f"heal **{c_data['echo_heal']} more HP**")
+            card_obj["panels"].append({
+                "type": "echo",
+                "label": "ECHO",
+                "text": f"At the start of the next round, automatically deal {' and '.join(bits)} (no card spent)."
+            })
+
+    if cls == "necromancer":
+        c_data = gcr.CARDS_BY_CLASS["Necromancer"][name]
+        card_obj["panels"] = []
+
+        base_text = []
+        if c_data["dmg"]:
+            base_text.append(f"**{c_data['dmg']} DMG**.")
+        if c_data["heal"]:
+            base_text.append(f"Heal **{c_data['heal']} HP**.")
+        if c_data["block"]:
+            base_text.append(f"**{c_data['block']} Block**.")
+        if base_text:
+            card_obj["panels"].append({
+                "type": "base",
+                "text": " ".join(base_text)
+            })
+
+        if c_data["grants_range"]:
+            card_obj["panels"].append({
+                "type": "positioning",
+                "label": "POSITIONING",
+                "text": "Grants At Range this round (evades a melee mob's attack)."
+            })
+        if c_data["dot_payoff"]:
+            mult = c_data.get("dot_multiplier", 1)
+            card_obj["panels"].append({
+                "type": "rider",
+                "label": "DOT PAYOFF",
+                "text": f"**+{mult} DMG** per DOT-tagged card played in an earlier round this pull."
+            })
+        if c_data["echo_dmg"]:
+            card_obj["panels"].append({
+                "type": "echo",
+                "label": "ECHO",
+                "text": f"At the start of the next round, automatically deal **{c_data['echo_dmg']} more DMG** (no card spent)."
+            })
+        if c_data["killing_blow"]:
+            card_obj["panels"].append({
+                "type": "rider",
+                "label": "KILLING BLOW",
+                "text": "If this attack kills the mob, its attack this round is prevented."
+            })
+        if c_data.get("blood_magic"):
+            cost = -c_data["boosted_heal"] if "boosted_heal" in c_data else gcr.Nm.HP_FOR_DMG_COST
+            bonus = c_data.get("boosted_dmg", gcr.Nm.HP_FOR_DMG_BONUS)
+            card_obj["panels"].append({
+                "type": "rider",
+                "label": "DEATH PACT",
+                "text": f"When you play this card, you may lose **{cost:g} HP** to deal **{bonus:g} extra DMG**."
+            })
+        if c_data.get("pvp_note"):
+            card_obj["panels"].append({
+                "type": "rider",
+                "label": "PVP",
+                "text": c_data["pvp_note"]
+            })
+
+    if cls == "druid":
+        c_data = gcr.CARDS_BY_CLASS["Druid"][name]
+        card_obj["panels"] = []
+
+        base_text = []
+        if c_data["dmg"]:
+            base_text.append(f"**{c_data['dmg']} DMG**.")
+        if c_data["heal"]:
+            base_text.append(f"Heal **{c_data['heal']} HP**.")
+        if c_data["block"]:
+            base_text.append(f"**{c_data['block']} Block**.")
+        if base_text:
+            card_obj["panels"].append({
+                "type": "base",
+                "text": " ".join(base_text)
+            })
+
+        if c_data["tag"] == "shapeshift" and name != "Shapeshift: Grizzly":
+            card_obj["panels"].append({
+                "type": "positioning",
+                "label": "SHAPESHIFT",
+                "text": "**+1 DMG and +1 Block** per Shapeshift-tagged card already played this pull (requires Shapeshift: Grizzly to have been played first)."
+            })
+        if name == "Shapeshift: Grizzly":
+            card_obj["panels"].append({
+                "type": "rider",
+                "label": "CANCELS ECLIPSE",
+                "text": "Cancels the Eclipse-stacking bonus on any Eclipse-tagged card played in a later round."
+            })
+        if c_data["tag"] == "eclipse":
+            if c_data.get("heal_scales_with_eclipse"):
+                card_obj["panels"].append({
+                    "type": "positioning",
+                    "label": "ECLIPSE",
+                    "text": "**+1 Heal** per other Eclipse-tagged card played in an earlier round this pull (voided if Shapeshift: Grizzly has already been played)."
+                })
+            else:
+                card_obj["panels"].append({
+                    "type": "positioning",
+                    "label": "ECLIPSE",
+                    "text": "**+1 DMG** per other Eclipse-tagged card played in an earlier round this pull (voided if Shapeshift: Grizzly has already been played)."
+                })
 
     return card_obj
 

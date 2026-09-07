@@ -199,8 +199,9 @@ def _build_map_data(board, active_hero_idx=0):
             
     for node_name, z in M.NODE_ZONE.items():
         mob = board.zones[z].dealt.get(node_name) if z in board.zones else None
+        gathering_item = board.zones[z].gathering_tokens.get(node_name) if z in board.zones else None
         heroes_here = [i for i, h in enumerate(board.heroes) if h.position == (z, node_name)]
-        zones[z]["nodes"].append({"id": node_name, "mob": mob, "heroes": heroes_here})
+        zones[z]["nodes"].append({"id": node_name, "mob": mob, "gathering_item": gathering_item, "heroes": heroes_here})
         
     for border_name, z_set in M.BORDER_NODES.items():
         z_list = list(z_set)

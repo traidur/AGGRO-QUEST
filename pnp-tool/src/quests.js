@@ -74,6 +74,10 @@ function renderQuestCard(name, q) {
     `;
   });
 
+  const locationHtml = q.node
+    ? `${q.node} &middot; Zone ${q.zone}`
+    : 'Location not set';
+
   return `
     <div class="card-poker">
       <div class="safe-zone">
@@ -81,6 +85,7 @@ function renderQuestCard(name, q) {
           <div class="quest-title">${name}</div>
           <div class="quest-tier">${q.tier}</div>
         </div>
+        <div class="quest-location">${locationHtml}</div>
         <div class="quest-body">
           <div style="font-size: 10pt; margin-bottom: 4px;">REQUIRES</div>
           <div class="req-circle">${q.required}</div>

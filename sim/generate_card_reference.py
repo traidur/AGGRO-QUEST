@@ -145,7 +145,9 @@ def _rogue_lines():
             if c.get("killing_blow"):
                 parts.append("If this attack kills the mob, its attack this round is prevented.")
         elif c["kind"] == "opener":
-            parts.append(f"{c['dmg']} DMG ({c['round1_dmg']} DMG if played in round 1).")
+            bonus_rounds = c.get("bonus_rounds", (0,))
+            round_text = " or ".join(f"round {r + 1}" for r in bonus_rounds)
+            parts.append(f"{c['dmg']} DMG ({c['round1_dmg']} DMG if played in {round_text}).")
         else:
             parts.append(f"{c['dmg']} DMG.")
         if c["block"]:

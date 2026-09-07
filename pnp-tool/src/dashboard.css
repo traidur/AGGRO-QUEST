@@ -1,0 +1,185 @@
+/* Dashboard Styles (Matching the Cartographer's Parchment theme) */
+
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=IM+Fell+English:ital@0;1&display=swap');
+
+body {
+    background: #2b2b2b;
+    margin: 0;
+    padding: 0;
+    font-family: 'IM Fell English', serif;
+    color: #3b2b18;
+}
+
+.banner {
+    color: white;
+    text-align: center;
+    padding: 1rem;
+    font-family: sans-serif;
+}
+.banner a { color: #88ccff; }
+
+/* The physical page boundaries */
+.page {
+    width: 11in;
+    height: 8.5in;
+    background-color: #f4ebd0; 
+    background-image: radial-gradient(circle at center, transparent 30%, rgba(139, 90, 43, 0.15) 120%);
+    position: relative;
+    overflow: hidden;
+    margin: 1in auto;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    border: 1px solid #d3c4a6;
+    box-sizing: border-box;
+    display: flex; /* Split the page in two halves */
+}
+
+/* Print Rules */
+@media print {
+    @page { size: letter landscape; margin: 0; }
+    body { background: none; margin: 0; }
+    .no-print { display: none !important; }
+    .page {
+        margin: 0; box-shadow: none; border: none; page-break-after: always;
+        -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
+}
+
+/* Zone Dashboard (Half Page) */
+.zone-dashboard {
+    flex: 1;
+    height: 100%;
+    padding: 0.5in;
+    box-sizing: border-box;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+.right-zone {
+    border-left: 2px dashed #8b5a2b; /* Fold line / Cut line */
+}
+
+.zone-title {
+    font-family: 'Cinzel', serif;
+    font-size: 24px;
+    font-weight: bold;
+    color: #4a3621;
+    text-transform: uppercase;
+    text-align: center;
+    margin-bottom: 0.3in;
+    border-bottom: 1px solid rgba(139, 90, 43, 0.3);
+    padding-bottom: 10px;
+}
+
+.section-title {
+    font-family: 'Cinzel', serif;
+    font-size: 16px;
+    font-weight: bold;
+    color: #5c4033;
+    margin-bottom: 4px;
+}
+
+.helper-text {
+    font-family: sans-serif;
+    font-size: 10px;
+    color: #8b5a2b;
+    margin: 0 0 12px 0;
+    font-style: italic;
+    opacity: 0.8;
+}
+
+/* The Wilds - Fanned Mobs */
+.fanned-mobs {
+    position: relative;
+    width: 5in; /* 1.5in for guides + 3.5in full card */
+    height: 2.5in;
+    background: rgba(255, 255, 255, 0.3);
+    border: 2px dashed rgba(139, 90, 43, 0.4);
+    margin-bottom: 0.5in;
+    border-radius: 4px;
+}
+
+.guide {
+    position: absolute;
+    border-left: 1px dashed rgba(139, 90, 43, 0.4);
+    font-family: sans-serif;
+    font-size: 10px;
+    color: rgba(139, 90, 43, 0.8);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.mob-guide {
+    top: 0;
+    bottom: 0;
+    padding-left: 4px;
+    padding-top: 4px;
+}
+
+.full-mob-outline {
+    position: absolute;
+    left: 1.5in;
+    top: 0;
+    width: 3.5in;
+    height: 2.5in;
+    border-left: 2px solid rgba(139, 90, 43, 0.6);
+    background: rgba(139, 90, 43, 0.05);
+}
+
+/* Town Market Area */
+.quests-area {
+    display: flex;
+    gap: 0.5in;
+}
+
+.deck-col {
+    display: flex;
+    flex-direction: column;
+}
+
+.deck-slot {
+    width: 2.5in;
+    height: 3.5in;
+    border: 2px dashed rgba(139, 90, 43, 0.4);
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Cinzel', serif;
+    color: rgba(139, 90, 43, 0.5);
+    font-size: 14px;
+}
+
+.market-col {
+    display: flex;
+    flex-direction: column;
+}
+
+.fanned-quests {
+    position: relative;
+    width: 2.5in;
+    height: 4.5in; /* 1.0in for guides + 3.5in full card */
+    background: rgba(255, 255, 255, 0.3);
+    border: 2px dashed rgba(139, 90, 43, 0.4);
+    border-radius: 4px;
+}
+
+.quest-guide {
+    border-left: none;
+    border-top: 1px dashed rgba(139, 90, 43, 0.4);
+    left: 0;
+    right: 0;
+    padding-top: 2px;
+    padding-left: 4px;
+}
+
+.full-quest-outline {
+    position: absolute;
+    top: 1.0in;
+    left: 0;
+    width: 2.5in;
+    height: 3.5in;
+    border-top: 2px solid rgba(139, 90, 43, 0.6);
+    background: rgba(139, 90, 43, 0.05);
+}

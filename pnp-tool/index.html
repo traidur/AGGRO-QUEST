@@ -78,6 +78,7 @@
       .nav-card.heroes::before { background: linear-gradient(90deg, #c79c6e, #f58cba, #69ccf0); }
       .nav-card.mobs::before { background: linear-gradient(90deg, #800000, #ff4444); }
       .nav-card.quests::before { background: linear-gradient(90deg, #f1c40f, #27ae60); }
+      .nav-card.tracker::before { background: linear-gradient(90deg, #c0392b, #27ae60, #2980b9); }
       
       .nav-card:hover {
         transform: translateY(-10px);
@@ -111,6 +112,7 @@
       .nav-card.heroes:hover .nav-title { color: #fdf5ec; }
       .nav-card.mobs:hover .nav-title { color: #ffcccc; }
       .nav-card.quests:hover .nav-title { color: #fff; }
+      .nav-card.tracker:hover .nav-title { color: #fff; }
     </style>
   </head>
   <body>
@@ -134,6 +136,24 @@
         <div class="icon">📜</div>
         <div class="nav-title">Items Deck</div>
         <div class="nav-desc">Print the Quests, Quest Loot Tokens, and Consumables.</div>
+      </a>
+
+      <a href="/tracker-board.html" class="nav-card tracker">
+        <div class="icon">📊</div>
+        <div class="nav-title">Tracker Boards</div>
+        <div class="nav-desc">Print player status boards.</div>
+      </a>
+
+      <a href="/board.html" class="nav-card board">
+        <div class="icon">🗺️</div>
+        <div class="nav-title">World Map</div>
+        <div class="nav-desc">Print the 2-page PnP game board.</div>
+      </a>
+
+      <a href="/dashboard.html" class="nav-card dashboard">
+        <div class="icon">🗂️</div>
+        <div class="nav-title">Zone Dashboards</div>
+        <div class="nav-desc">Print the card-holding sideboards for each zone.</div>
       </a>
     </div>
   </body>
