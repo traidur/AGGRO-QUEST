@@ -21,7 +21,7 @@ import random
 from dataclasses import dataclass, field
 import equipment_data as EQ
 from equipment_mechanics import apply_equipment_mechanics
-from equipment_solver import best_line_with_equipment, replace
+from equipment_solver import best_line_with_equipment
 from typing import Optional
 
 import condensed_cleric as C
@@ -142,23 +142,38 @@ def get_legal_actions(state: PullState) -> list:
         return []
     mod = CARD_SOURCE[state.class_name]
     actions = []
+    
+    import itertools
+    from equipment_mechanics import apply_equipment_mechanics
+    avail_eq = [slot for slot in state.equipment.keys() if slot not in state.equipment_used]
+    eq_subsets = []
+    for i in range(len(avail_eq) + 1):
+        for subset in itertools.combinations(avail_eq, i):
+            eq_subsets.append(list(subset))
+            
     for hand_card in _remaining_hand(state):
         for variant in _card_variants(state, hand_card):
             for stance in _legal_stances(state):
-                outcome = mod.resolve_round(
+                base_outcome = mod.resolve_round(
                     state.round_state, variant, stance, state.round_num,
                     state.mob_pattern, state.mob_hp_total, state.mob_hp_remaining,
                     state.hero_hp, state.hero_max_hp,
                 )
-                if outcome is None:
-                    actions.append(dict(card=hand_card, variant=variant, stance=stance, legal=False))
+                if base_outcome is None:
+                    actions.append(dict(card=hand_card, variant=variant, stance=stance, equipment=[], legal=False))
                 else:
-                    actions.append(dict(
-                        card=hand_card, variant=variant, stance=stance, legal=True,
-                        dmg_dealt=outcome.dmg_dealt, dmg_taken=outcome.dmg_taken,
-                        resulting_hp=outcome.new_hp, resulting_mob_hp=outcome.new_mob_hp_remaining,
-                        raw_dmg=outcome.raw_dmg, block=outcome.block, heal=outcome.heal,
-                    ))
+                    for subset in eq_subsets:
+                        outcome = base_outcome
+                        for slot in subset:
+                            recipe = state.equipment[slot]
+                            # Use a copy of eq_state so preview doesn't mutate it
+                            outcome = apply_equipment_mechanics(outcome, recipe["rider"], recipe["base"], state.round_num, state.round_num, state.mob_pattern, state.eq_state.copy())
+                        actions.append(dict(
+                            card=hand_card, variant=variant, stance=stance, equipment=subset, legal=True,
+                            dmg_dealt=outcome.dmg_dealt, dmg_taken=outcome.dmg_taken,
+                            resulting_hp=outcome.new_hp, resulting_mob_hp=outcome.new_mob_hp_remaining,
+                            raw_dmg=outcome.raw_dmg, block=outcome.block, heal=outcome.heal,
+                        ))
     return actions
 
 

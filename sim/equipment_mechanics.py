@@ -12,7 +12,9 @@ def apply_equipment_mechanics(outcome, rider, base, round_num, equip_round, mob_
     new_dmg = outcome.raw_dmg
     block = outcome.block
     heal = outcome.heal
-    mob_atk, mob_block = mob_pattern[round_num] if round_num < len(mob_pattern) else (0, 0)
+    pat = mob_pattern[round_num] if round_num < len(mob_pattern) else (0, 0, "melee")
+    mob_atk, mob_block = pat[0], pat[1]
+    mob_type = pat[2] if len(pat) > 2 else "melee"
     
     is_active_round = (round_num == equip_round)
     
@@ -51,7 +53,7 @@ def apply_equipment_mechanics(outcome, rider, base, round_num, equip_round, mob_
     
     dmg_taken = max(0.0, mob_atk - block)
     
-    if is_active_round and rider == "elusive":
+    if is_active_round and rider == "elusive" and mob_type == "melee":
         dmg_taken = 0.0
     if is_active_round and rider == "ruthless" and new_rem <= 0:
         dmg_taken = 0.0

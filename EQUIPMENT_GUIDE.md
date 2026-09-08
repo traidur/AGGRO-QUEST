@@ -197,5 +197,24 @@ Crafting is now settled as a Town-only action (see above), so the remaining open
   built around) is gone — the six weapon/armor Bases from the original draft (1-Hander,
   2-Hander, Wand, Staff, Cloth/Leather/Mail/Plate) are flavor/slot placeholders only until this
   pass happens.
-- **Whether swapping equipped gear costs a turn/action**, distinct from crafting it in the first
-  place.
+
+## Post-Audit Design Locks (2026-09-08)
+
+Following the audit of the initial implementation, the Lead Designer explicitly locked the following changes to the rules above:
+
+### 1. The Sunder Exception (Durability Override)
+The strict "effect is bounded to a single round" Durability rule was intentionally overruled by the Lead Designer for `Sunder` under the "Rule of Cool". Sunder is officially approved to span multiple rounds (activate on round 1 to gain +1 DMG for all subsequent rounds of the pull). It is acknowledged that players will need to track this physically (e.g., placing a token on the mob).
+
+### 2. Equipment Scaling by Weight
+The original Grade 1 definitions (flat +1) have been replaced by a weight-scaling system to properly compensate class survivability limitations and reward heavier resource investments:
+- **Honed:** +1 DMG (1-Hander/Wand), +2 DMG (2-Hander/Staff)
+- **Reinforced:** +2 Block (Light Armor), +3 Block (Medium Armor), +4 Block (Heavy Armor)
+
+### 3. Tier-Gating & Material Compression
+To prevent recipe bloat, equipment is compressed into Tiers (Tier 1 = Levels 1 & 2). The menu is split by material requirements:
+- **Early Tier 1 (Level 1 materials only):** Basic stat boosts (`Honed`, `Reinforced`, `HoT`). Accessible immediately at Level 1.
+- **Advanced Tier 1 (Level 1 + Level 2 materials):** Complex mechanics (`Pierce`, `Ruthless`, `Sunder`, `Elusive`, `Thorns`, `Persistent`). Players must reach Level 2 to gather the required materials to unlock these.
+
+### 4. Physical Presentation (Crafting Deck vs. Treasure Deck)
+- **Crafting Deck:** Fully printed item cards (e.g., "Honed Crag-Iron Blade") with material costs printed on them. Players browse the deck in Town. The Tier-gating keeps this deck small (~34 cards per Tier).
+- **Treasure Deck:** Unique, named loot drops (e.g., "The Ashbringer") with NO material costs printed on them, only a Gold value. Drawn from Elites or bought from a rotating Gold shop in Town.
