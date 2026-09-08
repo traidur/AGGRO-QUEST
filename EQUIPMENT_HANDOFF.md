@@ -109,6 +109,9 @@ against this file. Fix this line before evaluating anything else here.
 **Recommended next step:** fix the one-line import bug first so there's a working baseline to
 evaluate anything else against — right now literally nothing in `sim/` runs. After that, wiring
 equipment into `get_legal_actions`/`board_engine.py` so it's reachable at all should come before any
+further work on Tiers or the physical card decks, since those build on top of a loop that doesn't
+exist yet.
+
 ## 7. Resolution of Audit Findings (2026-09-08)
 
 All blocking issues and discrepancies identified in the audit above have been actively addressed and pushed to `master` (commit `9bc5da8`):
@@ -120,3 +123,79 @@ All blocking issues and discrepancies identified in the audit above have been ac
     1.  The Lead Designer's explicit "Rule of Cool" override to allow `Sunder` to span multiple rounds, bypassing the normal Durability rule.
     2.  The weight-scaling for `Honed` (+1/+2) and `Reinforced` (+2/+3/+4).
     3.  The Tier 1 (Level 1 mats) vs Tier 1+2 (Combo mats) crafting progression.
+
+## 8. Audit response, round 2 (2026-09-08) — checked against `9bc5da8`
+
+**Confirmed correct this round:**
+- **The import is genuinely fixed.** `combat_engine.py` no longer imports `replace` from
+  `equipment_solver`. Verified directly: `import combat_engine`, `import macro_sim`, and
+  `import board_engine` all succeed now. This was the single blocking issue and it's resolved.
+- **`get_legal_actions`/`apply_action` now really do branch over equipment subsets** (see
+  `combat_engine.py` lines ~146-174) — real code, not aspirational.
+
+**"Equipment is now fully reachable by human players using the Web UI" — checked, and this is not
+true.** `board_engine.py` still has zero equipment references (grepped again: no `craft_equipment`
+action generator, no code that ever sets `hero.equipment` to anything but its default empty dict).
+`_hero_sidebar.html`'s Equipment panel and `town.html`'s `craft_equipment` label are left over from
+the very first commit (`c6e5c94`) — they're dead template branches with nothing in the Python layer
+that ever produces a `craft_equipment` action or a populated `hero.equipment` for them to render. A
+human playing the actual web app still cannot craft or equip anything; `state.equipment` is `{}` in
+every real pull, so `get_legal_actions`' new subset logic always degenerates to the single empty
+subset regardless of the fix above.
+
+**Separately, and this would still be true even if the board_engine wiring existed: the AI never
+uses equipment either.** `QuestIntelligence.decide_combat` (line ~260) was not touched by this fix —
+it still just finds the first action in the list matching `(variant, stance)` and returns it. Since
+`itertools.combinations` yields the empty subset first for any list, the *first* matching action for
+any given (card, variant, stance) is always the zero-equipment one — confirmed directly by
+reproducing the iteration order. Every one of this project's balance tools (`decay_stress_test`,
+`defense_floor_report`, `equilibrium_check`, all of it) drives combat through `decide_combat`, so
+even with board_engine wiring added, no existing sweep would ever exercise an equipped scenario
+without `decide_combat` itself being taught to consider equipment as part of its search.
+
+**Correction to this section, from the user directly:** the "Post-Audit Design Locks" (Sunder's
+Durability exception, the Honed/Reinforced weight-scaling, the Tier-gating split) were real
+decisions the user made together with Gemini in a separate session this audit had no visibility
+into — not Gemini acting unilaterally. Flagging that below was a mistake on this audit's part: this
+audit only has access to the code and docs in this repo, not to conversations with other sessions,
+so "not discussed in the conversation I can see" is not evidence of "never discussed with the user."
+Struck the "needs to go back to the user" recommendation. (Persistent's identical round-crossing
+issue is still not mentioned anywhere as a matching exception, so unless that was also a deliberate
+call, it likely still just needs a look.)
+
+**Net for this round:** the import fix is real and unblocks everything downstream. The reachability
+and AI-usage claims aren't accurate yet — equipment still cannot be created, equipped, or chosen by
+either a human or the AI in an actual playthrough or sweep. The design-lock decisions themselves
+stand (see correction above) — what's still open is just the engineering to make them reachable.
+
+## 9. Next steps (handed to Gemini, 2026-09-08)
+
+Priority order — #1 and #2 block everything else and should land before any more content work:
+
+1. **Wire real crafting/equipping into `board_engine.py`.** `get_town_actions`/`apply_town_action`
+   need an actual `craft_equipment`-style action (using `equipment_data.get_recipes_for_class`) that
+   sets `hero.equipment[slot]` for real, plus whatever `HeroBoardState` fields carry `equipment`/
+   `eq_state` through to `_engine_pull`'s `new_pull_with_hp(..., equipment=..., eq_state=...)` call.
+   Until this exists, `_hero_sidebar.html`'s Equipment panel and `town.html`'s `craft_equipment` line
+   are dead template branches — confirmed by grep, zero equipment references anywhere in
+   `board_engine.py` as of `9bc5da8`.
+2. **Make `QuestIntelligence.decide_combat` actually consider equipment.** Right now it matches the
+   first action with the right `(variant, stance)` in the list `get_legal_actions` returns, and
+   `itertools.combinations` always yields the empty equipment subset first — so it can never select
+   an equipped action even once #1 exists. Needs to pick the best `(variant, stance, equipment)`
+   combination, not just the best `(variant, stance)`, while still keying its cache on hand/mob so it
+   doesn't reopen the old per-action-lookahead drift risk (see this doc's Section 6/8 on why a raw
+   re-search was rejected before — the fix should extend the existing cache-and-replay shape, not
+   replace it with a new search).
+3. **Confirm whether Persistent gets the same treatment as Sunder.** Sunder's multi-round persistence
+   has an explicit, recorded "Rule of Cool" exception from the user. Persistent's identical
+   round-crossing behavior (`equipment_mechanics.py`'s `persistent_active` flag, never reset) has no
+   matching decision recorded anywhere in `EQUIPMENT_GUIDE.md`. Needs an explicit yes/no, not a
+   silent carry-forward.
+4. **Only after 1-3: run the equilibrium/defense-floor sweep** `EQUIPMENT_GUIDE.md` has required
+   before locking Ruthless/Elusive/Persistent since the very first draft. There has never been a real
+   end-to-end path to run it against until now — this is the first point where that check is actually
+   possible, not just aspirational.
+5. **Tier-gating and the physical Crafting/Treasure Deck split (Guide Sections 3-4) come last.** Both
+   are presentation on top of mechanics that haven't been sweep-validated yet — implementing the
+   printer/card side before #4 risks locking a physical layout against numbers that still move.
