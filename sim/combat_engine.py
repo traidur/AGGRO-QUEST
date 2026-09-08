@@ -261,20 +261,24 @@ class QuestIntelligence:
         mod = CARD_SOURCE[state.class_name]
         key = (state.class_name, state.hand, state.mob_name)
         if key != self._cache_key:
-            if state.class_name == "warrior":
-                seq_cards, stance_seq, hp_left, rounds = mod.best_line_for_hand(
-                    state.hand, state.mob_pattern, state.mob_hp_total, starting_hp=state.hero_hp)
-            else:
-                seq_cards, hp_left, rounds = mod.best_line_for_hand(
-                    state.hand, state.mob_pattern, state.mob_hp_total, starting_hp=state.hero_hp)
-                stance_seq = None
-            self._cached_seq, self._cached_stance_seq, self._cache_key = seq_cards, stance_seq, key
+            seq_cards, stance_seq, hp_left, rounds, usage = best_line_with_equipment(
+                state.class_name, state.hand, state.mob_pattern, state.mob_hp_total, state.hero_hp, state.equipment
+            )
+            self._cached_seq = list(seq_cards)
+            self._cached_stance_seq = list(stance_seq) if stance_seq else None
+            self._cached_usage = usage
+            self._cache_key = key
 
         variant = self._cached_seq[state.round_num]
         stance = self._cached_stance_seq[state.round_num] if self._cached_stance_seq else None
+        
+        # Calculate exactly which equipment is activated this round
+        eq_activations = [s for s, rnd in getattr(self, "_cached_usage", {}).items() if rnd == state.round_num]
+        
         for action in actions:
             if action["variant"] == variant and action.get("stance") == stance and action["legal"]:
-                return action
+                if sorted(action.get("equipment", [])) == sorted(eq_activations):
+                    return action
         raise RuntimeError(f"cached best-line variant {variant!r} not found in legal actions")
 
 

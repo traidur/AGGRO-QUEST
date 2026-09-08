@@ -22,6 +22,7 @@ def apply_equipment_mechanics(outcome, rider, base, round_num, equip_round, mob_
     if state_tracker.get("persistent_active", False) and state_tracker.get("carryover_block", 0) > 0:
         block += state_tracker["carryover_block"]
         state_tracker["carryover_block"] = 0
+        state_tracker["persistent_active"] = False # Carries to NEXT round only
         
     # 2. Apply Sunder from previous or current rounds
     if state_tracker.get("sunder_active", False) or (is_active_round and rider == "sunder"):

@@ -40,6 +40,7 @@ import board_state as B
 import condensed_trip as T
 import leveling_validation as LV
 import macro_sim as M
+import equipment_data as EQ
 from board_state import HeroBoardState
 
 # tier string (macro_sim's own ZONE_TIER values) -> level deck key (board_state.LevelDeck's
@@ -214,7 +215,7 @@ def _pull_and_resolve(hero, class_name, mod, mob_name, loot_name, rng, suppress_
     if hand is None:
         hand = rng.choice(mod.ALL_HANDS)
     win, final_hp, final_rounds = M._engine_pull(class_name, mob_name, hand, pattern, mob_hp, hero.hp,
-                                                  decide_fn=decide_fn)
+                                                  decide_fn=decide_fn, equipment=hero.equipment, equipment_used=hero.equipment_used)
     hero.hp = final_hp
     # One turn -- OPEN_QUESTIONS.md's "What a turn is" (locked): "Quest node: one pull is
     # one turn." A "declined" pull (returned above, before reaching here, resolve_node_pull
@@ -598,6 +599,21 @@ def get_town_actions(hero, purchase_queue, board=None):
                 if hero.decay_stage.get(loot, 0) > 0:
                     actions.append({"type": "use_charm", "loot": loot})
 
+        recipes = EQ.get_recipes_for_class(hero.class_name)
+        for recipe in recipes:
+            if hero.equipment.get(recipe["slot"]) == recipe:
+                continue
+            can_afford = True
+            bag_counts = {}
+            for item in hero.bag: bag_counts[item] = bag_counts.get(item, 0) + 1
+            for cost_k, cost_v in recipe["cost"].items():
+                if cost_k == "Gold":
+                    if hero.gold < cost_v: can_afford = False
+                else:
+                    if bag_counts.get(cost_k, 0) < cost_v: can_afford = False
+            if can_afford:
+                actions.append({"type": "craft_equipment", "recipe": recipe})
+
     actions.append({"type": "leave_trainer" if at_trainer else "leave_town"})
     return actions
 
@@ -629,6 +645,16 @@ def apply_town_action(hero, action, purchase_queue, board=None, rng=None):
     leave_trainer (checkpointed 2026-08-24) is the same position-clearing shape but does NOT
     reset HP -- resting is a Town-specific amenity, not something that happens at the Trainer's
     counter; only an actual Town visit implies resting between excursions."""
+    if action["type"] == "craft_equipment":
+        recipe = action["recipe"]
+        for cost_k, cost_v in recipe["cost"].items():
+            if cost_k == "Gold":
+                hero.gold -= cost_v
+            else:
+                for _ in range(cost_v): hero.bag.remove(cost_k)
+        hero.equipment[recipe["slot"]] = recipe
+        return True
+
     if action["type"] in ("leave_town", "leave_trainer"):
         zone_id, _node = hero.position
         hero.position = (zone_id, None)
@@ -1135,7 +1161,7 @@ def resolve_border_crossing(hero, class_name, border_name, target_zone, mob_name
         if hand is None:
             hand = rng.choice(mod.ALL_HANDS)
         win, final_hp, final_rounds = M._engine_pull(class_name, mob_name, hand, pattern, mob_hp, hero.hp,
-                                                       decide_fn=decide_fn)
+                                                       decide_fn=decide_fn, equipment=hero.equipment, equipment_used=hero.equipment_used)
         hero.hp = final_hp
         # One turn -- "Border Node: one turn, same as any other node -- the Scouted Pull toll
         # pull is the action taken there" (OPEN_QUESTIONS.md, locked). Unlike resolve_node_pull,
