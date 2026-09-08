@@ -144,11 +144,6 @@ NODES = {
     "gleaming_citadel": (LEVEL2_TIER, "Blessed Lamp Oil"),
     "sunward_throne":   (LEVEL2_TIER, "Gilded Penance"),
 }
-
-GATHERING_ITEMS = {
-    1: ["Crag-Iron", "Snap-Root", "Scavenged Pelt"],
-    2: ["Sun-Copper", "River-Mint", "Bristle-Pelt"],
-}
 # node -> which Zone it's in. Zone 1 has Town; Zone 2 has the Class Trainer instead
 # (DESIGN_DOC.md's "Starting map, locked" section) -- crossing between them costs a
 # Scouted Pull toll (below), free movement only within a single Zone.
@@ -362,30 +357,6 @@ SMOKE_BOMB_COST = 3   # "smoke_bomb" -- guaranteed flee, no reward. Real value i
 PRESERVING_CHARM_COST = 5   # "preserving_charm" -- Town-only, resets one active quest's
 # decay_stage back to 0 without needing to have collected its loot.
 
-EQUIPMENT_RECIPES = [
-    # Standard Impact (Cost: 2 Items + 1 Gold)
-    {"name": "Honed Shortsword", "slot": "weapon", "rider": "honed", "cost_gold": 1, "cost_items": ["Crag-Iron", "Scavenged Pelt"]},
-    {"name": "Sundering Blade", "slot": "weapon", "rider": "sunder", "cost_gold": 1, "cost_items": ["Crag-Iron", "Crag-Iron"]},
-    {"name": "Piercing Greatsword", "slot": "weapon", "rider": "armor_pierce", "cost_gold": 1, "cost_items": ["Crag-Iron", "Crag-Iron"]},
-    {"name": "Sparking Wand", "slot": "weapon", "rider": "honed", "cost_gold": 1, "cost_items": ["Crag-Iron", "Snap-Root"]},
-    {"name": "Mender's Staff", "slot": "weapon", "rider": "blessed", "cost_gold": 1, "cost_items": ["Crag-Iron", "Snap-Root"]},
-    
-    # High Impact Weapons (Cost: 3 Items + 2 Gold)
-    {"name": "Assassin's Dagger", "slot": "weapon", "rider": "ruthless", "cost_gold": 2, "cost_items": ["Crag-Iron", "Crag-Iron", "Scavenged Pelt"]},
-    {"name": "Executioner's Axe", "slot": "weapon", "rider": "ruthless", "cost_gold": 2, "cost_items": ["Crag-Iron", "Crag-Iron", "Crag-Iron"]},
-    {"name": "Void Staff", "slot": "weapon", "rider": "ruthless", "cost_gold": 2, "cost_items": ["Crag-Iron", "Crag-Iron", "Snap-Root"]},
-    
-    # High Impact Armor (Cost: 3 Items + 2 Gold)
-    {"name": "Elusive Tunic", "slot": "armor", "rider": "elusive", "cost_gold": 2, "cost_items": ["Scavenged Pelt", "Scavenged Pelt", "Snap-Root"]},
-    {"name": "Persistent Chain", "slot": "armor", "rider": "persistent", "cost_gold": 2, "cost_items": ["Scavenged Pelt", "Scavenged Pelt", "Scavenged Pelt"]},
-    {"name": "Reinforced Plate", "slot": "armor", "rider": "reinforced", "cost_gold": 2, "cost_items": ["Scavenged Pelt", "Scavenged Pelt", "Crag-Iron"]},
-    {"name": "Spiked Cuirass", "slot": "armor", "rider": "thorns", "cost_gold": 2, "cost_items": ["Scavenged Pelt", "Scavenged Pelt", "Crag-Iron"]},
-    
-    # Standard Impact Trinkets (Cost: 2 Items + 1 Gold)
-    {"name": "Rejuvenating Root", "slot": "trinket", "rider": "hot", "cost_gold": 1, "cost_items": ["Snap-Root", "Snap-Root"]},
-    {"name": "Blood Ruby Charm", "slot": "trinket", "rider": "death_pact", "cost_gold": 1, "cost_items": ["Snap-Root", "Crag-Iron"]},
-]
-
 CONSUMABLE_ITEMS = {
     "scroll_of_vanquishing": SCROLL_COST,
     "smoke_bomb": SMOKE_BOMB_COST,
@@ -407,7 +378,7 @@ BAG_UPGRADE_COST = 12  # repriced 16 -> 12 (LEVELING_GUIDE.md's "Purchased-upgra
 # choice. This constant itself was still 16 here despite the doc saying it had been repriced --
 # fixed 2026-08-21 while building the Class Trainer, which needed a correct SKILL_COST/
 # BAG_UPGRADE_COST relationship to make purchase decisions against.
-BAG_SIZE = 9
+BAG_SIZE = 6
 SKILL_COST = 8  # flat price for every purchased (non-mandatory) Level 2 upgrade, at the Class
 # Trainer -- LEVELING_GUIDE.md's "Purchased-upgrade pricing, locked" section.
 LEVEL2_XP_THRESHOLD = 6  # repriced 12 -> 6 (locked 2026-08-21, alongside the Level 1 quest
@@ -702,15 +673,14 @@ def _open_item_slot_index(bag, locked):
 
 
 def _can_fit_food(bag, locked):
-    return sum(1 for i, b in enumerate(bag) if b is None and not locked[i]) >= 4
+    return sum(1 for i, b in enumerate(bag) if b is None and not locked[i]) >= 3
 
 def _add_food(bag, locked):
     empty = [i for i, b in enumerate(bag) if b is None and not locked[i]]
-    if len(empty) >= 4:
+    if len(empty) >= 3:
         bag[empty[0]] = "food"
         bag[empty[1]] = "food_filler"
         bag[empty[2]] = "food_filler"
-        bag[empty[3]] = "food_filler"
         return True
     return False
 
@@ -721,7 +691,7 @@ def _remove_food(bag, index):
         if bag[i] == "food_filler":
             bag[i] = None
             removed += 1
-            if removed == 3:
+            if removed == 2:
                 break
 
 def _bag_has_room(bag, locked):
@@ -789,7 +759,7 @@ def _remove_item(bag, locked, item_name, amount):
 _remove_loot = _remove_item  # Quest Loot is just one more item type sharing the same mechanism
 
 
-def _engine_pull(class_name, mob_name, hand, pattern, mob_hp, starting_hp, decide_fn=None, equipment=None, equipment_used=None):
+def _engine_pull(class_name, mob_name, hand, pattern, mob_hp, starting_hp, decide_fn=None):
     """Runs one pull through the new turn-by-turn combat_engine (get_legal_actions/
     apply_action/QuestIntelligence.decide_combat) instead of condensed_trip.py's batch
     T._best_line/T._simulate call -- the macro-loop rewiring named in
@@ -808,7 +778,7 @@ def _engine_pull(class_name, mob_name, hand, pattern, mob_hp, starting_hp, decid
     driver passes its own terminal-input decide_fn instead, so the identical round-by-round
     get_legal_actions/apply_action loop plays out a real human's choices rather than the
     solver's, without a second, parallel pull-loop implementation."""
-    state = E.new_pull_with_hp(class_name, mob_name, hand, pattern, mob_hp, starting_hp, equipment, equipment_used)
+    state = E.new_pull_with_hp(class_name, mob_name, hand, pattern, mob_hp, starting_hp)
     decide = decide_fn if decide_fn is not None else E.QuestIntelligence().decide_combat
     while state.outcome is None:
         actions = E.get_legal_actions(state)
@@ -1253,11 +1223,6 @@ def run_one_trip(class_name, strategy, rng, bag=None, locked=None, active_quests
 
         if win:
             gold += 1
-            if pending_recovery is None:
-                g_level = 1 if target_zone in (1, 2) else 2
-                import random
-                gathering_item = random.choice(GATHERING_ITEMS[g_level])
-                _add_loot(bag, locked, gathering_item)
             if not _add_loot(bag, locked, loot_name):
                 # shouldn't happen given the _bag_has_room check above, but stay safe
                 return _make_result(completed=False, died=False, recovered=recovered, hp=hp)
@@ -1285,13 +1250,16 @@ def _leaving_town_setup(strategy, bag, locked, gold):
         # additional slots for a second Food as a safety buffer, rather than leaving them idle
         # when nothing's currently open for loot.
         #
-        # Rescaled 2026-08-25 alongside the bag-tetris migration (Food now costs 4 slots,
-        # ITEM_STACK_CAP dropped 3->1): reserved_for_loot_slots is 4. max_food counts 
-        # whole 4-slot Food units, not raw slot count. A no-op, byte-identical to food_only, 
-        # at the unupgraded 9-slot bag size (max_food = max(1, (9-4)//4) = 1).
+        # Rescaled 2026-08-25 alongside the bag-tetris migration (Food now costs 3 slots,
+        # ITEM_STACK_CAP dropped 3->1): reserved_for_loot_slots is 3, not 1, because 1 old-style
+        # loot slot (cap 3) is worth 3 new-style loot slots (cap 1 each) -- same "same balance"
+        # property the base bag rescale already established (1 food + 3 items either way), just
+        # applied here too. max_food now counts whole 3-slot Food units, not raw slot count. A
+        # no-op, byte-identical to food_only, at the unupgraded 6-slot bag size
+        # (max_food = max(1, (6-3)//3) = 1).
         food_count = sum(1 for i in range(len(bag)) if not locked[i] and bag[i] == "food")
-        reserved_for_loot_slots = 4
-        max_food = max(1, (len(bag) - reserved_for_loot_slots) // 4)
+        reserved_for_loot_slots = 3
+        max_food = max(1, (len(bag) - reserved_for_loot_slots) // 3)
         while food_count < max_food and gold >= FOOD_COST and _can_fit_food(bag, locked):
             _add_food(bag, locked)
             gold -= FOOD_COST

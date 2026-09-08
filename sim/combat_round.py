@@ -64,11 +64,6 @@ class RoundState:
     dot_played_before: int = 0
     nc_pending_echo_dmg: float = 0.0
 
-    # Equipment-agnostic state (carried across rounds for specific equipment riders)
-    eq_sunder_active: bool = False
-    eq_persistent_block: float = 0.0
-    eq_hot_active: bool = False
-
 
 @dataclass
 class RoundOutcome:

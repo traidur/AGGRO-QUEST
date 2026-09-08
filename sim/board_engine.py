@@ -129,10 +129,6 @@ def resolve_node_pull(hero, class_name, node_name, mob_name, quest_pool, rng,
     mod = M.CARD_SOURCE[class_name]
     has_stance = M.HAS_STANCE[class_name]
     tier, loot_name = M.NODES[node_name]
-    zone = M.NODE_ZONE[node_name]
-    gathering_level = 1 if zone in (1, 2) else 2
-    import random
-    gathering_item = random.choice(M.GATHERING_ITEMS[gathering_level])
 
     # Old code's `with LV.leveled_kit(...): result = run_one_trip(...)` scope covers the
     # ENTIRE trip -- risk-gate checks and hand draws read the leveled CARDS/DECK/ALL_HANDS
@@ -186,11 +182,11 @@ def resolve_node_pull(hero, class_name, node_name, mob_name, quest_pool, rng,
             else:
                 return {"outcome": "declined", "mob_name": mob_name}
 
-        return _pull_and_resolve(hero, class_name, mod, mob_name, loot_name, gathering_item, rng, suppress_loot,
+        return _pull_and_resolve(hero, class_name, mod, mob_name, loot_name, rng, suppress_loot,
                                   decide_fn=decide_fn, hand=hand)
 
 
-def _pull_and_resolve(hero, class_name, mod, mob_name, loot_name, gathering_item, rng, suppress_loot, decide_fn=None,
+def _pull_and_resolve(hero, class_name, mod, mob_name, loot_name, rng, suppress_loot, decide_fn=None,
                        hand=None):
     """Shared tail of resolve_node_pull and commit_node_pull -- draws a hand, runs the actual
     combat_engine pull, and resolves win/loss/loot bookkeeping. Must be called from inside an
@@ -218,7 +214,7 @@ def _pull_and_resolve(hero, class_name, mod, mob_name, loot_name, gathering_item
     if hand is None:
         hand = rng.choice(mod.ALL_HANDS)
     win, final_hp, final_rounds = M._engine_pull(class_name, mob_name, hand, pattern, mob_hp, hero.hp,
-                                                  decide_fn=decide_fn, equipment=hero.equipment, equipment_used=hero.equipment_used)
+                                                  decide_fn=decide_fn)
     hero.hp = final_hp
     # One turn -- OPEN_QUESTIONS.md's "What a turn is" (locked): "Quest node: one pull is
     # one turn." A "declined" pull (returned above, before reaching here, resolve_node_pull
@@ -240,10 +236,6 @@ def _pull_and_resolve(hero, class_name, mod, mob_name, loot_name, gathering_item
         hero.gold += 1
         if suppress_loot:
             return {"outcome": "win", "mob_name": mob_name}
-        
-        # Gathering Item is 100% on win
-        M._add_loot(hero.bag, hero.locked, gathering_item)
-        
         if not M._add_loot(hero.bag, hero.locked, loot_name):
             return {"outcome": "no_room", "mob_name": mob_name}
         return {"outcome": "win", "mob_name": mob_name}
@@ -263,15 +255,19 @@ def commit_node_pull(hero, class_name, node_name, mob_name, rng, suppress_loot=F
     no decline path (a human who doesn't want this fight simply doesn't choose this declare_node
     action in the first place; retreating lives in the Travel menu itself, not as a second gate
     bolted on after declaring).
+
+    The AI-automatic path (decide_travel + resolve_node_pull, used by run_solo_trip/
+    run_solo_chain) is completely untouched -- this is an additive sibling, not a replacement.
+
+    decide_fn (checkpointed 2026-08-23): forwarded to _pull_and_resolve unchanged -- None
+    keeps this pull solver-automatic; a human-facing driver's own callback plays the hand.
+    hand: same passthrough, see _pull_and_resolve's own docstring.
+
     Mutates hero in place. Returns {"outcome": "win"/"flee"/"died"/"no_room", "mob_name": ...}."""
     mod = M.CARD_SOURCE[class_name]
     _tier, loot_name = M.NODES[node_name]
-    zone = M.NODE_ZONE[node_name]
-    gathering_level = 1 if zone in (1, 2) else 2
-    import random
-    gathering_item = random.choice(M.GATHERING_ITEMS[gathering_level])
     with LV.leveled_kit(mod, _level2_swaps_for(class_name, hero.acquired)):
-        return _pull_and_resolve(hero, class_name, mod, mob_name, loot_name, gathering_item, rng, suppress_loot,
+        return _pull_and_resolve(hero, class_name, mod, mob_name, loot_name, rng, suppress_loot,
                                   decide_fn=decide_fn, hand=hand)
 
 
@@ -591,29 +587,11 @@ def get_town_actions(hero, purchase_queue, board=None):
 
         for item_name, cost in M.CONSUMABLE_ITEMS.items():
             if hero.gold >= cost:
-                max_food = 2 if "bag_upgrade" in hero.acquired else 1
-                if item_name == "food" and (not M._can_fit_food(hero.bag, hero.locked) or hero.bag.count("food") >= max_food):
+                if item_name == "food" and not M._can_fit_food(hero.bag, hero.locked):
                     continue
-                if item_name != "food" and not M._bag_has_room(hero.bag, hero.locked):
+                elif item_name != "food" and not M._bag_has_room(hero.bag, hero.locked):
                     continue
                 actions.append({"type": "buy_consumable", "item_name": item_name, "cost": cost})
-
-        for recipe in M.EQUIPMENT_RECIPES:
-            if hero.gold >= recipe["cost_gold"] and hero.equipment.get(recipe["slot"]) != recipe["name"]:
-                bag_counts = {}
-                for slot in hero.bag:
-                    if isinstance(slot, dict) and "items" in slot:
-                        for k, v in slot["items"].items():
-                            bag_counts[k] = bag_counts.get(k, 0) + v
-                has_items = True
-                temp_counts = dict(bag_counts)
-                for req in recipe["cost_items"]:
-                    if temp_counts.get(req, 0) < 1:
-                        has_items = False
-                        break
-                    temp_counts[req] -= 1
-                if has_items:
-                    actions.append({"type": "craft_equipment", "recipe": recipe})
 
         if M._accessible_count(hero.bag, hero.locked, "preserving_charm") > 0:
             for loot in hero.active_quests:
@@ -656,7 +634,6 @@ def apply_town_action(hero, action, purchase_queue, board=None, rng=None):
         hero.position = (zone_id, None)
         if action["type"] == "leave_town":
             hero.hp = hero.max_hp
-            hero.equipment_used.clear()
         return False
 
     if action["type"] == "take_quest":
@@ -680,14 +657,6 @@ def apply_town_action(hero, action, purchase_queue, board=None, rng=None):
     if action["type"] == "use_charm":
         M._remove_item(hero.bag, hero.locked, "preserving_charm", 1)
         hero.decay_stage[action["loot"]] = 0
-        return True
-
-    if action["type"] == "craft_equipment":
-        recipe = action["recipe"]
-        hero.gold -= recipe["cost_gold"]
-        for req in recipe["cost_items"]:
-            M._remove_item(hero.bag, hero.locked, req, 1)
-        hero.equipment[recipe["slot"]] = recipe["name"]
         return True
 
     item = next(i for i in purchase_queue if i["tag"] == action["tag"])
@@ -1166,7 +1135,7 @@ def resolve_border_crossing(hero, class_name, border_name, target_zone, mob_name
         if hand is None:
             hand = rng.choice(mod.ALL_HANDS)
         win, final_hp, final_rounds = M._engine_pull(class_name, mob_name, hand, pattern, mob_hp, hero.hp,
-                                                       decide_fn=decide_fn, equipment=hero.equipment, equipment_used=hero.equipment_used)
+                                                       decide_fn=decide_fn)
         hero.hp = final_hp
         # One turn -- "Border Node: one turn, same as any other node -- the Scouted Pull toll
         # pull is the action taken there" (OPEN_QUESTIONS.md, locked). Unlike resolve_node_pull,

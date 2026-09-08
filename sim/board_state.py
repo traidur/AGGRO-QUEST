@@ -124,6 +124,8 @@ class HeroBoardState:
     position: tuple  # (zone_or_border: int|str, node: str|None)
     bag: list
     locked: list
+    equipment: dict = field(default_factory=dict) # slot -> recipe name
+    equipment_used: set = field(default_factory=set) # set of slots used this trip
     gold: int = 0
     xp: int = 0
     tokens: int = 0
@@ -134,8 +136,6 @@ class HeroBoardState:
     alive: bool = True
     decay_stage: dict = field(default_factory=dict)  # loot name -> 0=Gold/1=Silver/2=Bronze/3=nothing
     quest_bag: list = field(default_factory=list)  # LEVEL2_QUESTS shuffle-refill reserve only
-    equipment: dict = field(default_factory=lambda: {"weapon": None, "armor": None, "trinket": None})
-    equipment_used: set = field(default_factory=set)  # set of equipment slots used this trip
     turns: int = 0  # OPEN_QUESTIONS.md's "What a turn is" (locked 2026-08-20): a resolved Node
     # pull, a Border crossing, or one Town visit (regardless of how much business happens
     # there) each cost exactly one turn -- the real, comparable cross-class/cross-run unit,
@@ -254,16 +254,12 @@ def deal_zone(state, zone_id, level, node_names, rng):
         state.zones[zone_id] = ZoneBoardState()
     deck = state.level_decks[level]
     zone_board = state.zones[zone_id]
-    import macro_sim as M
     for node_name in node_names:
         card = deck.draw(rng)
         while is_spice(card):
             deck.discard(card)
             card = deck.draw(rng)
         zone_board.dealt[node_name] = card
-        gathering_level = 1 if zone_id in (1, 2) else 2
-        import random
-        zone_board.gathering_tokens[node_name] = random.choice(M.GATHERING_ITEMS[gathering_level])
 
 
 def discard_zone(state, zone_id, level):
@@ -277,4 +273,3 @@ def discard_zone(state, zone_id, level):
     for card_name in zone_board.dealt.values():
         deck.discard(card_name)
     zone_board.dealt.clear()
-    zone_board.gathering_tokens.clear()

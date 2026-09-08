@@ -18,7 +18,10 @@ UI extension," explicitly sequenced last).
 from __future__ import annotations
 
 import random
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
+import equipment_data as EQ
+from equipment_mechanics import apply_equipment_mechanics
+from equipment_solver import best_line_with_equipment, replace
 from typing import Optional
 
 import condensed_cleric as C
@@ -29,9 +32,6 @@ import condensed_ranger as Ra
 import condensed_rogue as Ro
 import condensed_runecaster as Rc
 import condensed_trip as T
-import macro_sim as M
-import itertools
-from equipment_mechanics import apply_equipment_mechanics
 import condensed_warrior as W
 import condensed_wizard as Z
 from combat_round import RoundState
@@ -81,11 +81,11 @@ class PullState:
     round_num: int = 0
     hand: tuple = ()
     played: list = field(default_factory=list)
+    equipment: dict = field(default_factory=dict)
+    eq_state: dict = field(default_factory=dict)
     outcome: Optional[str] = None  # None / "win" / "loss" / "fled"
     round_state: RoundState = field(default_factory=RoundState)
     stance: Optional[str] = None  # Warrior only -- chosen at round 0, locked for the pull
-    equipment: dict = field(default_factory=dict)
-    equipment_used: set = field(default_factory=set)
 
 
 def new_pull(class_name: str, mob_name: str, seed: int = None) -> PullState:
@@ -132,53 +132,29 @@ def _card_variants(state: PullState, hand_card_name: str) -> list:
 
 
 def get_legal_actions(state: PullState) -> list:
-    """List of {card, variant, stance, legal, equipment, ...preview fields} dicts"""
+    """List of {card, variant, stance, legal, ...preview fields} dicts -- illegal entries are
+    included (legal=False, no preview numbers) so a caller can see *why* an option is
+    unavailable, not just that it's missing (mirrors playtest_engine.py's old convention).
+    `card` is the real hand card (what actually leaves the hand); `variant` is the exact
+    card_name passed to resolve_round (differs from `card` only for Necromancer's boosted
+    Boneguard's Offering)."""
     if state.outcome is not None:
         return []
     mod = CARD_SOURCE[state.class_name]
     actions = []
-    
-    # We always need to apply lingering equipment mechanics (e.g. HoT, Persistent)
-    # Even if NO equipment is activated this round, `apply_equipment_mechanics` handles that if equip_round=None.
-    
-    available_equipment = []
-    if getattr(state, "equipment", None):
-        for slot, name in state.equipment.items():
-            if name and slot not in state.equipment_used:
-                recipe = next((r for r in M.EQUIPMENT_RECIPES if r["name"] == name), None)
-                if recipe:
-                    available_equipment.append((slot, recipe["rider"]))
-                    
-    # Generate all subsets of available equipment
-    eq_combos = []
-    for r in range(len(available_equipment) + 1):
-        for combo in itertools.combinations(available_equipment, r):
-            eq_combos.append(combo)
-
     for hand_card in _remaining_hand(state):
         for variant in _card_variants(state, hand_card):
             for stance in _legal_stances(state):
-                base_outcome = mod.resolve_round(
+                outcome = mod.resolve_round(
                     state.round_state, variant, stance, state.round_num,
                     state.mob_pattern, state.mob_hp_total, state.mob_hp_remaining,
                     state.hero_hp, state.hero_max_hp,
                 )
-                if base_outcome is None:
-                    actions.append(dict(card=hand_card, variant=variant, stance=stance, equipment=(), legal=False))
-                    continue
-                    
-                for combo in eq_combos:
-                    outcome = base_outcome
-                    for slot, rider in combo:
-                        outcome = apply_equipment_mechanics(outcome, rider, state.round_num, state.round_num, state.mob_pattern)
-                    
-                    # Also apply any lingering effects by calling it with equip_round=None
-                    # wait! if combo is empty, we still need to apply lingering effects!
-                    if not combo:
-                        outcome = apply_equipment_mechanics(outcome, "none", state.round_num, None, state.mob_pattern)
-                        
+                if outcome is None:
+                    actions.append(dict(card=hand_card, variant=variant, stance=stance, legal=False))
+                else:
                     actions.append(dict(
-                        card=hand_card, variant=variant, stance=stance, equipment=tuple(s for s, _ in combo), legal=True,
+                        card=hand_card, variant=variant, stance=stance, legal=True,
                         dmg_dealt=outcome.dmg_dealt, dmg_taken=outcome.dmg_taken,
                         resulting_hp=outcome.new_hp, resulting_mob_hp=outcome.new_mob_hp_remaining,
                         raw_dmg=outcome.raw_dmg, block=outcome.block, heal=outcome.heal,
@@ -195,39 +171,32 @@ def apply_action(state: PullState, action: dict) -> PullState:
         raise ValueError(f"{action['card']!r} (variant={action.get('variant')}) illegal this round")
 
     mod = CARD_SOURCE[state.class_name]
-    base_outcome = mod.resolve_round(
+    outcome = mod.resolve_round(
         state.round_state, action["variant"], action["stance"], state.round_num,
         state.mob_pattern, state.mob_hp_total, state.mob_hp_remaining,
         state.hero_hp, state.hero_max_hp,
     )
-    if base_outcome is None:
+    if outcome is None:
         raise ValueError(f"{action['card']!r} illegal this round")
         
-    outcome = base_outcome
-    combo = action.get("equipment", ())
-    if getattr(state, "equipment", None):
-        for slot in combo:
-            name = state.equipment[slot]
-            recipe = next((r for r in M.EQUIPMENT_RECIPES if r["name"] == name), None)
-            if recipe:
-                outcome = apply_equipment_mechanics(outcome, recipe["rider"], state.round_num, state.round_num, state.mob_pattern)
-                
-    if not combo:
-        outcome = apply_equipment_mechanics(outcome, "none", state.round_num, None, state.mob_pattern)
+    for slot in action.get("equipment", []):
+        recipe = state.equipment[slot]
+        outcome = apply_equipment_mechanics(outcome, recipe["rider"], recipe["base"], state.round_num, state.round_num, state.mob_pattern, state.eq_state)
 
+    # Hero death is checked BEFORE mob death, matching every class's own simulate() loop
+    # exactly (`if hp <= 0: return False...` always precedes `if remaining <= 0: return
+    # True...`) -- when a round's damage kills both simultaneously, the hero's own death
+    # wins the tie, not the mob's. Reversing this order is a real, silent behavior change
+    # (see verify_combat_engine.py's reduced-starting-hp sweep, which is what caught it).
     new_round = state.round_num + 1
     if outcome.new_hp <= 0:
         result = "loss"
     elif outcome.new_mob_hp_remaining <= 0:
         result = "win"
-    elif new_round >= 3:
+    elif new_round >= ROUNDS:
         result = "fled"
     else:
         result = None
-        
-    new_equipment_used = set(state.equipment_used) if getattr(state, "equipment_used", None) else set()
-    for slot in combo:
-        new_equipment_used.add(slot)
 
     return replace(
         state,
@@ -236,34 +205,25 @@ def apply_action(state: PullState, action: dict) -> PullState:
         played=state.played + [action["card"]], outcome=result,
         round_state=outcome.new_state,
         stance=action["stance"] if state.class_name == "warrior" else state.stance,
-        equipment_used=new_equipment_used
     )
 
 
 def best_line_reveal(state: PullState) -> dict:
-    """Uses the same exhaustive search to show the UI the optimal line, including equipment!"""
-    iq = QuestIntelligence()
-    iq.decide_combat(state, []) # This primes the cache
-    
-    seq_cards = []
-    stance_seq = []
-    eq_seq = []
-    for a in iq._cached_actions:
-        seq_cards.append(a["card"])
-        stance_seq.append(a.get("stance"))
-        eq_seq.append(a.get("equipment", ()))
-        
-    s = state
-    for a in iq._cached_actions:
-        s = apply_action(s, a)
-        
-    return dict(
-        sequence=seq_cards, 
-        stance_sequence=stance_seq if any(stance_seq) else None, 
-        equipment_sequence=eq_seq,
-        hp_left=s.hero_hp, 
-        win=(s.outcome == "win")
-    )
+    """Thin wrapper around each class's own best_line_for_hand -- reused verbatim, not
+    reimplemented, so this can never drift from the balance tooling's notion of 'optimal'."""
+    mod = CARD_SOURCE[state.class_name]
+    if state.class_name == "warrior":
+        seq_cards, stance_seq, hp_left, rounds = mod.best_line_for_hand(
+            state.hand, state.mob_pattern, state.mob_hp_total, starting_hp=state.hero_hp)
+        win, final_hp, final_rounds = mod.simulate(
+            seq_cards, stance_seq, state.mob_pattern, state.mob_hp_total, starting_hp=state.hero_hp)
+        return dict(sequence=seq_cards, stance_sequence=stance_seq, hp_left=final_hp, win=win)
+    else:
+        seq_cards, hp_left, rounds = mod.best_line_for_hand(
+            state.hand, state.mob_pattern, state.mob_hp_total, starting_hp=state.hero_hp)
+        win, final_hp, final_rounds = mod.simulate(
+            seq_cards, state.mob_pattern, state.mob_hp_total, starting_hp=state.hero_hp)
+        return dict(sequence=seq_cards, stance_sequence=None, hp_left=final_hp, win=win)
 
 
 class QuestIntelligence:
@@ -283,38 +243,28 @@ class QuestIntelligence:
         self._cached_stance_seq = None
 
     def decide_combat(self, state: PullState, actions: list) -> dict:
-        if not hasattr(self, "_cached_actions"):
-            # Full recursive solver using the actual get_legal_actions/apply_action
-            # This correctly branches over all equipment choices!
-            def search(s):
-                if s.outcome == "win": return (True, s.hero_hp, s.round_num, [])
-                if s.outcome in ("loss", "fled"): return (False, s.hero_hp, s.round_num, [])
-                
-                best_res = (False, float('-inf'), 3, [])
-                best_action = None
-                
-                for a in get_legal_actions(s):
-                    if not a["legal"]: continue
-                    ns = apply_action(s, a)
-                    res = search(ns)
-                    # We want to maximize (win, hp_left, -rounds)
-                    key = (res[0], res[1], -res[2])
-                    bkey = (best_res[0], best_res[1], -best_res[2])
-                    if best_action is None or key > bkey:
-                        best_res = res
-                        best_action = a
-                        
-                return (best_res[0], best_res[1], best_res[2], [best_action] + best_res[3])
-            
-            res = search(state)
-            self._cached_actions = res[3]
-            
-        action = self._cached_actions[state.round_num]
-        return action
+        mod = CARD_SOURCE[state.class_name]
+        key = (state.class_name, state.hand, state.mob_name)
+        if key != self._cache_key:
+            if state.class_name == "warrior":
+                seq_cards, stance_seq, hp_left, rounds = mod.best_line_for_hand(
+                    state.hand, state.mob_pattern, state.mob_hp_total, starting_hp=state.hero_hp)
+            else:
+                seq_cards, hp_left, rounds = mod.best_line_for_hand(
+                    state.hand, state.mob_pattern, state.mob_hp_total, starting_hp=state.hero_hp)
+                stance_seq = None
+            self._cached_seq, self._cached_stance_seq, self._cache_key = seq_cards, stance_seq, key
+
+        variant = self._cached_seq[state.round_num]
+        stance = self._cached_stance_seq[state.round_num] if self._cached_stance_seq else None
+        for action in actions:
+            if action["variant"] == variant and action.get("stance") == stance and action["legal"]:
+                return action
+        raise RuntimeError(f"cached best-line variant {variant!r} not found in legal actions")
 
 
 def new_pull_with_hp(class_name: str, mob_name: str, hand, pattern, mob_hp: float,
-                     starting_hp: float, equipment=None, equipment_used=None) -> PullState:
+                      starting_hp: float, equipment=None, eq_state=None) -> PullState:
     """Like new_pull(), but for a hero who already has a specific hand/mob/HP in hand instead
     of drawing fresh -- the shape macro_sim.py's two real pull sites need (HP carries over
     between pulls, mob is already chosen by node/quest routing). Threads starting_hp through
@@ -324,6 +274,5 @@ def new_pull_with_hp(class_name: str, mob_name: str, hand, pattern, mob_hp: floa
     return PullState(
         class_name=class_name, hero_hp=starting_hp, hero_max_hp=initial_max_hp(class_name, starting_hp),
         mob_name=mob_name, mob_pattern=pattern, mob_hp_total=float(mob_hp),
-        mob_hp_remaining=float(mob_hp), hand=tuple(hand),
-        equipment=equipment or {}, equipment_used=equipment_used or set(),
+        mob_hp_remaining=float(mob_hp), hand=tuple(hand), equipment=equipment or {}, eq_state=eq_state or {},
     )
