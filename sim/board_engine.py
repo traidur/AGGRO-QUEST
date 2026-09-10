@@ -565,6 +565,13 @@ def get_town_actions(hero, purchase_queue, board=None):
     at_trainer = node == "trainer"
     actions = []
     skills_acquired_so_far = sum(1 for tag in hero.acquired if tag.startswith("skill_"))
+
+    if hero.skill_purchase_order is not None:
+        unacquired_indices = [idx for idx in hero.skill_purchase_order if f"skill_{idx}" not in hero.acquired]
+        available_skill_indices = unacquired_indices[:2] # Top 2 unowned (Draw 2, Pick 1)
+    else:
+        available_skill_indices = None
+
     for item in purchase_queue:
         if item["tag"] in hero.acquired:
             continue
@@ -572,9 +579,8 @@ def get_town_actions(hero, purchase_queue, board=None):
             continue
         if item["requires_l2_started"] and "started_l2_quests" not in hero.acquired:
             continue
-        if item["kind"] == "skill" and hero.skill_purchase_order:
-            if (skills_acquired_so_far >= len(hero.skill_purchase_order)
-                    or item["index"] != hero.skill_purchase_order[skills_acquired_so_far]):
+        if available_skill_indices is not None and item["kind"] == "skill":
+            if item["index"] not in available_skill_indices:
                 continue
         if hero.gold < item["cost"]:
             continue
@@ -695,6 +701,15 @@ def apply_town_action(hero, action, purchase_queue, board=None, rng=None):
     item = next(i for i in purchase_queue if i["tag"] == action["tag"])
     hero.gold -= item["cost"]
     hero.acquired.add(item["tag"])
+    
+    if item["kind"] == "skill" and hero.skill_purchase_order is not None:
+        # Move the unpicked skill (the other one from the Draw 2) to the bottom of the deck
+        unacquired_indices = [idx for idx in hero.skill_purchase_order if f"skill_{idx}" not in hero.acquired and idx != item["index"]]
+        if unacquired_indices:
+            unpicked_idx = unacquired_indices[0]
+            hero.skill_purchase_order.remove(unpicked_idx)
+            hero.skill_purchase_order.append(unpicked_idx)
+
     if item["kind"] == "bag":
         # Appends 3 slots, not 1 (checkpointed 2026-08-25, bag-tetris rescale): under the old
         # 2-slot/ITEM_STACK_CAP=3 model, one Bag Upgrade added a whole second stacking slot

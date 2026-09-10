@@ -1351,9 +1351,11 @@ def _walk_purchase_queue(queue, acquired, bag, locked, current_position, gold, p
     fixed-order behavior unchanged -- used by the frozen `_trip_chain` baseline, which has no
     hero object to carry a shuffled order and isn't meant to gain new behavior."""
     trainer_turn = False
-    skills_acquired_so_far = None
+    available_skill_indices = None
     if skill_purchase_order is not None:
-        skills_acquired_so_far = sum(1 for tag in acquired if tag.startswith("skill_"))
+        unacquired_indices = [idx for idx in skill_purchase_order if f"skill_{idx}" not in acquired]
+        available_skill_indices = unacquired_indices[:2] # Top 2 unowned (Draw 2, Pick 1)
+        
     for item in queue:
         if item["tag"] in acquired:
             continue
@@ -1361,9 +1363,8 @@ def _walk_purchase_queue(queue, acquired, bag, locked, current_position, gold, p
             continue
         if item["requires_l2_started"] and "started_l2_quests" not in acquired:
             continue
-        if skill_purchase_order is not None and item["kind"] == "skill":
-            if (skills_acquired_so_far >= len(skill_purchase_order)
-                    or item["index"] != skill_purchase_order[skills_acquired_so_far]):
+        if available_skill_indices is not None and item["kind"] == "skill":
+            if item["index"] not in available_skill_indices:
                 continue
         if gold < item["cost"]:
             if policy == "save":
@@ -1371,6 +1372,18 @@ def _walk_purchase_queue(queue, acquired, bag, locked, current_position, gold, p
             continue
         gold -= item["cost"]
         acquired.add(item["tag"])
+        
+        if item["kind"] == "skill" and skill_purchase_order is not None:
+            # Move the unpicked skill to the bottom of the deck
+            unacquired_indices = [idx for idx in skill_purchase_order if f"skill_{idx}" not in acquired and idx != item["index"]]
+            if unacquired_indices:
+                unpicked_idx = unacquired_indices[0]
+                skill_purchase_order.remove(unpicked_idx)
+                skill_purchase_order.append(unpicked_idx)
+            # Re-evaluate available for the rest of the queue (though normally it breaks or skips anyway)
+            unacquired_indices = [idx for idx in skill_purchase_order if f"skill_{idx}" not in acquired]
+            available_skill_indices = unacquired_indices[:2]
+
         if item["kind"] == "bag":
             # Appends 6 slots, not 3 -- user's original 5x3 / 15-slot upgrade intent, perfectly
             # solving the Gathering Item capacity constraint.
@@ -1379,8 +1392,6 @@ def _walk_purchase_queue(queue, acquired, bag, locked, current_position, gold, p
                 locked.append(False)
         else:
             trainer_turn = True
-            if skills_acquired_so_far is not None:
-                skills_acquired_so_far += 1
     return gold, trainer_turn
 
 
