@@ -2071,5 +2071,345 @@
       "tier": "purchased",
       "replaces": "Reap"
     }
+  },
+  "equipment_crafting": {
+    "Honed 1-Hander": {
+      "name": "Honed 1-Hander",
+      "type": "equipment",
+      "slot": "weapon",
+      "text": "+1 DMG",
+      "cost": "1g + 1 Crag-Iron, 1 Scavenged Pelt",
+      "grade": 1
+    },
+    "Pierce 1-Hander": {
+      "name": "Pierce 1-Hander",
+      "type": "equipment",
+      "slot": "weapon",
+      "text": "Ignore up to 2 enemy block.",
+      "cost": "1g + 2 Crag-Iron",
+      "grade": 1
+    },
+    "Honed 2-Hander": {
+      "name": "Honed 2-Hander",
+      "type": "equipment",
+      "slot": "weapon",
+      "text": "+2 DMG",
+      "cost": "1g + 2 Crag-Iron, 1 Scavenged Pelt",
+      "grade": 1
+    },
+    "Ruthless 2-Hander": {
+      "name": "Ruthless 2-Hander",
+      "type": "equipment",
+      "slot": "weapon",
+      "text": "If this attack is lethal, prevent all damage taken this round.",
+      "cost": "4g + 2 Crag-Iron, 1 Sun-Copper",
+      "grade": 2
+    },
+    "Sunder 2-Hander": {
+      "name": "Sunder 2-Hander",
+      "type": "equipment",
+      "slot": "weapon",
+      "text": "+1 DMG this round and all subsequent rounds of this pull.",
+      "cost": "3g + 2 Crag-Iron, 1 Sun-Copper",
+      "grade": 2
+    },
+    "Reinforced Heavy Armor": {
+      "name": "Reinforced Heavy Armor",
+      "type": "equipment",
+      "slot": "armor",
+      "text": "+3 Block.",
+      "cost": "3g + 2 Crag-Iron",
+      "grade": 1
+    },
+    "Thorns Heavy Armor": {
+      "name": "Thorns Heavy Armor",
+      "type": "equipment",
+      "slot": "armor",
+      "text": "Deal 3 DMG, unless At Range this round.",
+      "cost": "3g + 1 Crag-Iron, 1 Sun-Copper",
+      "grade": 2
+    },
+    "Persistent Heavy Armor": {
+      "name": "Persistent Heavy Armor",
+      "type": "equipment",
+      "slot": "armor",
+      "text": "+3 Block this round, and +3 Block next round.",
+      "cost": "5g + 1 Crag-Iron, 1 Bristle-Pelt",
+      "grade": 2
+    },
+    "Honed Wand": {
+      "name": "Honed Wand",
+      "type": "equipment",
+      "slot": "weapon",
+      "text": "+1 DMG",
+      "cost": "1g + 1 Snap-Root, 1 Scavenged Pelt",
+      "grade": 1
+    },
+    "Pierce Wand": {
+      "name": "Pierce Wand",
+      "type": "equipment",
+      "slot": "weapon",
+      "text": "Ignore up to 2 enemy block.",
+      "cost": "1g + 1 Snap-Root, 1 Crag-Iron",
+      "grade": 1
+    },
+    "Honed Staff": {
+      "name": "Honed Staff",
+      "type": "equipment",
+      "slot": "weapon",
+      "text": "+2 DMG",
+      "cost": "1g + 2 Snap-Root, 1 Scavenged Pelt",
+      "grade": 1
+    },
+    "Blessed Staff": {
+      "name": "Blessed Staff",
+      "type": "equipment",
+      "slot": "weapon",
+      "text": "+1 Heal.",
+      "cost": "2g + 3 Snap-Root",
+      "grade": 1
+    },
+    "Greater Blessed Staff": {
+      "name": "Greater Blessed Staff",
+      "type": "equipment",
+      "slot": "weapon",
+      "text": "+2 Heal.",
+      "cost": "4g + 2 Snap-Root, 1 River-Mint",
+      "grade": 2
+    },
+    "Sunder Staff": {
+      "name": "Sunder Staff",
+      "type": "equipment",
+      "slot": "weapon",
+      "text": "+1 DMG this round and all subsequent rounds of this pull.",
+      "cost": "3g + 2 Snap-Root, 1 Sun-Copper",
+      "grade": 2
+    },
+    "Reinforced Light Armor": {
+      "name": "Reinforced Light Armor",
+      "type": "equipment",
+      "slot": "armor",
+      "text": "+1 Block.",
+      "cost": "3g + 1 Scavenged Pelt, 1 Crag-Iron",
+      "grade": 1
+    },
+    "Elusive Light Armor": {
+      "name": "Elusive Light Armor",
+      "type": "equipment",
+      "slot": "armor",
+      "text": "Evade one melee attack this round.",
+      "cost": "5g + 1 Scavenged Pelt, 1 River-Mint",
+      "grade": 2
+    },
+    "Persistent Light Armor": {
+      "name": "Persistent Light Armor",
+      "type": "equipment",
+      "slot": "armor",
+      "text": "+1 Block this round, and +1 Block next round.",
+      "cost": "5g + 1 Scavenged Pelt, 1 Bristle-Pelt",
+      "grade": 2
+    },
+    "Reinforced Medium Armor": {
+      "name": "Reinforced Medium Armor",
+      "type": "equipment",
+      "slot": "armor",
+      "text": "+2 Block.",
+      "cost": "3g + 1 Scavenged Pelt, 1 Crag-Iron",
+      "grade": 1
+    },
+    "Elusive Medium Armor": {
+      "name": "Elusive Medium Armor",
+      "type": "equipment",
+      "slot": "armor",
+      "text": "Evade one melee attack this round.",
+      "cost": "5g + 1 Scavenged Pelt, 1 River-Mint",
+      "grade": 2
+    },
+    "Thorns Medium Armor": {
+      "name": "Thorns Medium Armor",
+      "type": "equipment",
+      "slot": "armor",
+      "text": "Deal 2 DMG, unless At Range this round.",
+      "cost": "3g + 1 Scavenged Pelt, 1 Sun-Copper",
+      "grade": 2
+    },
+    "Persistent Medium Armor": {
+      "name": "Persistent Medium Armor",
+      "type": "equipment",
+      "slot": "armor",
+      "text": "+2 Block this round, and +2 Block next round.",
+      "cost": "5g + 1 Scavenged Pelt, 1 Bristle-Pelt",
+      "grade": 2
+    }
+  },
+  "equipment_treasure": {
+    "Treasure: Honed 1-Hander": {
+      "name": "Treasure: Honed 1-Hander",
+      "type": "equipment_loot",
+      "slot": "weapon",
+      "text": "+1 DMG",
+      "value": "2g",
+      "grade": 1
+    },
+    "Treasure: Pierce 1-Hander": {
+      "name": "Treasure: Pierce 1-Hander",
+      "type": "equipment_loot",
+      "slot": "weapon",
+      "text": "Ignore up to 2 enemy block.",
+      "value": "2g",
+      "grade": 1
+    },
+    "Treasure: Honed 2-Hander": {
+      "name": "Treasure: Honed 2-Hander",
+      "type": "equipment_loot",
+      "slot": "weapon",
+      "text": "+2 DMG",
+      "value": "2g",
+      "grade": 1
+    },
+    "Treasure: Ruthless 2-Hander": {
+      "name": "Treasure: Ruthless 2-Hander",
+      "type": "equipment_loot",
+      "slot": "weapon",
+      "text": "If this attack is lethal, prevent all damage taken this round.",
+      "value": "8g",
+      "grade": 2
+    },
+    "Treasure: Sunder 2-Hander": {
+      "name": "Treasure: Sunder 2-Hander",
+      "type": "equipment_loot",
+      "slot": "weapon",
+      "text": "+1 DMG this round and all subsequent rounds of this pull.",
+      "value": "6g",
+      "grade": 2
+    },
+    "Treasure: Reinforced Heavy Armor": {
+      "name": "Treasure: Reinforced Heavy Armor",
+      "type": "equipment_loot",
+      "slot": "armor",
+      "text": "+3 Block.",
+      "value": "6g",
+      "grade": 1
+    },
+    "Treasure: Thorns Heavy Armor": {
+      "name": "Treasure: Thorns Heavy Armor",
+      "type": "equipment_loot",
+      "slot": "armor",
+      "text": "Deal 3 DMG, unless At Range this round.",
+      "value": "6g",
+      "grade": 2
+    },
+    "Treasure: Persistent Heavy Armor": {
+      "name": "Treasure: Persistent Heavy Armor",
+      "type": "equipment_loot",
+      "slot": "armor",
+      "text": "+3 Block this round, and +3 Block next round.",
+      "value": "10g",
+      "grade": 2
+    },
+    "Treasure: Honed Wand": {
+      "name": "Treasure: Honed Wand",
+      "type": "equipment_loot",
+      "slot": "weapon",
+      "text": "+1 DMG",
+      "value": "2g",
+      "grade": 1
+    },
+    "Treasure: Pierce Wand": {
+      "name": "Treasure: Pierce Wand",
+      "type": "equipment_loot",
+      "slot": "weapon",
+      "text": "Ignore up to 2 enemy block.",
+      "value": "2g",
+      "grade": 1
+    },
+    "Treasure: Honed Staff": {
+      "name": "Treasure: Honed Staff",
+      "type": "equipment_loot",
+      "slot": "weapon",
+      "text": "+2 DMG",
+      "value": "2g",
+      "grade": 1
+    },
+    "Treasure: Blessed Staff": {
+      "name": "Treasure: Blessed Staff",
+      "type": "equipment_loot",
+      "slot": "weapon",
+      "text": "+1 Heal.",
+      "value": "4g",
+      "grade": 1
+    },
+    "Treasure: Greater Blessed Staff": {
+      "name": "Treasure: Greater Blessed Staff",
+      "type": "equipment_loot",
+      "slot": "weapon",
+      "text": "+2 Heal.",
+      "value": "8g",
+      "grade": 2
+    },
+    "Treasure: Sunder Staff": {
+      "name": "Treasure: Sunder Staff",
+      "type": "equipment_loot",
+      "slot": "weapon",
+      "text": "+1 DMG this round and all subsequent rounds of this pull.",
+      "value": "6g",
+      "grade": 2
+    },
+    "Treasure: Reinforced Light Armor": {
+      "name": "Treasure: Reinforced Light Armor",
+      "type": "equipment_loot",
+      "slot": "armor",
+      "text": "+1 Block.",
+      "value": "6g",
+      "grade": 1
+    },
+    "Treasure: Elusive Light Armor": {
+      "name": "Treasure: Elusive Light Armor",
+      "type": "equipment_loot",
+      "slot": "armor",
+      "text": "Evade one melee attack this round.",
+      "value": "10g",
+      "grade": 2
+    },
+    "Treasure: Persistent Light Armor": {
+      "name": "Treasure: Persistent Light Armor",
+      "type": "equipment_loot",
+      "slot": "armor",
+      "text": "+1 Block this round, and +1 Block next round.",
+      "value": "10g",
+      "grade": 2
+    },
+    "Treasure: Reinforced Medium Armor": {
+      "name": "Treasure: Reinforced Medium Armor",
+      "type": "equipment_loot",
+      "slot": "armor",
+      "text": "+2 Block.",
+      "value": "6g",
+      "grade": 1
+    },
+    "Treasure: Elusive Medium Armor": {
+      "name": "Treasure: Elusive Medium Armor",
+      "type": "equipment_loot",
+      "slot": "armor",
+      "text": "Evade one melee attack this round.",
+      "value": "10g",
+      "grade": 2
+    },
+    "Treasure: Thorns Medium Armor": {
+      "name": "Treasure: Thorns Medium Armor",
+      "type": "equipment_loot",
+      "slot": "armor",
+      "text": "Deal 2 DMG, unless At Range this round.",
+      "value": "6g",
+      "grade": 2
+    },
+    "Treasure: Persistent Medium Armor": {
+      "name": "Treasure: Persistent Medium Armor",
+      "type": "equipment_loot",
+      "slot": "armor",
+      "text": "+2 Block this round, and +2 Block next round.",
+      "value": "10g",
+      "grade": 2
+    }
   }
 }

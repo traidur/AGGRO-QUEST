@@ -527,6 +527,76 @@ for cls, builder in builders.items():
                 out_data[cls][new_name] = obj
                 break
 
+# ---------------------------------------------------------------------------
+# Equipment (Crafting Deck & Treasure Deck)
+# ---------------------------------------------------------------------------
+import equipment_data as EQ
+
+def _get_equip_text(recipe):
+    base = recipe["base"]
+    rider = recipe["rider"]
+    
+    if rider == "honed":
+        return "+2 DMG" if "2-Hander" in base or "Staff" in base else "+1 DMG"
+    elif rider == "pierce":
+        return "Ignore up to 2 enemy block."
+    elif rider == "blessed":
+        return "+1 Heal."
+    elif rider == "greater_blessed":
+        return "+2 Heal."
+    elif rider == "ruthless":
+        return "If this attack is lethal, prevent all damage taken this round."
+    elif rider == "sunder":
+        return "+1 DMG this round and all subsequent rounds of this pull."
+    elif rider == "reinforced":
+        if "Heavy" in base: return "+3 Block."
+        if "Medium" in base: return "+2 Block."
+        return "+1 Block."
+    elif rider == "elusive":
+        return "Evade one melee attack this round."
+    elif rider == "thorns":
+        dmg = 3 if "Heavy" in base else 2
+        return f"Deal {dmg} DMG, unless At Range this round."
+    elif rider == "persistent":
+        blk = 3 if "Heavy" in base else (2 if "Medium" in base else 1)
+        return f"+{blk} Block this round, and +{blk} Block next round."
+    return ""
+
+out_data["equipment_crafting"] = {}
+out_data["equipment_treasure"] = {}
+
+all_recipes = []
+seen_names = set()
+for cls in builders.keys():
+    for r in EQ.get_recipes_for_class(cls):
+        if r["name"] not in seen_names:
+            seen_names.add(r["name"])
+            all_recipes.append(r)
+
+for r in all_recipes:
+    name = r["name"]
+    text_desc = _get_equip_text(r)
+    
+    cost_str = f"{r['cost_gold']}g + " + ", ".join(r["cost_items"])
+    out_data["equipment_crafting"][name] = {
+        "name": name,
+        "type": "equipment",
+        "slot": r["slot"],
+        "text": text_desc,
+        "cost": cost_str,
+        "grade": EQ.INGREDIENTS[r["ingredient"]]["grade"]
+    }
+    
+    loot_name = "Treasure: " + name
+    out_data["equipment_treasure"][loot_name] = {
+        "name": loot_name,
+        "type": "equipment_loot",
+        "slot": r["slot"],
+        "text": text_desc,
+        "value": f"{r['cost_gold'] * 2}g",
+        "grade": EQ.INGREDIENTS[r["ingredient"]]["grade"]
+    }
+
 output_path = os.path.join(os.path.dirname(__file__), 'src', 'cards_text.json')
 with open(output_path, "w") as f:
     json.dump(out_data, f, indent=2)
