@@ -671,28 +671,36 @@ def _open_item_slot_index(bag, locked):
     return None
 
 
+def _find_food_placement(bag, locked):
+    cols = 3
+    for i in range(len(bag)):
+        if i % cols < cols - 1 and i + cols < len(bag):
+            idxs = [i, i+1, i+cols, i+cols+1]
+            if all(bag[idx] is None and not locked[idx] for idx in idxs):
+                return i
+    return None
+
 def _can_fit_food(bag, locked):
-    return sum(1 for i, b in enumerate(bag) if b is None and not locked[i]) >= 4
+    return _find_food_placement(bag, locked) is not None
 
 def _add_food(bag, locked):
-    empty = [i for i, b in enumerate(bag) if b is None and not locked[i]]
-    if len(empty) >= 4:
-        bag[empty[0]] = "food"
-        bag[empty[1]] = "food_filler"
-        bag[empty[2]] = "food_filler"
-        bag[empty[3]] = "food_filler"
+    idx = _find_food_placement(bag, locked)
+    if idx is not None:
+        cols = 3
+        bag[idx] = "food"
+        bag[idx+1] = "food_filler"
+        bag[idx+cols] = "food_filler"
+        bag[idx+cols+1] = "food_filler"
         return True
     return False
 
 def _remove_food(bag, index):
-    bag[index] = None
-    removed = 0
-    for i in range(len(bag)):
-        if bag[i] == "food_filler":
-            bag[i] = None
-            removed += 1
-            if removed == 3:
-                break
+    cols = 3
+    if bag[index] == "food":
+        bag[index] = None
+        bag[index+1] = None
+        bag[index+cols] = None
+        bag[index+cols+1] = None
 
 def _bag_has_room(bag, locked):
     """Is there an item slot with room, or an empty unlocked slot to open one?"""
