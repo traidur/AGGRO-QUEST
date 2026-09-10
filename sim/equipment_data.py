@@ -73,6 +73,8 @@ def get_recipes_for_class(class_name):
                     "rider": ing_data["rider"],
                     "base": base_name,
                     "ingredient": ing_name,
-                    "cost": cost
+                    "cost": cost,
+                    "cost_gold": cost.get("Gold", 0),
+                    "cost_items": [f"{v} {k}" for k, v in cost.items() if k != "Gold"]
                 })
     return recipes

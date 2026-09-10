@@ -71,9 +71,9 @@ Bag/Quest-Log blocks -- one copy instead of four. -->
         {% for slot in ['weapon', 'armor', 'trinket'] %}
         <div style="margin-bottom: 4px;">
             <strong style="color: #c79c6e; text-transform: capitalize;">{{ slot }}:</strong>
-            {% if hero.equipment[slot] %}
+            {% if hero.equipment.get(slot) %}
                 <span style="{% if slot in hero.equipment_used %}color: #888; text-decoration: line-through;{% else %}color: #fff;{% endif %}">
-                    {{ hero.equipment[slot] }}
+                    {{ hero.equipment[slot].name }}
                 </span>
             {% else %}
                 <span style="color: #777;">None</span>
