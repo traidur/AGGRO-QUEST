@@ -18,7 +18,7 @@ UI extension," explicitly sequenced last).
 from __future__ import annotations
 
 import random
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import equipment_data as EQ
 from equipment_mechanics import apply_equipment_mechanics
 from equipment_solver import best_line_with_equipment
@@ -83,6 +83,7 @@ class PullState:
     played: list = field(default_factory=list)
     equipment: dict = field(default_factory=dict)
     eq_state: dict = field(default_factory=dict)
+    equipment_used: set = field(default_factory=set)  # slots locked for the rest of this pull
     outcome: Optional[str] = None  # None / "win" / "loss" / "fled"
     round_state: RoundState = field(default_factory=RoundState)
     stance: Optional[str] = None  # Warrior only -- chosen at round 0, locked for the pull
@@ -151,6 +152,8 @@ def get_legal_actions(state: PullState) -> list:
         for subset in itertools.combinations(avail_eq, i):
             eq_subsets.append(list(subset))
             
+    used_eq = [slot for slot in state.equipment.keys() if slot in state.equipment_used]
+
     for hand_card in _remaining_hand(state):
         for variant in _card_variants(state, hand_card):
             for stance in _legal_stances(state):
@@ -162,12 +165,24 @@ def get_legal_actions(state: PullState) -> list:
                 if base_outcome is None:
                     actions.append(dict(card=hand_card, variant=variant, stance=stance, equipment=[], legal=False))
                 else:
+                    grants_range = mod.CARDS.get(variant, {}).get("grants_range", False)
+                    # Automatic pass: any already-used slot's pending cross-round effect (e.g.
+                    # Persistent's Echo, Sunder's ongoing bonus) resolves every round regardless
+                    # of what's chosen this round -- it's follow-through on an earlier choice,
+                    # not a new one. equip_round=-1 guarantees it can never look like a fresh
+                    # activation. A fresh copy of eq_state per candidate (preview must never
+                    # mutate real state, matching the existing eq_state.copy() convention below).
+                    preview_eq_state = state.eq_state.copy()
+                    for slot in used_eq:
+                        recipe = state.equipment[slot]
+                        base_outcome = apply_equipment_mechanics(base_outcome, recipe["rider"], recipe["base"], state.round_num, -1, state.mob_pattern, preview_eq_state, grants_range=grants_range)
                     for subset in eq_subsets:
                         outcome = base_outcome
+                        eq_state_for_subset = preview_eq_state.copy()
                         for slot in subset:
                             recipe = state.equipment[slot]
                             # Use a copy of eq_state so preview doesn't mutate it
-                            outcome = apply_equipment_mechanics(outcome, recipe["rider"], recipe["base"], state.round_num, state.round_num, state.mob_pattern, state.eq_state.copy())
+                            outcome = apply_equipment_mechanics(outcome, recipe["rider"], recipe["base"], state.round_num, state.round_num, state.mob_pattern, eq_state_for_subset, grants_range=grants_range)
                         actions.append(dict(
                             card=hand_card, variant=variant, stance=stance, equipment=subset, legal=True,
                             dmg_dealt=outcome.dmg_dealt, dmg_taken=outcome.dmg_taken,
@@ -194,9 +209,23 @@ def apply_action(state: PullState, action: dict) -> PullState:
     if outcome is None:
         raise ValueError(f"{action['card']!r} illegal this round")
         
+    grants_range = mod.CARDS.get(action["variant"], {}).get("grants_range", False)
+    # Automatic pass: every already-used slot's pending cross-round effect (Persistent's Echo,
+    # Sunder's ongoing bonus) resolves this round regardless of what's freshly chosen below --
+    # it's follow-through on an earlier activation, not a new choice. equip_round=-1 guarantees
+    # it's never mistaken for a fresh activation. Mutates the REAL state.eq_state (this is the
+    # actual commit, not a preview) so the pending-echo pop-and-consume logic only ever fires once.
+    for slot in state.equipment:
+        if slot in state.equipment_used:
+            recipe = state.equipment[slot]
+            outcome = apply_equipment_mechanics(outcome, recipe["rider"], recipe["base"], state.round_num, -1, state.mob_pattern, state.eq_state, grants_range=grants_range)
     for slot in action.get("equipment", []):
         recipe = state.equipment[slot]
-        outcome = apply_equipment_mechanics(outcome, recipe["rider"], recipe["base"], state.round_num, state.round_num, state.mob_pattern, state.eq_state)
+        outcome = apply_equipment_mechanics(outcome, recipe["rider"], recipe["base"], state.round_num, state.round_num, state.mob_pattern, state.eq_state, grants_range=grants_range)
+    # Mark freshly-activated slots used -- mutated in place (not via replace()) so a caller-owned
+    # set (board_engine.py's hero.equipment_used, a trip-level Durability tracker) passed into
+    # new_pull_with_hp ends up correctly updated once this pull resolves.
+    state.equipment_used.update(action.get("equipment", []))
 
     # Hero death is checked BEFORE mob death, matching every class's own simulate() loop
     # exactly (`if hp <= 0: return False...` always precedes `if remaining <= 0: return
@@ -261,8 +290,14 @@ class QuestIntelligence:
         mod = CARD_SOURCE[state.class_name]
         key = (state.class_name, state.hand, state.mob_name)
         if key != self._cache_key:
-            seq_cards, stance_seq, hp_left, rounds, usage = best_line_with_equipment(
-                state.class_name, state.hand, state.mob_pattern, state.mob_hp_total, state.hero_hp, state.equipment
+            # Only plan around equipment NOT already used this trip -- state.equipment holds
+            # every equipped slot regardless of Durability status, so passing it unfiltered let
+            # the solver plan to activate an already-used slot, which get_legal_actions then
+            # correctly excludes, causing "cached best-line variant not found in legal actions".
+            available_equipment = {slot: recipe for slot, recipe in state.equipment.items()
+                                    if slot not in state.equipment_used}
+            win, seq_cards, stance_seq, hp_left, rounds, usage = best_line_with_equipment(
+                state.class_name, state.hand, state.mob_pattern, state.mob_hp_total, state.hero_hp, available_equipment
             )
             self._cached_seq = list(seq_cards)
             self._cached_stance_seq = list(stance_seq) if stance_seq else None
@@ -283,15 +318,22 @@ class QuestIntelligence:
 
 
 def new_pull_with_hp(class_name: str, mob_name: str, hand, pattern, mob_hp: float,
-                      starting_hp: float, equipment=None, eq_state=None) -> PullState:
+                      starting_hp: float, equipment=None, eq_state=None, equipment_used=None) -> PullState:
     """Like new_pull(), but for a hero who already has a specific hand/mob/HP in hand instead
     of drawing fresh -- the shape macro_sim.py's two real pull sites need (HP carries over
     between pulls, mob is already chosen by node/quest routing). Threads starting_hp through
     initial_max_hp() so classes with a fixed healing ceiling (Cleric/Paladin/Runecaster/Druid/
     Necromancer) don't get their heal cap silently clamped to a reduced entering HP -- see
-    initial_max_hp()'s own docstring for why this specific seeding bit matters."""
+    initial_max_hp()'s own docstring for why this specific seeding bit matters.
+
+    equipment_used, if given, is threaded through UNCOPIED -- apply_action mutates it in place
+    (.update(), never replace()) so a caller's own set (e.g. board_engine.py's
+    hero.equipment_used, a trip-level Durability tracker) ends up correctly updated once this
+    pull resolves, with no extra return-value plumbing needed. Defaults to a fresh local set
+    when no caller-owned set is given (e.g. new_pull()'s own standalone callers)."""
     return PullState(
         class_name=class_name, hero_hp=starting_hp, hero_max_hp=initial_max_hp(class_name, starting_hp),
         mob_name=mob_name, mob_pattern=pattern, mob_hp_total=float(mob_hp),
         mob_hp_remaining=float(mob_hp), hand=tuple(hand), equipment=equipment or {}, eq_state=eq_state or {},
+        equipment_used=equipment_used if equipment_used is not None else set(),
     )

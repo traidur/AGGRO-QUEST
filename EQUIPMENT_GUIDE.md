@@ -198,6 +198,39 @@ Crafting is now settled as a Town-only action (see above), so the remaining open
   2-Hander, Wand, Staff, Cloth/Leather/Mail/Plate) are flavor/slot placeholders only until this
   pass happens.
 
+## Ready-made equipment via a Town market — direction locked 2026-09-08, not yet built
+
+Confirmed with the user as a design direction (thought exercise, not yet implemented): in
+addition to crafting, a Town market should sell **ready-made equipment** — the exact same
+Base+Ingredient recipes already locked above, reskinned with unique flavor names/art (e.g. a
+named "Ironclad Cutter" that's mechanically identical to a crafted "Honed 1-Hander"), purchasable
+for Gold alone with no Gathering Tokens required. Zero new balance risk since the underlying
+mechanic never changes — only the acquisition path does.
+
+Two constraints locked alongside the idea, both still needing real numbers/implementation:
+
+1. **The Gold price must be a genuine premium over the crafted recipe's own Gold cost**, large
+   enough to cover the materials it's letting the player skip — otherwise crafting becomes
+   pointless (why gather Crag-Iron if the finished item costs about the same either way?).
+   Needs an actual "what's a Gathering Token worth in Gold" conversion before pricing anything,
+   not a guess.
+2. **The market should rotate, not display everything at once** — reuse the existing rotating
+   Town-quest-market pattern (`board.town_markets`, refreshed per Zone) rather than inventing a
+   second, always-fully-stocked shop. A static list of 20-30 reskinned items available every
+   visit would just be a long shopping list, not real scarcity or choice.
+
+Class-gating stays intact for ready-made items too — a Warrior still shouldn't see a Wand-based
+item in the market, same restriction crafting already enforces.
+
+## Selling unwanted Gathering Tokens for Gold — intent locked 2026-09-08, price not yet decided
+
+Confirmed direction: a hero should be able to sell a Gathering Token they can't or don't want to
+use back to Town for Gold, so an unwanted token isn't permanently dead Bag space. A rough
+starting number (1 Gold) was floated but explicitly NOT locked — it depends on how often a hero
+actually ends up holding an unusable token (the real token-dealing rate) weighed against this
+game's existing Gold-per-trip pacing, neither of which has been checked yet. Revisit with real
+numbers before implementing; don't build this from the floated number alone.
+
 ## Post-Audit Design Locks (2026-09-08)
 
 Following the audit of the initial implementation, the Lead Designer explicitly locked the following changes to the rules above:

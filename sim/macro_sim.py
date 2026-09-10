@@ -759,7 +759,8 @@ def _remove_item(bag, locked, item_name, amount):
 _remove_loot = _remove_item  # Quest Loot is just one more item type sharing the same mechanism
 
 
-def _engine_pull(class_name, mob_name, hand, pattern, mob_hp, starting_hp, decide_fn=None):
+def _engine_pull(class_name, mob_name, hand, pattern, mob_hp, starting_hp, decide_fn=None,
+                  equipment=None, equipment_used=None):
     """Runs one pull through the new turn-by-turn combat_engine (get_legal_actions/
     apply_action/QuestIntelligence.decide_combat) instead of condensed_trip.py's batch
     T._best_line/T._simulate call -- the macro-loop rewiring named in
@@ -770,12 +771,19 @@ def _engine_pull(class_name, mob_name, hand, pattern, mob_hp, starting_hp, decid
     directly (see combat_engine.py's own docstring), so this is not a second search --
     verified bit-for-bit identical to the old T._best_line/T._simulate path via
     DESIGN_DOC.md's 'Phase 2' section.
-    
+
     If decide_fn is None, uses the AI solver (QuestIntelligence.decide_combat). A web
     driver passes its own terminal-input decide_fn instead, so the identical round-by-round
     get_legal_actions/apply_action loop plays out a real human's choices rather than the
-    solver's, without a second, parallel pull-loop implementation."""
-    state = E.new_pull_with_hp(class_name, mob_name, hand, pattern, mob_hp, starting_hp, equipment, equipment_used)
+    solver's, without a second, parallel pull-loop implementation.
+
+    equipment_used, if given, is threaded straight through to new_pull_with_hp UNCOPIED --
+    board_engine.py's two real call sites pass hero.equipment_used directly, and
+    apply_action mutates it in place, so the hero's own trip-level Durability tracker ends up
+    correctly updated once this pull resolves with no extra return-value plumbing (2026-09-09
+    fix: this signature previously didn't declare equipment/equipment_used at all despite the
+    body already referencing them, meaning every real board_engine.py call crashed outright)."""
+    state = E.new_pull_with_hp(class_name, mob_name, hand, pattern, mob_hp, starting_hp, equipment, equipment_used=equipment_used)
     decide = decide_fn if decide_fn is not None else E.QuestIntelligence().decide_combat
     while state.outcome is None:
         actions = E.get_legal_actions(state)

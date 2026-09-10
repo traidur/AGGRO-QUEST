@@ -653,6 +653,10 @@ def apply_town_action(hero, action, purchase_queue, board=None, rng=None):
             else:
                 for _ in range(cost_v): hero.bag.remove(cost_k)
         hero.equipment[recipe["slot"]] = recipe
+        # A freshly-crafted item always starts unused, even when it's replacing an
+        # already-used item in the same slot -- without this, the new item would be
+        # incorrectly pre-locked by the old item's Durability status.
+        hero.equipment_used.discard(recipe["slot"])
         return True
 
     if action["type"] in ("leave_town", "leave_trainer"):
@@ -660,6 +664,9 @@ def apply_town_action(hero, action, purchase_queue, board=None, rng=None):
         hero.position = (zone_id, None)
         if action["type"] == "leave_town":
             hero.hp = hero.max_hp
+            # Durability resets automatically at Town (EQUIPMENT_GUIDE.md's locked rule) --
+            # this was the only place that reset was supposed to happen and never did.
+            hero.equipment_used.clear()
         return False
 
     if action["type"] == "take_quest":
