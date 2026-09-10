@@ -770,3 +770,10 @@ On top of being redundant, it caused real, repeated harm to this session's own t
 
 **What this does NOT settle:** the general Durability pillar concept in `DESIGN_DOC.md` §3 (gear wear, Town-only repair) is not rejected — only this specific trigger mechanism is. If a future need arises for something that forces a trip to end independent of Bag/Food/Water scarcity, Durability-the-concept is still on the table, but it needs a fresh, deliberately-chosen trigger rather than reviving this one by default. Bag/restorative scarcity is, for now, the sole mechanism bounding trip length — see the Food/Water sweep data (this session) for what that actually produces per class.
 
+### Trainer Skills: "Draw 2, Pick 1" (Added 2026-09-10)
+Currently, purchasing a Level 2 Class Skill from the Trainer (for 8g) uses a 100% blind random draw from the unpurchased Level 2 deck. The user mandated replacing this with a **"Draw 2, Pick 1"** system to introduce genuine player agency and build-path control rather than pure RNG. This needs to be built into `macro_sim.py`s `_walk_purchase_queue` and the physical tabletop rules.
+
+### Bag Capacity vs. Gathering Items (Audited 2026-09-10)
+The "Bag Tetris Rescale" (2026-08-25) increased the physical bag size from 2 to 6 slots, but simultaneously changed Food to cost 3 slots and reduced the stack size of other items to 1. This means the *effective* capacity remained exactly 1 Food + 3 Items (e.g., Quest Tokens, Potions). 
+When **Gathering Items** (Herb, Ore, Skin) were subsequently added to the game, they were set to occupy 1 slot each without any corresponding increase to the bag capacity. 
+**Issue:** The bag is now severely over-constrained. We need to either increase the starting `BAG_SIZE` past 6, allow Gathering Items to stack 3-to-a-slot, or introduce a second Bag Upgrade tier.
