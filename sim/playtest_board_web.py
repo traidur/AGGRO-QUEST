@@ -71,6 +71,7 @@ import macro_sim as M
 import leveling_validation as LV
 import sim_pvp as PvP
 import class_mob_matchup_chart as MC
+import equipment_data as EQ
 from board_state import HeroBoardState
 
 app = Flask(__name__, template_folder="playtest_board_web_templates")
@@ -81,12 +82,30 @@ app = Flask(__name__, template_folder="playtest_board_web_templates")
 _S = {}
 
 
+
 def get_item_name(slot):
     if not slot: return None
     if isinstance(slot, str): return slot
     if isinstance(slot, dict) and "items" in slot:
         return list(slot["items"].keys())[0]
     return None
+
+def _get_equip_text(recipe):
+    base = recipe["base"]
+    rider = recipe["rider"]
+    if rider == "honed": return "+2 DMG" if "2-Hander" in base or "Staff" in base else "+1 DMG"
+    elif rider == "pierce": return "Ignore up to 2 enemy block."
+    elif rider == "blessed": return "+1 Heal."
+    elif rider == "greater_blessed": return "+2 Heal."
+    elif rider == "ruthless": return "If this attack is lethal, prevent all damage taken this round."
+    elif rider == "sunder": return "+1 DMG this round and all subsequent rounds of this pull."
+    elif rider == "reinforced": return "+3 Block." if "Heavy" in base else ("+2 Block." if "Medium" in base else "+1 Block.")
+    elif rider == "elusive": return "Evade one melee attack this round."
+    elif rider == "thorns": return f"Deal {3 if 'Heavy' in base else 2} DMG, unless At Range this round."
+    elif rider == "persistent":
+        blk = 3 if "Heavy" in base else (2 if "Medium" in base else 1)
+        return f"+{blk} Block this round, and +{blk} Block next round."
+    return ""
 
 def get_item_count(slot):
     if not slot: return 0
@@ -128,7 +147,9 @@ def inject_globals():
         get_class_matchup=get_class_matchup,
         get_mob_flavor=lambda mob_name: _MOBS_TEXT.get(mob_name, {}),
         get_item_name=get_item_name,
-        get_item_count=get_item_count
+        get_item_count=get_item_count,
+        get_recipes=EQ.get_recipes_for_class,
+        get_equip_text=_get_equip_text
     )
 
 

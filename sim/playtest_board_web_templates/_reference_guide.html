@@ -1,0 +1,49 @@
+<div class="sidebar-section-hdr" style="cursor: pointer; text-decoration: underline; color: #aaccff;" onclick="document.getElementById('ref-modal').style.display='flex'">
+    &#128214; Open Reference Guide
+</div>
+
+<div id="ref-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center;">
+    <div style="background: #2a1508; border: 2px solid #c79c6e; border-radius: 8px; max-width: 800px; width: 90%; max-height: 90vh; overflow-y: auto; padding: 24px; color: #f5ebd9; box-shadow: 0 10px 30px rgba(0,0,0,0.5); font-family: 'Crimson Pro', serif;">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #4a2e15; padding-bottom: 12px; margin-bottom: 16px;">
+            <h2 style="margin: 0; font-family: 'Cinzel', serif; color: #e8d0a9;">Reference Guide</h2>
+            <button onclick="document.getElementById('ref-modal').style.display='none'" style="background: transparent; border: none; color: #c79c6e; font-size: 24px; cursor: pointer;">&times;</button>
+        </div>
+
+        <h3 style="color: #c79c6e; margin-top: 24px;">Equipment Crafting Recipes ({{ hero.class_name|title }})</h3>
+        <p style="font-size: 14px; font-style: italic; color: #aaa;">Gold costs shown are Crafting cost. Treasure value is double.</p>
+        <ul style="padding-left: 20px; font-size: 15px; line-height: 1.4;">
+            {% for r in get_recipes(hero.class_name) %}
+                <li style="margin-bottom: 8px;">
+                    <strong>{{ r.name }}</strong> ({{ r.slot|title }}): 
+                    <span style="color: #ffd700;">{{ r.cost_gold }}g</span> + {{ r.cost_items|join(', ') }}
+                    <br><span style="color: #aaccff;">Effect:</span> {{ get_equip_text(r) }}
+                </li>
+            {% endfor %}
+        </ul>
+
+        <h3 style="color: #c79c6e; margin-top: 24px;">Mechanics Glossary</h3>
+        <ul style="padding-left: 20px; font-size: 15px; line-height: 1.4;">
+            <li><strong>Sunder:</strong> +1 DMG this round and all subsequent rounds of this pull.</li>
+            <li><strong>Persistent:</strong> Gain block this round, and carry an automatic block into the NEXT round. (Echo).</li>
+            <li><strong>Elusive:</strong> Evade exactly one melee attack this round. Does not work against Ranged.</li>
+            <li><strong>Thorns:</strong> Deal 2 or 3 DMG automatically, unless you are At Range this round.</li>
+            <li><strong>Ruthless:</strong> If your attack deals lethal damage, prevent all damage taken this round.</li>
+            <li><strong>Pierce:</strong> Ignore up to 2 enemy block.</li>
+        </ul>
+
+        <h3 style="color: #c79c6e; margin-top: 24px;">Town Upgrades & Costs</h3>
+        <ul style="padding-left: 20px; font-size: 15px; line-height: 1.4;">
+            <li><strong>Food:</strong> 1g (Heals 2 HP, usable in field)</li>
+            <li><strong>Potion:</strong> 3g (Heals 5 HP, usable in combat)</li>
+            <li><strong>Bag Upgrade 1:</strong> 12g (Unlocks 3 slots. Requires taking 1 Level 2 Quest)</li>
+            <li><strong>Bag Upgrade 2:</strong> 18g (Unlocks 3 slots. Requires taking 3 Level 2 Quests)</li>
+            <li><strong>Trainer Skill:</strong> 10g (Buy randomly drawn Level 2 class cards)</li>
+        </ul>
+
+        <h3 style="color: #c79c6e; margin-top: 24px;">Material Drops by Zone</h3>
+        <ul style="padding-left: 20px; font-size: 15px; line-height: 1.4;">
+            <li><strong>Tier 1 Materials (Zones 1 & 2):</strong> Crag-Iron, Scavenged Pelt, Snap-Root</li>
+            <li><strong>Tier 2 Materials (Zones 3 & 4):</strong> Sun-Copper, Bristle-Pelt, River-Mint</li>
+        </ul>
+    </div>
+</div>
