@@ -378,7 +378,7 @@ BAG_UPGRADE_COST = 12  # repriced 16 -> 12 (LEVELING_GUIDE.md's "Purchased-upgra
 # choice. This constant itself was still 16 here despite the doc saying it had been repriced --
 # fixed 2026-08-21 while building the Class Trainer, which needed a correct SKILL_COST/
 # BAG_UPGRADE_COST relationship to make purchase decisions against.
-BAG_SIZE = 6
+BAG_SIZE = 9
 SKILL_COST = 8  # flat price for every purchased (non-mandatory) Level 2 upgrade, at the Class
 # Trainer -- LEVELING_GUIDE.md's "Purchased-upgrade pricing, locked" section.
 LEVEL2_XP_THRESHOLD = 6  # repriced 12 -> 6 (locked 2026-08-21, alongside the Level 1 quest
@@ -671,16 +671,16 @@ def _open_item_slot_index(bag, locked):
     return None
 
 
-
 def _can_fit_food(bag, locked):
-    return sum(1 for i, b in enumerate(bag) if b is None and not locked[i]) >= 3
+    return sum(1 for i, b in enumerate(bag) if b is None and not locked[i]) >= 4
 
 def _add_food(bag, locked):
     empty = [i for i, b in enumerate(bag) if b is None and not locked[i]]
-    if len(empty) >= 3:
+    if len(empty) >= 4:
         bag[empty[0]] = "food"
         bag[empty[1]] = "food_filler"
         bag[empty[2]] = "food_filler"
+        bag[empty[3]] = "food_filler"
         return True
     return False
 
@@ -691,7 +691,7 @@ def _remove_food(bag, index):
         if bag[i] == "food_filler":
             bag[i] = None
             removed += 1
-            if removed == 2:
+            if removed == 3:
                 break
 
 def _bag_has_room(bag, locked):
@@ -1364,9 +1364,9 @@ def _walk_purchase_queue(queue, acquired, bag, locked, current_position, gold, p
         gold -= item["cost"]
         acquired.add(item["tag"])
         if item["kind"] == "bag":
-            # Appends 3 slots, not 1 -- see board_engine.apply_town_action's identical fix
-            # (checkpointed 2026-08-25, bag-tetris rescale) for why.
-            for _ in range(3):
+            # Appends 6 slots, not 3 -- user's original 5x3 / 15-slot upgrade intent, perfectly
+            # solving the Gathering Item capacity constraint.
+            for _ in range(6):
                 bag.append(None)
                 locked.append(False)
         else:

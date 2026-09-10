@@ -94,7 +94,7 @@ Bag/Quest-Log blocks -- one copy instead of four. -->
                 {% set item_count = get_item_count(hero.bag[i]) %}
                 {% if item_name != "food_filler" %}
                 <div class="bag-slot" title="{{ item_name.replace('_', ' ')|title }}{% if item_count > 1 %} (x{{ item_count }}){% endif %}"
-                     style="position: relative; {% if item_name == 'food' %}grid-column: span 3; width: 100%;{% endif %}">
+                     style="position: relative; {% if item_name == 'food' %}grid-column: span 2; grid-row: span 2; width: 100%; height: 100%;{% endif %}">
                     <img src="{{ url_for('static', filename=item_name ~ '.jpg') }}"
                          onerror="this.onerror=null; this.src='{{ url_for('static', filename='quest_loot.jpg') }}';"
                          alt="{{ item_name }}" style="width: 100%; height: 100%; object-fit: cover;">

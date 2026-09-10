@@ -698,10 +698,9 @@ def apply_town_action(hero, action, purchase_queue, board=None, rng=None):
     if item["kind"] == "bag":
         # Appends 3 slots, not 1 (checkpointed 2026-08-25, bag-tetris rescale): under the old
         # 2-slot/ITEM_STACK_CAP=3 model, one Bag Upgrade added a whole second stacking slot
-        # worth +3 item capacity. Under the new BAG_SIZE=6/ITEM_STACK_CAP=1 model, a single
-        # appended slot is only worth +1 item capacity -- appending 3 preserves the same
-        # per-upgrade capacity gain the base bag's own 2->6 rescale already established.
-        for _ in range(3):
+        # Appends 6 slots -- user's original 5x3 / 15-slot upgrade intent, perfectly
+        # solving the Gathering Item capacity constraint.
+        for _ in range(6):
             hero.bag.append(None)
             hero.locked.append(False)
     return True
