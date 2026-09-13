@@ -140,14 +140,38 @@ def get_class_matchup(class_name, xp):
     return _MATCHUP_BY_LEVEL[level].get(class_name, {})
 
 
+def get_quest_progress(hero, quest):
+    pool = M.LEVEL2_QUESTS if hero.xp >= M.LEVEL2_XP_THRESHOLD else M.QUESTS
+    if quest not in pool:
+        if quest in M.LEVEL2_QUESTS: pool = M.LEVEL2_QUESTS
+        elif quest in M.QUESTS: pool = M.QUESTS
+        else: return ""
+    count = M._accessible_count(hero.bag, hero.locked, quest)
+    req = pool[quest]["required"]
+    return f" ({count}/{req} Collected)"
+
+
+def get_item_icon(item_name):
+    icons = {
+        "red_quest": "🔴", "green_quest": "🟢", "blue_quest": "🔵",
+        "Snap-Root": "🌿", "Crag-Iron": "🪨", "Scavenged Pelt": "🦡",
+        "River-Mint": "🌿", "Sun-Copper": "🪨", "Bristle-Pelt": "🦡",
+        "food": "🍖", "potion": "🧪", "smoke_bomb": "💨",
+        "whetstone": "🪨", "preserving_charm": "🧿", "scroll_of_vanquishing": "📜",
+        "tarnished_silverware": "🍴", "intact_pelt": "🦊", "flawless_gemstone": "💎"
+    }
+    return icons.get(item_name, "📦")
+
 @app.context_processor
 def inject_globals():
     return dict(
         quest_locations={v[1]: k.replace('_', ' ').title() for k, v in M.NODES.items()},
         get_class_matchup=get_class_matchup,
-        get_mob_flavor=lambda mob_name: _MOBS_TEXT.get(mob_name, {}),
+        get_mob_flavor=lambda mob_name: _MOBS_TEXT.get(mob_name.replace("_loot", ""), {}),
         get_item_name=get_item_name,
         get_item_count=get_item_count,
+        get_item_icon=get_item_icon,
+        get_quest_progress=get_quest_progress,
         get_recipes=EQ.get_recipes_for_class,
         get_equip_text=_get_equip_text
     )
@@ -372,16 +396,31 @@ def _build_combat_log(class_name, hand, mob_name, hero_hp, sequence, stance_sequ
 
 def _outcome_message(kind, result):
     outcome = result.get("outcome")
-    mob = result.get("mob_name", "the foe")
+    mob = result.get("mob_name", "the foe").replace("_loot", "")
+    
+    msg = f"Outcome: {outcome}"
     if outcome == "win":
-        return f"Victory over {mob}! +1 Gold."
-    if outcome == "flee":
-        return f"Survived but didn't finish off {mob} -- no loot this time."
-    if outcome == "no_room":
-        return f"Won against {mob}, but your Bag has no room -- loot lost!"
-    if outcome == "died":
-        return f"You fell to {mob}..."
-    return f"Outcome: {outcome}"
+        msg = f"Victory over {mob}! +1 Gold."
+    elif outcome == "flee":
+        msg = f"Survived but didn't finish off {mob} -- no loot this time."
+    elif outcome == "no_room":
+        msg = f"Won against {mob}, but your Bag had no room for its Quest Loot!"
+    elif outcome == "died":
+        msg = f"You fell to {mob}..."
+        
+    if "gathering_item" in result:
+        msg += f" Gathered {result['gathering_item']}."
+    if "gathering_item_pending" in result:
+        msg += f" Bag full! {result['gathering_item_pending']} is waiting for you to make room."
+        
+    if "mob_drops" in result:
+        drops = [d.replace('_', ' ').title() for d in result['mob_drops']]
+        msg += f" Looted {', '.join(drops)}!"
+    if "mob_drops_pending" in result:
+        drops = [d.replace('_', ' ').title() for d in result['mob_drops_pending']]
+        msg += f" Bag full! {', '.join(drops)} waiting for you to make room."
+        
+    return msg
 
 
 # ---------------------------------------------------------------------------
@@ -412,6 +451,35 @@ def _new_hero(class_name, rng):
     return hero
 
 
+@app.route("/bag/discard/<int:idx>", methods=["POST"])
+def discard_bag_item(idx):
+    hero = _S["board"].heroes[_S["active_hero_idx"]] if _S["mode"] == "solo" else _S["board"].heroes[_S["cmp_declare_order"][0] if _S.get("cmp_declare_order") else 0]
+    if 0 <= idx < len(hero.bag) and not hero.locked[idx]:
+        hero.bag[idx] = None
+    return redirect(request.referrer)
+
+@app.route("/bag/discard_pending/<int:idx>", methods=["POST"])
+def discard_pending_item(idx):
+    hero = _S["board"].heroes[_S["active_hero_idx"]] if _S["mode"] == "solo" else _S["board"].heroes[_S["cmp_declare_order"][0] if _S.get("cmp_declare_order") else 0]
+    if 0 <= idx < len(hero.pending_loot):
+        hero.pending_loot.pop(idx)
+    return redirect(request.referrer)
+
+@app.route("/bag/claim_pending", methods=["POST"])
+def claim_pending_items():
+    hero = _S["board"].heroes[_S["active_hero_idx"]] if _S["mode"] == "solo" else _S["board"].heroes[_S["cmp_declare_order"][0] if _S.get("cmp_declare_order") else 0]
+    leftover = []
+    for item in hero.pending_loot:
+        if M._bag_has_room(hero.bag, hero.locked):
+            M._add_item(hero.bag, hero.locked, item)
+        else:
+            leftover.append(item)
+    hero.pending_loot = leftover
+    if leftover:
+        _flash("Not enough room in bag for all pending items.")
+    return redirect(request.referrer)
+
+
 @app.route("/start", methods=["POST"])
 def start():
     reset_session()
@@ -423,7 +491,8 @@ def start():
     hero = _new_hero(class_name, rng)
     purchase_queues = {0: M._build_purchase_queue(class_name, 0)}
     level_decks = {1: B.LevelDeck.new(1, rng), 2: B.LevelDeck.new(2, rng)}
-    board = B.BoardState(mode="solo", heroes=[hero], zones={}, level_decks=level_decks)
+    loot_decks = {1: B.LootDeck.new(1, rng), 2: B.LootDeck.new(2, rng)}
+    board = B.BoardState(mode="solo", heroes=[hero], zones={}, level_decks=level_decks, loot_decks=loot_decks)
     board.setup_quests(rng)
 
     _S.update(mode="solo", board=board, class_names={0: class_name}, controllers={0: "human"},
@@ -666,7 +735,7 @@ def combat_plan():
     mob_name = _S["pending_action"]["mob_name"]
     pattern, mob_hp = M._pattern_hp_for_mob(class_name, mob_name)
     return render_template(
-        "combat_plan.html", class_name=class_name, mob_name=mob_name,
+        "combat_plan.html", class_name=class_name, mob_name=mob_name.replace("_loot", ""),
         pattern=list(enumerate(pattern)), mob_hp=mob_hp, hero=hero,
         hand_options=_hand_options(class_name, hand), has_stance=M.HAS_STANCE[class_name],
         pending_kind=_S["pending_kind"], flash=_pop_flash(),
@@ -741,7 +810,7 @@ def combat_plan_submit():
 
     mob_pattern, mob_hp_total = M._pattern_hp_for_mob(class_name, pending["mob_name"])
     _S["phase"] = "combat_result"
-    return render_template("combat_result.html", class_name=class_name, mob_name=pending["mob_name"],
+    return render_template("combat_result.html", class_name=class_name, mob_name=pending["mob_name"].replace("_loot", ""),
                             rows=log_rows, outcome=log_outcome, hero=hero,
                             pattern=list(enumerate(mob_pattern)), mob_hp=mob_hp_total)
 
@@ -803,7 +872,8 @@ def party_start():
     labels = {i: f"Player {i + 1} ({c.title()}, {ctrl})" for i, (c, ctrl) in enumerate(specs)}
     purchase_queues = {i: M._build_purchase_queue(class_names[i], 0) for i in range(len(specs))}
     level_decks = {1: B.LevelDeck.new(1, rng), 2: B.LevelDeck.new(2, rng)}
-    board = B.BoardState(mode="competitive", heroes=heroes, zones={}, level_decks=level_decks)
+    loot_decks = {1: B.LootDeck.new(1, rng), 2: B.LootDeck.new(2, rng)}
+    board = B.BoardState(mode="competitive", heroes=heroes, zones={}, level_decks=level_decks, loot_decks=loot_decks)
     board.setup_quests(rng)
 
     _S.update(mode="competitive", board=board, class_names=class_names, controllers=controllers,
@@ -1097,7 +1167,33 @@ def cmp_pvp_plan_submit():
     _S["pvp_current_duelist"] = _S["pvp_defender"] if hero_idx == _S["pvp_initiator"] else None
     return _cmp_pvp_plan_next()
 
+
+@app.route("/cmp/pvp/use_consumable", methods=["POST"])
+def cmp_pvp_use_consumable():
+    hero_idx = _S["active_hero_idx"]
+    hero = _S["board"].heroes[hero_idx]
+    item = request.form.get("item")
+    if item == "food":
+        _S["flash"].append("Cannot use Food during the PvP Reaction Window.")
+    elif M._accessible_count(hero.bag, hero.locked, item) > 0:
+        M._remove_item(hero.bag, hero.locked, item, 1)
+        if item == "potion":
+            hero.hp = min(hero.max_hp, hero.hp + 8)
+            hero.consumables_used["potion"] += 1
+            _S["flash"].append("Drank Potion: +8 HP.")
+        elif item == "whetstone":
+            hero.pvp_whetstone_active = True
+            _S["flash"].append("Used Whetstone: +1 DMG / +1 BLK for this duel.")
+        elif item == "smoke_bomb":
+            _S["flash"].append("Used Smoke Bomb! Fleeing the duel!")
+            # Fleeing instantly resolves the duel!
+            board = _S["board"]
+            _S["pvp_smoke_bomber"] = hero_idx
+            return _cmp_pvp_resolve()
+    return redirect(url_for("cmp_pvp_plan"))
+
 def _cmp_pvp_resolve():
+
     board = _S["board"]
     i_idx = _S["pvp_initiator"]
     d_idx = _S["pvp_defender"]
@@ -1130,18 +1226,43 @@ def _cmp_pvp_resolve():
     winner = board.heroes[winner_idx]
     loser = board.heroes[loser_idx]
     
-    winner.tokens = max(0, winner.tokens - 1)
-    loser.tokens += 1
-    
+
+    # Handle Smoke Bomb Flee (if any)
+    smoke_bomber = _S.get("pvp_smoke_bomber")
+    if smoke_bomber is not None:
+        loser_idx = smoke_bomber
+        winner_idx = d_idx if i_idx == loser_idx else i_idx
+        winner = board.heroes[winner_idx]
+        loser = board.heroes[loser_idx]
+        _S["flash"].append(f"PvP! {loser.class_name} used a Smoke Bomb to flee! {winner.class_name} wins by default.")
+        _S.pop("pvp_smoke_bomber", None)
+    else:
+        winner.tokens = max(0, winner.tokens - 1)
+        loser.tokens += 1
+        _S["flash"].append(f"PvP! {winner.class_name} defeated {loser.class_name}! ({winner.class_name} dealt {i_dmg if winner_idx == i_idx else d_dmg} dmg, {loser.class_name} dealt {d_dmg if winner_idx == i_idx else i_dmg} dmg)")
+
     winner.gold += 1
     if loser.gold > 0:
         loser.gold -= 1
         winner.gold += 1
         
-    board.pending_declarations.pop(loser_idx)
+    # Bystander Rule!
+    node_name = _S["pvp_contested_node"]
+    has_bystander = len(_S["pvp_claimants"]) > 2
     
-    _S["flash"].append(f"PvP! {winner.class_name} defeated {loser.class_name}! ({winner.class_name} dealt {i_dmg if winner_idx == i_idx else d_dmg} dmg, {loser.class_name} dealt {d_dmg if winner_idx == i_idx else i_dmg} dmg)")
+    board.pending_declarations.pop(loser_idx, None)
     
+    if has_bystander:
+        board.pending_declarations.pop(winner_idx, None)
+        _S["flash"].append(f"Bystander Rule: {winner.class_name} gets the PvP Gold, but the PvE mob remains for the bystanders to fight!")
+    else:
+        board.pending_declarations.pop(winner_idx, None)
+        _tier, loot_name = M.NODES[node_name]
+        if M._add_loot(winner.bag, winner.locked, loot_name):
+            _S["flash"].append(f"{winner.class_name} claimed the node's {loot_name}!")
+        else:
+            _S["flash"].append(f"{winner.class_name} had no room for {loot_name}!")
+            
     return _cmp_pvp_peace()
 
 def _cmp_begin_resolve():
@@ -1262,7 +1383,7 @@ def cmp_combat_plan():
     mob_name = _S["pending_action"]["mob_name"]
     pattern, mob_hp = M._pattern_hp_for_mob(class_name, mob_name)
     return render_template(
-        "combat_plan.html", class_name=class_name, mob_name=mob_name,
+        "combat_plan.html", class_name=class_name, mob_name=mob_name.replace("_loot", ""),
         pattern=list(enumerate(pattern)), mob_hp=mob_hp, hero=hero,
         hand_options=_hand_options(class_name, hand), has_stance=M.HAS_STANCE[class_name],
         pending_kind=_S["pending_kind"], flash=_pop_flash(),

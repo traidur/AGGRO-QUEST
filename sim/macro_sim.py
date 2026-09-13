@@ -176,6 +176,7 @@ def _pattern_hp_for_mob(class_name, mob_name):
     falling back to T.MOBS. The one shared place that knows how to resolve either kind of mob
     name, so _scouted_pull_mob/_best_case_mob/the main node-pull draw don't each need their
     own Elite-vs-Standard branch."""
+    mob_name = mob_name.replace("_loot", "")
     if mob_name in LV.ELITE_MELEE:
         return LV._elite_pattern(class_name, mob_name), LV.ELITE_HP
     return T.MOBS[mob_name][class_name]

@@ -4,6 +4,22 @@ Design tensions and undefined interactions flagged before prototyping starts. Mo
 
 ## Unresolved
 
+### Level 3 Progression: "Always-Available" Exhaustibles
+
+Raised 2026-09-10. Currently, the condensed combat solver mathematically relies on every class having exactly a 6-card deck. Adding a 7th or 8th card to the actual draw pool would shatter the 15-hand combinatorial equilibrium.
+
+However, progression past Level 2 requires new mechanics. The proposed solution is a **Level 3 Exhaustible**. 
+- It is a powerful, literal 7th/8th Combat Card that sits *face-up* (outside the deck) and is always available.
+- A player can slot it into their 3-round timeline to execute a massive, rule-breaking effect (e.g., negate all damage for a round, amplify damage, play a 4th card, swap mob rounds).
+- Once played, it flips face-down (Exhausts) and cannot be used again on any subsequent pulls until the hero returns to Town to rest.
+
+This beautifully solves several problems:
+1. It bypasses the 6-card RNG math completely (it doesn't dilute the deck).
+2. It gives players a high-agency "break glass in case of emergency" button for terrifying Elite pulls.
+3. It creates a perfect vector to rescue cut mechanics from the original AGGRO card pool (e.g., Rogue's *Second Chance* or *Vanish*, Wizard's *Teleport* or *Confound*) which often had `exhaust=TRUE` printed on them anyway!
+
+*Next steps:* Review the AGGRO `cards.csv` cross-section to pick 1-2 thematic exhaustible candidates per class and test their impact on the defense/damage floors.
+
 ### Random-drop rates for the new Bag-slot consumables
 
 Raised 2026-08-22, alongside locking the Gold prices for Scroll of Vanquishing, Smoke Bomb,
@@ -392,13 +408,18 @@ zones can still differ in what they reward, just not in what they contain.
 **Tier 1's actual two decks, worked example (ratios are the load-bearing number here, not
 the raw counts — see `sim/class_mob_matchup_chart.py`'s docstring reasoning for why cost%,
 not win rate, is what actually differentiates a class's real matchups):**
-- **Level 1 deck:** 18 Standard (3 each of the 6) + 0 Elite + 1 Spice card = 19 cards.
-  P(Spice on any single node-deal) = 1/19 (~5.3%). Zero Elites deliberately — Elites are
-  meant to read as a real, close-to-coinflip risk (the locked target from the Elite
-  derivation work), which doesn't belong in front of a hero still learning the base puzzle.
-- **Level 2 deck:** 18 Standard + 3 Elite (1 each of Bulwark/Berserker/Warlord) + 2 Spice
-  cards = 23 cards. P(Spice) = 2/23 (~8.7%), P(Elite) = 3/23 (~13.0%) per node-deal. Under
-  the full-refresh-every-turn rule below, an occupied Level 2 zone deals its full 4 nodes
+- **Level 1 deck:** 18 Standard (3 each of the 6) + 0 Elite + 1 Spice card = 19 cards. Of each
+  mob's 3 copies, 2 are the plain card and 1 is a `_loot` variant — same mob, same combat
+  stats, but winning against the `_loot` copy also draws from that level's Loot Deck (updated
+  2026-09-11 alongside `sim/board_state.py`'s `LootDeck`/`"_loot"` mechanic — the 3-per-mob
+  ratio itself is unchanged, only the internal split within those 3 copies is new). P(Spice on
+  any single node-deal) = 1/19 (~5.3%). Zero Elites deliberately — Elites are meant to read as
+  a real, close-to-coinflip risk (the locked target from the Elite derivation work), which
+  doesn't belong in front of a hero still learning the base puzzle.
+- **Level 2 deck:** 18 Standard (same 2-plain/1-`_loot` split per mob) + 3 Elite (1 each of
+  Bulwark/Berserker/Warlord, which always drop loot on a win, no `_loot` variant needed) + 2
+  Spice cards = 23 cards. P(Spice) = 2/23 (~8.7%), P(Elite) = 3/23 (~13.0%) per node-deal.
+  Under the full-refresh-every-turn rule below, an occupied Level 2 zone deals its full 4 nodes
   fresh every turn, so expected Elite appearances per turn per occupied zone ≈ 4 x 3/23 ≈
   0.52 — roughly one Elite showing up somewhere on that zone's board every other turn. If
   both Level 2 zones happen to be occupied simultaneously, that's roughly one Elite per turn

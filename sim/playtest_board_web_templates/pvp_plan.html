@@ -11,6 +11,24 @@
         <div class="main-content">
             {% for msg in flash %}<div class="flash">{{ msg }}</div>{% endfor %}
             <h2>PvP Duel!</h2>
+            <div style="background: #333; padding: 10px; margin-bottom: 20px; border-radius: 4px;">
+                <h3>Reaction Window (Use Consumables)</h3>
+                <form action="{{ url_for('cmp_pvp_use_consumable') }}" method="POST">
+                    <select name="item">
+                        {% set ns = namespace(has_items=false) %}
+                        {% for slot in hero.bag %}
+                            {% if slot and slot != 'food' %}
+                                {% for item_name, count in slot.items.items() %}
+                                    <option value="{{ item_name }}">{{ item_name|replace('_', ' ')|title }} ({{ count }})</option>
+                                    {% set ns.has_items = true %}
+                                {% endfor %}
+                            {% endif %}
+                        {% endfor %}
+                        {% if not ns.has_items %}<option value="">No valid consumables</option>{% endif %}
+                    </select>
+                    <button type="submit" {% if not ns.has_items %}disabled{% endif %}>Use Item</button>
+                </form>
+            </div>
             <p>Select exactly 3 cards for Round 1, 2, and 3.</p>
             <form action="{{ url_for('cmp_pvp_plan_submit') }}" method="POST">
                 <div style="display:flex; gap: 10px; margin-bottom: 20px;">

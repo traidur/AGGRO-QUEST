@@ -25,8 +25,7 @@ Town, Bag, Quests, Gold, trip-chaining — is the actual game.
 
 1. **No Movement Tax.** Commuting across the map costs nothing. Movement is a tempo choice,
    never a resource tax.
-2. **Carrots, Not Sticks.** No Doom Track, no "Game Over in N Turns" clock. Players are pulled
-   forward by decaying loot bonuses (Section VI) and the hard math walls of harder content.
+2. **Carrots, Not Sticks.** No global Doom Track or "Game Over in N Turns" clock kills you. Instead, you are fighting **Economic Inefficiency**. 
 3. **Determinism Over Dice.** Combat is a fully deterministic math puzzle — mob intent is
    printed and known in advance, round by round. The only randomness anywhere in a pull is
    which 4-of-6 cards you draw for your hand. You lose because your hand/sequence was
@@ -35,6 +34,13 @@ Town, Bag, Quests, Gold, trip-chaining — is the actual game.
    (STRIKE, AT RANGE, etc.) — condensed down to QUEST's much smaller per-pull format, not
    reinvented from scratch. See `DECK_CONDENSING_GUIDE.md` for exactly how that translation
    works.
+
+### The Motivation Engine: Economic Efficiency
+Most adventure games push heroes forward using a ticking global Doom Track. QUEST replaces the Doom Track with an **Economic Efficiency Puzzle**. You are pushing your luck not to survive, but to maximize your Gold-per-Trip. This is driven by three interlocking systems:
+
+1. **Quest Decay is the Real Clock:** Every extra turn spent in the wilderness, or every extra "safe" trip taken back to Town, mathematically rots the value of your active quests. You don't die by playing it safe; you bleed your future buying power.
+2. **Quest Exhaustion Forces Forward Motion:** The starter zones only have a finite amount of "easy" quests. Once the lower-tier quest decks run dry, the hero is forced to move into the harder zones. There is a strict, finite amount of Gold available in the game—any Gold lost to decay is gone forever.
+3. **The End Boss is an Economic Audit:** The final victory condition (the End Boss) is not just a combat check; it is a literal audit of the player's economic efficiency. If a hero bled too much Gold to quest decay in Zones 1 and 2, they will arrive at the End Boss lacking the buying power to afford their Level 3 Exhaustible abilities, highest-tier Equipment riders, or crucial Consumables. The game punishes playing it "too safe" by mathematically starving the player's endgame power.
 
 ### Balance philosophy (locked findings, not guesses)
 
@@ -816,6 +822,19 @@ Random mob drops are handled via tiered decks of mini-cards (e.g., a Level 1 Loo
 - **The Drop Rate:** Exactly 33% of Standard Mob cards (6 per 18-card deck) are printed with a "Loot Drop" icon. For pristine balance, exactly 1 copy of each of the 6 unique standard mobs gets the icon. This ensures that every draw from the Loot Deck is a guaranteed positive reward, rather than stuffing the deck with "Empty Pockets" cards.
 - **Elite/Boss Scaling:** Elite and Boss mobs feature a "Double Loot" icon, granting 2 draws from the appropriate Loot Deck upon defeat.
 - **Deck Depletion:** The physical Loot Decks should be printed with enough cards to comfortably supply 4 players. If a deck ever runs completely empty, simply reshuffle the discard pile (used Potions, sold items).
+
+**Level 1 Loot Deck Composition (24 Cards) - Locked 2026-09-11**
+*The Vendor Trash (Creates Bag Tetris Tension)*
+- 3x **Tarnished Silverware** (Sell in Town for 1 Gold)
+- 3x **Intact Pelt** (Sell in Town for 2 Gold)
+- 2x **Flawless Gemstone** (Sell in Town for 3 Gold)
+
+*The Consumables (The Trip Extenders)*
+- 6x **Minor Healing Potion** (Drink for 8 HP)
+- 4x **Smoke Bomb** (Free flee / PvP negate)
+- 3x **Whetstone** (+1 DMG/Block for one pull)
+- 2x **Preserving Charm** (Reset Quest decay)
+- 1x **Scroll of Vanquishing** (Auto-win standard pull)
 
 ## X. Competitive PvP (The Duel)
 

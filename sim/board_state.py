@@ -67,13 +67,45 @@ _STANDARD_MOBS = T.MOB_TIERS["standard"]
 # Per-level deck recipe: {card_name: copy_count}. Numbers are the locked ones from
 # OPEN_QUESTIONS.md's "Tier 1's actual two decks, worked example" -- transcribed, not derived.
 LEVEL_DECK_COMPOSITION = {
-    1: {**{mob: 3 for mob in _STANDARD_MOBS}, SPICE: 1},
-    2: {**{mob: 3 for mob in _STANDARD_MOBS}, **{elite: 1 for elite in _ELITE_NAMES}, SPICE: 2},
+    1: {**{mob: 2 for mob in _STANDARD_MOBS}, **{mob+"_loot": 1 for mob in _STANDARD_MOBS}, SPICE: 1},
+    2: {**{mob: 2 for mob in _STANDARD_MOBS}, **{mob+"_loot": 1 for mob in _STANDARD_MOBS}, **{elite: 1 for elite in _ELITE_NAMES}, SPICE: 2},
 }
 
 
 def is_spice(card_name):
     return card_name == SPICE
+
+
+
+@dataclass
+class LootDeck:
+    draw_pile: list
+    discard_pile: list = field(default_factory=list)
+
+    @classmethod
+    def new(cls, level, rng):
+        if level == 1:
+            cards = (
+                ["tarnished_silverware"] * 3 +
+                ["intact_pelt"] * 3 +
+                ["flawless_gemstone"] * 2 +
+                ["potion"] * 6 +
+                ["smoke_bomb"] * 4 +
+                ["whetstone"] * 3 +
+                ["preserving_charm"] * 2 +
+                ["scroll_of_vanquishing"] * 1
+            )
+            rng.shuffle(cards)
+            return cls(draw_pile=cards)
+        return cls(draw_pile=[])
+
+    def draw(self, rng):
+        if not self.draw_pile:
+            if not self.discard_pile:
+                return None
+            self.draw_pile, self.discard_pile = self.discard_pile, []
+            rng.shuffle(self.draw_pile)
+        return self.draw_pile.pop()
 
 
 @dataclass
@@ -126,6 +158,12 @@ class HeroBoardState:
     locked: list
     equipment: dict = field(default_factory=dict) # slot -> recipe name
     equipment_used: set = field(default_factory=set) # set of slots used this trip
+    pvp_whetstone_active: bool = False  # Whetstone used this PvP duel -- separate from
+    # equipment_used (a trip-level Durability tracker for equipped gear, not a place to stash
+    # unrelated per-duel consumable flags). NOTE: task #61 ("Build Whetstone's class-agnostic
+    # +1 dmg/+1 block pull buff") is still genuinely unbuilt -- nothing currently reads this
+    # flag to apply the bonus in either PvE or PvP combat resolution; using the item still only
+    # produces a flash message today, not an actual effect.
     gold: int = 0
     xp: int = 0
     tokens: int = 0
@@ -136,6 +174,7 @@ class HeroBoardState:
     alive: bool = True
     decay_stage: dict = field(default_factory=dict)  # loot name -> 0=Gold/1=Silver/2=Bronze/3=nothing
     quest_bag: list = field(default_factory=list)  # LEVEL2_QUESTS shuffle-refill reserve only
+    pending_loot: list = field(default_factory=list)  # Loot drawn when bag is full
     turns: int = 0  # OPEN_QUESTIONS.md's "What a turn is" (locked 2026-08-20): a resolved Node
     # pull, a Border crossing, or one Town visit (regardless of how much business happens
     # there) each cost exactly one turn -- the real, comparable cross-class/cross-run unit,
@@ -156,6 +195,7 @@ class BoardState:
     heroes: list
     zones: dict  # zone_id -> ZoneBoardState, only currently-occupied Zones present
     level_decks: dict  # level (1 or 2) -> LevelDeck
+    loot_decks: dict = field(default_factory=dict)  # level -> LootDeck
     turn_num: int = 0
     priority_token_holder: int = 0  # hero_idx -- competitive/co-op only, unused in solo
     pending_declarations: dict = field(default_factory=dict)  # hero_idx -> declared action
@@ -260,6 +300,13 @@ def deal_zone(state, zone_id, level, node_names, rng):
             deck.discard(card)
             card = deck.draw(rng)
         zone_board.dealt[node_name] = card
+        
+        # If a Node does not currently have a Gathering Token, 1 fresh Gathering Token is dealt to it.
+        if node_name not in zone_board.gathering_tokens:
+            if level == 1:
+                zone_board.gathering_tokens[node_name] = rng.choice(["Snap-Root", "Crag-Iron", "Scavenged Pelt"])
+            else:
+                zone_board.gathering_tokens[node_name] = rng.choice(["River-Mint", "Sun-Copper", "Bristle-Pelt"])
 
 
 def discard_zone(state, zone_id, level):

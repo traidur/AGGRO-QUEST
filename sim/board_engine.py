@@ -211,10 +211,11 @@ def _pull_and_resolve(hero, class_name, mod, mob_name, loot_name, rng, suppress_
     card-order submission comes back in a later request, not draw a second, different hand).
 
     Mutates hero in place. Returns {"outcome": "win"/"flee"/"died"/"no_room", "mob_name": ...}."""
-    pattern, mob_hp = M._pattern_hp_for_mob(class_name, mob_name)
+    mob_base = mob_name.replace("_loot", "")
+    pattern, mob_hp = M._pattern_hp_for_mob(class_name, mob_base)
     if hand is None:
         hand = rng.choice(mod.ALL_HANDS)
-    win, final_hp, final_rounds = M._engine_pull(class_name, mob_name, hand, pattern, mob_hp, hero.hp,
+    win, final_hp, final_rounds = M._engine_pull(class_name, mob_base, hand, pattern, mob_hp, hero.hp,
                                                   decide_fn=decide_fn, equipment=hero.equipment, equipment_used=hero.equipment_used)
     hero.hp = final_hp
     # One turn -- OPEN_QUESTIONS.md's "What a turn is" (locked): "Quest node: one pull is
@@ -227,7 +228,7 @@ def _pull_and_resolve(hero, class_name, mod, mob_name, loot_name, rng, suppress_
         # hp=0) -- hardcoded, not whatever raw negative value the pull actually produced.
         hero.hp = 0
         hero.alive = False
-        return {"outcome": "died", "mob_name": mob_name}
+        return {"outcome": "died", "mob_name": mob_base}
 
     if win:
         # Gold is unconditional on any win, recovery pull or not -- "the +1 Gold still
@@ -236,11 +237,14 @@ def _pull_and_resolve(hero, class_name, mod, mob_name, loot_name, rng, suppress_
         # verbatim). Only the quest LOOT is suppressed.
         hero.gold += 1
         if suppress_loot:
-            return {"outcome": "win", "mob_name": mob_name}
+            return {"outcome": "win", "mob_name": mob_base}
+            
+        drops_loot = "_loot" in mob_name or mob_base in LV.ELITE_MELEE
+        drops_double_loot = mob_base in LV.ELITE_MELEE
         if not M._add_loot(hero.bag, hero.locked, loot_name):
-            return {"outcome": "no_room", "mob_name": mob_name}
-        return {"outcome": "win", "mob_name": mob_name}
-    return {"outcome": "flee", "mob_name": mob_name}
+            return {"outcome": "no_room", "mob_name": mob_base, "drops_loot": drops_loot, "drops_double_loot": drops_double_loot}
+        return {"outcome": "win", "mob_name": mob_base, "drops_loot": drops_loot, "drops_double_loot": drops_double_loot}
+    return {"outcome": "flee", "mob_name": mob_base}
 
 
 def commit_node_pull(hero, class_name, node_name, mob_name, rng, suppress_loot=False, decide_fn=None,
@@ -605,6 +609,11 @@ def get_town_actions(hero, purchase_queue, board=None):
                 if hero.decay_stage.get(loot, 0) > 0:
                     actions.append({"type": "use_charm", "loot": loot})
 
+        vendor_trash_prices = {"tarnished_silverware": 1, "intact_pelt": 2, "flawless_gemstone": 3}
+        for item_name, price in vendor_trash_prices.items():
+            if M._accessible_count(hero.bag, hero.locked, item_name) > 0:
+                actions.append({"type": "sell", "item_name": item_name, "gain": price})
+
         recipes = EQ.get_recipes_for_class(hero.class_name)
         for recipe in recipes:
             if hero.equipment.get(recipe["slot"]) == recipe:
@@ -691,6 +700,11 @@ def apply_town_action(hero, action, purchase_queue, board=None, rng=None):
             M._add_food(hero.bag, hero.locked)
         else:
             M._add_item(hero.bag, hero.locked, action["item_name"])
+        return True
+
+    if action["type"] == "sell":
+        hero.gold += action["gain"]
+        M._remove_item(hero.bag, hero.locked, action["item_name"], 1)
         return True
 
     if action["type"] == "use_charm":
@@ -878,6 +892,39 @@ def apply_travel_action(hero, action, class_name, board, rng,
         level = TIER_TO_LEVEL[M.ZONE_TIER[zone_id]]
         result = commit_node_pull(hero, class_name, action["node_name"], action["mob_name"], rng,
                                    decide_fn=decide_fn, hand=hand)
+        
+        if result.get("outcome") == "win" and zone_id in board.zones:
+            gathering_item = board.zones[zone_id].gathering_tokens.get(action["node_name"])
+            if gathering_item:
+                if M._bag_has_room(hero.bag, hero.locked):
+                    M._add_item(hero.bag, hero.locked, gathering_item)
+                    board.zones[zone_id].gathering_tokens.pop(action["node_name"])
+                    result["gathering_item"] = gathering_item
+                else:
+                    hero.pending_loot.append(gathering_item)
+                    board.zones[zone_id].gathering_tokens.pop(action["node_name"])
+                    result["gathering_item_pending"] = gathering_item
+
+            if result.get("drops_loot") and hasattr(board, "loot_decks"):
+                num_draws = 2 if result.get("drops_double_loot") else 1
+                drawn_items = []
+                pending_items = []
+                deck = board.loot_decks.get(level)
+                if deck:
+                    for _ in range(num_draws):
+                        card = deck.draw(rng)
+                        if card:
+                            if M._bag_has_room(hero.bag, hero.locked):
+                                M._add_item(hero.bag, hero.locked, card)
+                                drawn_items.append(card)
+                            else:
+                                hero.pending_loot.append(card)
+                                pending_items.append(card)
+                if drawn_items:
+                    result["mob_drops"] = drawn_items
+                if pending_items:
+                    result["mob_drops_pending"] = pending_items
+        
         if not defer_zone_discard:
             B.discard_zone(board, zone_id, level)
         return result
@@ -1654,7 +1701,8 @@ def run_solo_chain(class_name, strategy, rng, max_turns, risk_tolerance=M.RISK_T
         rng.shuffle(hero.skill_purchase_order)
     purchase_queue = M._build_purchase_queue(class_name, bag_queue_position)
     level_decks = {1: B.LevelDeck.new(1, rng), 2: B.LevelDeck.new(2, rng)}
-    board = B.BoardState(mode="solo", heroes=[hero], zones={}, level_decks=level_decks)
+    loot_decks = {1: B.LootDeck.new(1, rng), 2: B.LootDeck.new(2, rng)}
+    board = B.BoardState(mode="solo", heroes=[hero], zones={}, level_decks=level_decks, loot_decks=loot_decks)
     board.setup_quests(rng)
 
     # Chain-init Town moment: picks up the initial active_quests log (nothing to turn in yet,
@@ -1764,13 +1812,31 @@ def _choose_field_action(hero_idx, board, class_names, quest_pools, rng, claimed
     out quests at their XP tier); then return_to_town as the last resort.
 
     purchase_queues (checkpointed 2026-08-24): optional {hero_idx: purchase_queue} dict, passed
-    to _trainer_has_business. None (e.g. a direct unit-test call) disables the opportunistic
-    Trainer-visit check entirely rather than crashing -- matches _trainer_has_business's own
-    None handling."""
+    straight to _trainer_has_business. None (e.g. a direct unit-test call) disables the
+    opportunistic Trainer-visit check entirely rather than crashing -- matches
+    _trainer_has_business's own None handling."""
     hero = board.heroes[hero_idx]
+    class_name = class_names[hero_idx]
+
+    # Mirrors the human web UI's "Claim All" button (playtest_board_web.py's
+    # claim_pending_items) rather than unconditionally discarding -- the previous version just
+    # called .clear() here with no attempt to make room first, silently vaporizing any
+    # bag-overflow loot on the AI-automatic path every single decision. That would have
+    # undercounted bag-overflow loot in exactly the AI-driven economy sweeps meant to measure
+    # it. Items that still don't fit after this pass are left in pending_loot, not discarded --
+    # they'll be retried the next time this function runs.
+    if getattr(hero, "pending_loot", None):
+        leftover = []
+        for item in hero.pending_loot:
+            if M._bag_has_room(hero.bag, hero.locked):
+                M._add_item(hero.bag, hero.locked, item)
+            else:
+                leftover.append(item)
+        hero.pending_loot = leftover
+
+    zone_or_border, _node = hero.position
     quest_pool = quest_pools[hero_idx]
     actions = get_travel_actions(hero, board, rng)
-    zone_or_border, _node = hero.position
 
     if hero.hp < hero.max_hp * 0.5:
         heal = next((a for a in actions if a["type"] in ("use_food", "use_potion")), None)
@@ -1924,7 +1990,8 @@ def run_competitive_chain(class_names_list, strategy, rng, max_rounds,
         heroes.append(hero)
     purchase_queues = {i: M._build_purchase_queue(class_names_list[i], 0) for i in range(n)}
     level_decks = {1: B.LevelDeck.new(1, rng), 2: B.LevelDeck.new(2, rng)}
-    board = B.BoardState(mode="competitive", heroes=heroes, zones={}, level_decks=level_decks)
+    loot_decks = {1: B.LootDeck.new(1, rng), 2: B.LootDeck.new(2, rng)}
+    board = B.BoardState(mode="competitive", heroes=heroes, zones={}, level_decks=level_decks, loot_decks=loot_decks)
     board.setup_quests(rng, copies_per_quest=max(3, n))
 
     for _round_num in range(max_rounds):

@@ -216,6 +216,26 @@ Live values (`sim/playtest_board_web.py`, `_new_hero`):
   match the live code with no recovered rationale in `AI_HANDOFF.md` or elsewhere — flagging
   here in case the original reasoning resurfaces and needs reconciling.
 
+## Multiplayer PvP rules added alongside the Loot Deck/Gathering Token build (2026-09-11)
+
+Documented here after being found only in code (`playtest_board_web.py`'s `cmp_pvp_use_consumable`/
+`_cmp_pvp_resolve`) with no design-doc entry — recording the rules as implemented so they're not
+only discoverable by reading a diff. Neither has a recorded validation pass; flag for a real
+check if either turns out load-bearing.
+
+**Smoke Bomb in a PvP duel is a full loss for the fleeing hero, except it skips the Battle
+Hardened token pendulum.** The winner still gets the usual Gold reward (+1, plus a second +1 if
+the loser had Gold to lose), but `winner.tokens`/`loser.tokens` are left untouched entirely for
+this outcome — a normal duel loss always moves the pendulum (`winner.tokens -= 1`,
+`loser.tokens += 1`); fleeing via Smoke Bomb does not. Concretely: Smoke Bomb trades Gold for
+token-position safety, it isn't a way to avoid losing outright.
+
+**The Bystander Rule (3+ heroes contesting one Node):** when a PvP duel resolves between two of
+3+ claimants on the same Node, the winner takes the PvP Gold reward, but the underlying PvE
+mob/node is explicitly left available rather than awarded to the winner — the remaining
+claimants ("bystanders") still get to fight it. With exactly 2 claimants, the normal rule
+applies and the winner claims the node's loot directly.
+
 ## Diagnostic tools
 
 - `sim/sim_pvp.py` — the true baseline duel resolver + minimax matchup-matrix generator (raw
