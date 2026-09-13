@@ -166,6 +166,12 @@ def get_item_icon(item_name):
 def inject_globals():
     return dict(
         quest_locations={v[1]: k.replace('_', ' ').title() for k, v in M.NODES.items()},
+        town_names={
+            1: "The Smugglers' Roost",
+            2: "Port Ironguard",
+            3: "The Vanguard Camp",
+            4: "The Vanguard Camp"
+        },
         get_class_matchup=get_class_matchup,
         get_mob_flavor=lambda mob_name: _MOBS_TEXT.get(mob_name.replace("_loot", ""), {}),
         get_item_name=get_item_name,

@@ -166,7 +166,7 @@
                 </div>
                 <div class="map-node-btn town {% if is_active_town %}active{% endif %}"
                      {% if is_active_town %}onclick="document.getElementById('travel-idx').value='{{ return_idx }}'; document.getElementById('travel-form').submit();"{% endif %}>
-                    TOWN {{ z }}
+                    {{ town_names[z] }}
                 </div>
 
             </div>
@@ -183,7 +183,7 @@
                 </div>
                 <div class="map-node-btn town {% if is_active_trainer %}active{% endif %}" style="background: rgba(144, 40, 144, 0.9); border-color:#d88;"
                      {% if is_active_trainer %}onclick="document.getElementById('travel-idx').value='{{ visit_idx }}'; document.getElementById('travel-form').submit();"{% endif %}>
-                    TRAINER
+                    {{ 'Syndicate Master' if z == 2 else 'Class Trainer' }}
                 </div>
             </div>
             {% endif %}
@@ -229,7 +229,7 @@
     {% if board %}
     <div style="display: flex; gap: 20px; justify-content: center; margin-top: 20px;">
         <div style="border: 1px solid #ccc; padding: 10px; background: #fafafa; border-radius: 4px; width: 300px;">
-            <h4 style="margin: 0 0 10px 0; text-align: center;">Town 3 Market</h4>
+            <h4 style="margin: 0 0 10px 0; text-align: center;">{{ town_names[3] }} Market</h4>
             {% if board.town_markets.get(3) %}
                 <ul style="margin: 0; padding-left: 20px;">
                 {% for quest in board.town_markets[3] %}
@@ -241,7 +241,7 @@
             {% endif %}
         </div>
         <div style="border: 1px solid #ccc; padding: 10px; background: #fafafa; border-radius: 4px; width: 300px;">
-            <h4 style="margin: 0 0 10px 0; text-align: center;">Town 4 Market</h4>
+            <h4 style="margin: 0 0 10px 0; text-align: center;">{{ town_names[4] }} Market</h4>
             {% if board.town_markets.get(4) %}
                 <ul style="margin: 0; padding-left: 20px;">
                 {% for quest in board.town_markets[4] %}

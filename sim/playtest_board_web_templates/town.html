@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>QUEST — Town</title>
+    <title>QUEST — {{ town_names.get(hero.position[0], 'Town') }}</title>
     
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Crimson+Pro:ital,wght@0,400;0,600;1,400&family=Barlow+Condensed:wght@400;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
@@ -11,12 +11,19 @@
 
     {% include "_hero_sidebar.html" %}
 
+    <div class="main-content">
     {% if turn_label %}<div class="turn-banner">{{ turn_label }}</div>{% endif %}
-    <h2>Town — Zone {{ hero.position[0] }}</h2>
+    <h2>
+        {% if hero.position[1] == 'trainer' %}
+            {{ 'The Syndicate Master' if hero.position[0] == 2 else 'Class Trainer' }} — Zone {{ hero.position[0] }}
+        {% else %}
+            {{ town_names.get(hero.position[0], 'Town') }} — Zone {{ hero.position[0] }}
+        {% endif %}
+    </h2>
     {% for msg in flash %}<div class="flash">{{ msg }}</div>{% endfor %}
 
     {% if board and hero.position[0] in [3, 4] and hero.position[1] != 'trainer' %}
-        <h3 style="margin-top: 0; color: #fff;">Town {{ hero.position[0] }} Quest Market</h3>
+        <h3 style="margin-top: 0; color: #fff;">{{ town_names.get(hero.position[0], 'Town') }} Quest Market</h3>
         <div class="market-section" style="display: flex; gap: 16px; margin-bottom: 24px; min-height: 220px; align-items: center;">
             <!-- Visual Quest Deck -->
             <div class="quest-deck" style="width: 140px; height: 200px; background: repeating-linear-gradient(45deg, #4a2e15, #4a2e15 10px, #3e2612 10px, #3e2612 20px); border: 2px solid #2a1508; border-radius: 8px; box-shadow: 4px 4px 0 rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; position: relative;">
