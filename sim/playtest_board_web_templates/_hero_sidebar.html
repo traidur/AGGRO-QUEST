@@ -122,6 +122,7 @@ Bag/Quest-Log blocks -- one copy instead of four. -->
             {% for quest in hero.active_quests %}
                 <li>
                     {{ quest.replace('_', ' ')|title }} &mdash; <span style="color:#aaccff;">Head to {{ quest_locations[quest] }}</span>
+                    <span style="color:#aaffaa; font-size:11px;">{{ get_quest_progress(hero, quest) }}</span>
                     {% if hero.decay_stage.get(quest, 0) > 0 %}
                         <span style="color:#ff4444; font-size:11px;"> (Stage {{ hero.decay_stage[quest] }})</span>
                     {% endif %}
