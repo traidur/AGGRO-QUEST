@@ -61,6 +61,9 @@ except Exception as e:
 
 import argparse
 import random
+import pickle
+
+SAVE_FILE = "sim/savegame.pkl"
 
 from flask import Flask, redirect, render_template, request, url_for
 
@@ -436,7 +439,8 @@ def _outcome_message(kind, result):
 @app.route("/")
 def index():
     reset_session()
-    return render_template("setup.html", classes=list(M.CARD_SOURCE.keys()))
+    has_save = os.path.exists(SAVE_FILE)
+    return render_template("setup.html", classes=list(M.CARD_SOURCE.keys()), has_save=has_save)
 
 
 def _new_hero(class_name, rng):
@@ -1464,6 +1468,36 @@ def cmp_round_result():
 @app.route("/cmp/round_result/continue", methods=["POST"])
 def cmp_round_result_continue():
     return _cmp_begin_round()
+
+
+@app.route("/load", methods=["POST"])
+def load_game():
+    if os.path.exists(SAVE_FILE):
+        try:
+            with open(SAVE_FILE, "rb") as f:
+                data = pickle.load(f)
+            _S.clear()
+            _S.update(data)
+            _S.setdefault("flash", []).append("Game loaded successfully.")
+            if _S.get("mode") == "competitive":
+                return redirect(url_for("cmp_declare"))
+            return redirect(url_for("travel")) # Best-effort redirect; they can navigate back if needed
+        except Exception as e:
+            app.logger.error(f"Load failed: {e}")
+            _S.setdefault("flash", []).append(f"Failed to load: {e}")
+    return redirect(url_for("index"))
+
+
+@app.after_request
+def auto_save_state(response):
+    if response.status_code in (200, 302) and not request.path.startswith("/static/") and request.path != "/" and request.path != "/load":
+        if _S and _S.get("board"):
+            try:
+                with open(SAVE_FILE, "wb") as f:
+                    pickle.dump(_S, f)
+            except Exception as e:
+                app.logger.error(f"Failed to auto-save game: {e}")
+    return response
 
 
 def main():

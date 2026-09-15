@@ -17,6 +17,7 @@ UI extension," explicitly sequenced last).
 """
 from __future__ import annotations
 
+import itertools
 import random
 from dataclasses import dataclass, field, replace
 import equipment_data as EQ
@@ -84,6 +85,8 @@ class PullState:
     equipment: dict = field(default_factory=dict)
     eq_state: dict = field(default_factory=dict)
     equipment_used: set = field(default_factory=set)  # slots locked for the rest of this pull
+    max_rounds: int = ROUNDS  # default 3 -- overridden for Spice mobs like "Loot Goblin" that
+    # flee before round 3 (see sim/board_state.py's Spice cards and OPEN_QUESTIONS.md)
     outcome: Optional[str] = None  # None / "win" / "loss" / "fled"
     round_state: RoundState = field(default_factory=RoundState)
     stance: Optional[str] = None  # Warrior only -- chosen at round 0, locked for the pull
@@ -237,7 +240,7 @@ def apply_action(state: PullState, action: dict) -> PullState:
         result = "loss"
     elif outcome.new_mob_hp_remaining <= 0:
         result = "win"
-    elif new_round >= ROUNDS:
+    elif new_round >= state.max_rounds:
         result = "fled"
     else:
         result = None
@@ -290,15 +293,26 @@ class QuestIntelligence:
         mod = CARD_SOURCE[state.class_name]
         key = (state.class_name, state.hand, state.mob_name)
         if key != self._cache_key:
-            # Only plan around equipment NOT already used this trip -- state.equipment holds
-            # every equipped slot regardless of Durability status, so passing it unfiltered let
-            # the solver plan to activate an already-used slot, which get_legal_actions then
-            # correctly excludes, causing "cached best-line variant not found in legal actions".
-            available_equipment = {slot: recipe for slot, recipe in state.equipment.items()
-                                    if slot not in state.equipment_used}
-            win, seq_cards, stance_seq, hp_left, rounds, usage = best_line_with_equipment(
-                state.class_name, state.hand, state.mob_pattern, state.mob_hp_total, state.hero_hp, available_equipment
-            )
+            if state.max_rounds < ROUNDS:
+                # Spice mobs that flee before round 3 (e.g. Loot Goblin) use a small, real,
+                # equipment-free exhaustive search over exactly max_rounds cards instead of the
+                # normal 3-round solver, which has no concept of an early flee -- see
+                # _best_line_short_pull's own docstring for why this is a real search, not a
+                # "sort by highest damage" shortcut.
+                seq_cards, stance_seq = _best_line_short_pull(
+                    state.class_name, state.hand, state.mob_pattern, state.mob_hp_total,
+                    state.hero_hp, state.max_rounds)
+                usage = {}
+            else:
+                # Only plan around equipment NOT already used this trip -- state.equipment holds
+                # every equipped slot regardless of Durability status, so passing it unfiltered let
+                # the solver plan to activate an already-used slot, which get_legal_actions then
+                # correctly excludes, causing "cached best-line variant not found in legal actions".
+                available_equipment = {slot: recipe for slot, recipe in state.equipment.items()
+                                        if slot not in state.equipment_used}
+                win, seq_cards, stance_seq, hp_left, rounds, usage = best_line_with_equipment(
+                    state.class_name, state.hand, state.mob_pattern, state.mob_hp_total, state.hero_hp, available_equipment
+                )
             self._cached_seq = list(seq_cards)
             self._cached_stance_seq = list(stance_seq) if stance_seq else None
             self._cached_usage = usage
@@ -317,8 +331,48 @@ class QuestIntelligence:
         raise RuntimeError(f"cached best-line variant {variant!r} not found in legal actions")
 
 
+def _best_line_short_pull(class_name, hand, mob_pattern, mob_hp, starting_hp, num_rounds):
+    """A real, small exhaustive search over exactly `num_rounds` cards (not a heuristic like
+    "sort by highest printed damage") for Spice mobs that flee before round 3 (e.g. Loot
+    Goblin, max_rounds=2). Deliberately a genuine brute-force search, not a shortcut, per this
+    project's own rule against a second, potentially-diverging search implementation -- a
+    "highest damage number" heuristic could pick a worse pair than the real solver whenever two
+    cards have a synergy bonus (Warrior's Vanguard Shield/Blade chain, Wizard's Spellweave
+    source/payoff, etc.), which a real permutation search never gets wrong. No equipment
+    considered here -- every Spice mob using this path is already solver-verified to be
+    reliably winnable with the bare hand alone (see EQUIPMENT_HANDOFF.md-style verification in
+    OPEN_QUESTIONS.md's Loot Goblin entry), so it isn't needed for correctness."""
+    mod = CARD_SOURCE[class_name]
+    # STANCE_SEQS holds full pre-built 3-round sequences (e.g. ("G","G","G")) -- only the
+    # single repeated letter matters here, since stance never changes within a pull.
+    stances = [seq[0] for seq in mod.STANCE_SEQS] if class_name == "warrior" else [None]
+    best = None
+    for seq_cards in itertools.permutations(hand, num_rounds):
+        for stance_seq in ([tuple([s] * num_rounds) for s in stances] if stances != [None] else [None]):
+            hp, remaining, hmax = starting_hp, mob_hp, initial_max_hp(class_name, starting_hp)
+            state = RoundState()
+            win = False
+            for i, card in enumerate(seq_cards):
+                stance = stance_seq[i] if stance_seq else None
+                outcome = mod.resolve_round(state, card, stance, i, mob_pattern, mob_hp, remaining, hp, hmax)
+                if outcome is None:
+                    hp = float("-inf")
+                    break
+                hp, remaining, hmax, state = outcome.new_hp, outcome.new_mob_hp_remaining, outcome.new_hero_max_hp, outcome.new_state
+                if hp <= 0:
+                    break
+                if remaining <= 0:
+                    win = True
+                    break
+            key = (win, hp)
+            if best is None or key > best[0]:
+                best = (key, (list(seq_cards), list(stance_seq) if stance_seq else None))
+    return best[1]
+
+
 def new_pull_with_hp(class_name: str, mob_name: str, hand, pattern, mob_hp: float,
-                      starting_hp: float, equipment=None, eq_state=None, equipment_used=None) -> PullState:
+                      starting_hp: float, equipment=None, eq_state=None, equipment_used=None,
+                      max_rounds=None) -> PullState:
     """Like new_pull(), but for a hero who already has a specific hand/mob/HP in hand instead
     of drawing fresh -- the shape macro_sim.py's two real pull sites need (HP carries over
     between pulls, mob is already chosen by node/quest routing). Threads starting_hp through
@@ -336,4 +390,5 @@ def new_pull_with_hp(class_name: str, mob_name: str, hand, pattern, mob_hp: floa
         mob_name=mob_name, mob_pattern=pattern, mob_hp_total=float(mob_hp),
         mob_hp_remaining=float(mob_hp), hand=tuple(hand), equipment=equipment or {}, eq_state=eq_state or {},
         equipment_used=equipment_used if equipment_used is not None else set(),
+        max_rounds=max_rounds if max_rounds is not None else ROUNDS,
     )

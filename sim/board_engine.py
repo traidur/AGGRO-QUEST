@@ -620,7 +620,12 @@ def get_town_actions(hero, purchase_queue, board=None):
                 continue
             can_afford = True
             bag_counts = {}
-            for item in hero.bag: bag_counts[item] = bag_counts.get(item, 0) + 1
+            for slot in hero.bag:
+                if isinstance(slot, dict) and "items" in slot:
+                    for k, v in slot["items"].items():
+                        bag_counts[k] = bag_counts.get(k, 0) + v
+                elif isinstance(slot, str):
+                    bag_counts[slot] = bag_counts.get(slot, 0) + 1
             for cost_k, cost_v in recipe["cost"].items():
                 if cost_k == "Gold":
                     if hero.gold < cost_v: can_afford = False

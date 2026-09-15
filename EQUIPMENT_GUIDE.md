@@ -6,7 +6,9 @@ class and `MACRO_LOOP_GUIDE.md`'s role for the Town/Bag/Gold economy — this is
 design decisions get made and their reasoning kept, not invented fresh each session.
 
 **Status: core mechanic locked (2026-09-05), redemption mechanic's shape locked (2026-09-05),
-ingredient menu and exact material list not yet locked.**
+ingredient menu and material list built and wired into real gameplay (`board_engine.py`'s
+`craft_equipment` Town action) — see "Post-Audit Design Locks" below for the current numbers.
+Gold/material pricing is a first-pass balance-sweep result (2026-09-08), not yet fully locked.**
 
 ## Origin and constraint this system must satisfy
 
@@ -184,10 +186,13 @@ without being an exact material-name match — both are 4+ tiers out (not needed
 - Whether a recipe requiring a given subtype accepts only that exact subtype, or allows a
   higher-tier substitute (e.g., Sun-Copper usable anywhere Crag-Iron is required) — a real
   design choice affecting how forgiving crafting feels, not yet decided either way.
-- The actual cost table (which Base/Ingredient needs which token type + how much Gold) — blocked
-  on the ingredient menu itself being locked first.
 - Whether unequipped spare materials/items sit in the Bag (competing with quest loot for space)
   or have their own separate storage.
+
+The actual cost table (which Base/Ingredient needs which token type + how much Gold) is no longer
+open — see "Post-Audit Design Locks" below for the real, current numbers. It's a first-pass
+balance-sweep result, not a final locked price, but it exists and is what the code actually
+charges today.
 
 ## Open questions
 
@@ -241,13 +246,48 @@ The strict "effect is bounded to a single round" Durability rule was intentional
 ### 2. Equipment Scaling by Weight
 The original Grade 1 definitions (flat +1) have been replaced by a weight-scaling system to properly compensate class survivability limitations and reward heavier resource investments:
 - **Honed:** +1 DMG (1-Hander/Wand), +2 DMG (2-Hander/Staff)
-- **Reinforced:** +2 Block (Light Armor), +3 Block (Medium Armor), +4 Block (Heavy Armor)
+- **Reinforced:** +1 Block (Light Armor), +2 Block (Medium Armor), +3 Block (Heavy Armor) —
+  trimmed down from an original +2/+3/+4 draft (2026-09-08) after the balance sweep showed those
+  values made Reinforced the single strongest item in several classes' entire armor track,
+  outright beating multiple Grade 2 items it was supposed to sit below.
+
+### 2b. Persistent rebuilt as a weight-scaled Echo (2026-09-08), not a flat carry-over
+The original "this round's Block carries into the next round" design measured at a flat 0.0
+percentage-point win-rate uplift for Warrior and was the weakest item in Paladin's kit — leftover
+Block is worthless exactly when a hero is in danger and has none to spare. Replaced with an Echo:
+Reinforced's own this-round bonus, PLUS an automatic, unconditional bonus next round (no card
+spent), tempered down at higher weights rather than doubled flat, to avoid compounding Block+Echo
+into the "quietly cannot die" failure mode this project has already hit twice (Cleric, then
+Runecaster).
+- **Persistent, this round:** +1 Block (Light), +2 Block (Medium), +3 Block (Heavy)
+- **Persistent, next round (automatic):** +1 Block (Light), +1 Block (Medium), +2 Block (Heavy)
+
+### 2c. Blessed split into a two-step progression (2026-09-08)
+The original single-tier Blessed (+2 Heal) was overtuned for a Grade 1 item. Split into
+**Blessed** (Grade 1, +1 Heal, Staff-only) and a new **Greater Blessed** (Grade 2, +2 Heal — the
+old value, moved to its correctly-gated tier; Staff-only; costs a River-Mint Tier-2 material).
 
 ### 3. Tier-Gating & Material Compression
-To prevent recipe bloat, equipment is compressed into Tiers (Tier 1 = Levels 1 & 2). The menu is split by material requirements:
-- **Early Tier 1 (Level 1 materials only):** Basic stat boosts (`Honed`, `Reinforced`, `HoT`). Accessible immediately at Level 1.
-- **Advanced Tier 1 (Level 1 + Level 2 materials):** Complex mechanics (`Pierce`, `Ruthless`, `Sunder`, `Elusive`, `Thorns`, `Persistent`). Players must reach Level 2 to gather the required materials to unlock these.
+To prevent recipe bloat, equipment is compressed into Grades (Tier 1 = Levels 1 & 2). The menu is split by material requirements:
+- **Grade 1 (Level 1 materials only):** Basic stat boosts (`Honed`, `Reinforced`, `Blessed`,
+  `Pierce`). Accessible immediately at Level 1. Pierce was reclassified down from Grade 2
+  (2026-09-08) after the sweep showed it performing at or below Honed's own value in every class
+  that had it — a correctly-performing Level 1 item that had been misfiled, not an underperforming
+  Level 2 one.
+- **Grade 2 (requires a Tier-2 material — Sun-Copper/River-Mint/Bristle-Pelt):** Complex mechanics
+  (`Ruthless`, `Sunder`, `Elusive`, `Thorns`, `Persistent`, `Greater Blessed`). Players must reach
+  Level 2 to gather the required materials to unlock these.
 
 ### 4. Physical Presentation (Crafting Deck vs. Treasure Deck)
 - **Crafting Deck:** Fully printed item cards (e.g., "Honed Crag-Iron Blade") with material costs printed on them. Players browse the deck in Town. The Tier-gating keeps this deck small (~34 cards per Tier).
 - **Treasure Deck:** Unique, named loot drops (e.g., "The Ashbringer") with NO material costs printed on them, only a Gold value. Drawn from Elites or bought from a rotating Gold shop in Town.
+
+### 5. Pricing — preliminary, sourced from a real sweep, not yet fully locked (2026-09-08)
+A full Gold price table now exists in `sim/equipment_data.py` (every Grade 1/2 ingredient plus
+every Base), derived from the balance sweep in `EQUIPMENT_SWEEP_RESULTS.md`: Gold is set roughly
+proportional to each ingredient's measured cross-class average win-rate uplift (a rough "1 Gold
+per ~2.2 percentage points" conversion, floored at 1), not assigned by feel. This is a working
+first pass, not a final locked price — open to revision once more of the economy around it
+(Gathering Token sell-back price, the ready-made-market premium) is itself locked. Crafting
+itself is real and reachable in gameplay today (`board_engine.py`'s `craft_equipment` action),
+not just designed on paper.

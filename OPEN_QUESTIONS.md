@@ -68,6 +68,26 @@ same deck.
 - **Rare Spawns ("Loot Goblin").** A special mob card mixed into the zone deck: low HP, but
   Flees on round 2 instead of round 3. Drops Wildcard Loot or flat Gold if killed. Being dealt
   face-up is meant to create real priority contention and greed-driven routing changes.
+  **Numbers locked 2026-09-14, solver-verified: 5 HP, ATK 2/2 and 0 Block across its 2 active
+  rounds, flees before round 3, 5 Gold on kill (no XP -- see below), no numbered card slot
+  in `sim/board_state.py` yet.** At 5 HP with this ATK/Block, all 9 classes clear it with
+  100% of their hands (checked directly, not assumed) -- deliberately reliable rather than a
+  real gamble, since a card that only appears 1-3 times across both hero Levels doesn't get
+  the repeated exposure a genuine risk/reward mechanic needs to feel fair; the token ATK is
+  real but never threatens survival (4 total unmitigated damage across 2 rounds, well under
+  any class's starting HP even with zero Block played). Reward is flat Gold only, sized
+  against the real per-pull quest-progress rate (every quest tier in `macro_sim.py` pays
+  almost exactly 1 XP and ~1.7-2.0 Gold per contributing pull toward its eventual turn-in,
+  checked directly across all 8 tiers) -- 5 Gold is a deliberate, generous multiple of that
+  baseline, since choosing the Goblin over a quest-advancing node means giving up progress
+  you'd have made anyway. **XP was deliberately left out**, even though it would otherwise
+  make sense as part of matching the quest-pull baseline: `LEVEL2_XP_THRESHOLD` is exactly
+  `3 x 2` specifically so finishing the 3 starter quests and reaching Level 2 are guaranteed
+  to be the same event (see `macro_sim.py`'s own comment on this) -- letting any non-quest
+  source contribute XP breaks that guarantee, letting a hero reach Level 2 without having
+  turned in all 3 quests. Fixing that properly would mean reworking the Level 2 trigger to
+  check quest completion directly instead of a raw XP threshold -- out of scope for one Spice
+  card, so Loot Goblin stays Gold-only instead.
 - **Gathering Nodes.** A non-combat resource card in the same deck — no ATK/HP at all. Claiming
   it costs something instead of requiring a fight (e.g. "take 3 unmitigated damage, or discard
   a hand card with 3+ Block") and yields Potions, Gold, or specific loot with no combat-solver
@@ -115,11 +135,16 @@ left open below.
   separate from loot, no competition with the existing 2-slot squeeze.
 - **The Board Sweep (The Reset).** Non-combat. Claiming this node discards all face-up cards on
   the other 3 nodes in the Zone, deals 3 fresh cards from the Zone Deck, and lets you
-  immediately claim and pull one of those fresh nodes. **Ruled: resolves before any pulls
-  happen that turn, and any hero on a node affected by the sweep may change their already-
-  declared target if they wish** — protects against Board Sweep silently invalidating another
-  hero's locked-in choice with no recourse, given "move and declare" is normally simultaneous
-  for everyone in a zone.
+  immediately claim and pull one of those fresh nodes. **Ruled 2026-09-14 (supersedes an
+  earlier draft ruling that protected other heroes' declared targets): once committed, a hero
+  is committed to whatever their node becomes — no redeclaring if Board Sweep changes it out
+  from under them.** Justification: Board Sweep is a visible, known option on the board at
+  declare time — a hero who declares a different node has already seen it and knowingly
+  accepted the risk that someone else picking it could change their own node. This is known,
+  visible information, not a hidden surprise sprung on them, matching this project's existing
+  no-hidden-information principle elsewhere (see the PvP duel entry below) — so no protective
+  exception is needed, and the simpler "committed means committed" rule is both fewer words to
+  remember at the table and consistent with how every other node-content change already works.
 - **The "DPS Dummy" (The Armor Check).** Combat. 14 HP, 0 ATK all 3 rounds — a pure damage-race
   mob where Block/heal cards are dead draws. Fail to kill in 3 rounds: it flees *and* steals 1
   Gold or 1 Loot from the Bag. Kill it: premium loot. **Not yet checked: class symmetry** — do
@@ -151,16 +176,23 @@ left open below.
   and corrected against the actual printed card text): success odds range from 66.7% (Ranger;
   also Warrior specifically while locked into Champion stance) to 100% (Cleric, Paladin, Druid,
   and Warrior while locked into Guardian stance) — a real spread, but nobody's mathematically
-  locked out of the Gamble ever succeeding. **Two rulings still open, not yet decided:** (a)
-  Warrior's own odds swing 33 points depending on which stance is locked that pull, since two
-  of its three Block-bearing cards read 0 Block specifically in Champion stance — does "has the
-  keyword" ignore current stance, or only count if the stance you're actually in shows a
-  nonzero value; (b) three cards carry only a conditional or triggered Heal/Block rather than a
-  flat guaranteed base value (Cleric's Smite, via its automatic Sacred Balance heal; Paladin's
-  Invocation of Grace, whose heal scales off STRIKE cards already played; Ranger's Beast Bond:
-  Wolf, which activates a *future* persistent Block rather than an immediate one) — does the
-  keyword count if it's conditional, or only if it's guaranteed on that card regardless of
-  circumstance.
+  locked out of the Gamble ever succeeding.
+
+  **(a) Resolved 2026-09-14:** Warrior's own odds swing 33 points depending on which stance is
+  locked that pull, since two of its three Block-bearing cards (Shield Block, Vanguard Blade)
+  read 0 Block specifically in Champion stance. **Ruled: a card's Heal/Block eligibility for
+  the Gamble is judged by whichever stance is actually locked in for that pull, full stop.**
+  Warrior's stance is chosen with the hand already fully seen (not blind, not before cards are
+  dealt) — so a card reading 0 Block in the stance a player knowingly chose isn't a hidden
+  unfair swing, it's a tradeoff the player already accepted when picking that stance for other
+  reasons. No separate exception needed; this just falls out of how stance already works.
+
+  **(b) Still open, not yet decided:** three cards carry only a conditional or triggered
+  Heal/Block rather than a flat guaranteed base value (Cleric's Smite, via its automatic Sacred
+  Balance heal; Paladin's Invocation of Grace, whose heal scales off STRIKE cards already
+  played; Ranger's Beast Bond: Wolf, which activates a *future* persistent Block rather than an
+  immediate one) — does the keyword count if it's conditional, or only if it's guaranteed on
+  that card regardless of circumstance.
 
 *(Items 2-5 previously here — Rest vs. Claim structure, Winded-trigger rule, Wizard outcome
 variance under the Cast Penalty, ranged-mob-never-engages — all referenced a Winded/OOM +
