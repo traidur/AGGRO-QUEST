@@ -172,13 +172,15 @@ _ELITE_NAMES = list(LV.ELITE_MELEE.keys())
 
 
 def _pattern_hp_for_mob(class_name, mob_name):
-    """(pattern, mob_hp) for mob_name against class_name -- checks the Elite lookup first,
-    falling back to T.MOBS. The one shared place that knows how to resolve either kind of mob
-    name, so _scouted_pull_mob/_best_case_mob/the main node-pull draw don't each need their
-    own Elite-vs-Standard branch."""
+    """(pattern, mob_hp) for mob_name against class_name -- checks the Elite lookup first, then
+    the Level 2-exclusive Standard lookup, falling back to T.MOBS. The one shared place that
+    knows how to resolve any kind of mob name, so _scouted_pull_mob/_best_case_mob/the main
+    node-pull draw don't each need their own Elite-vs-Level2Standard-vs-Standard branch."""
     mob_name = mob_name.replace("_loot", "")
     if mob_name in LV.ELITE_MELEE:
         return LV._elite_pattern(class_name, mob_name), LV.ELITE_HP
+    if mob_name in LV.LEVEL2_STANDARD:
+        return LV._level2_standard_pattern(class_name, mob_name)
     return T.MOBS[mob_name][class_name]
 
 
@@ -186,12 +188,16 @@ def _named_pool_for_tier(class_name, tier):
     """(names, weights) for rng.choices -- Standard tiers pass straight through to
     T.mob_pool_weights unchanged (verified no-op for existing content: same pool, same
     weights, same subsequent rng.choices call). LEVEL2_TIER additionally mixes in the Elite
-    trio by name, each Elite weighted 1 against each Standard mob's weight tripled --
+    trio by name (each Elite weighted 1 against each Standard mob's weight tripled --
     reproduces the real Level 2 deck's 18-Standard-copies : 3-Elite-copies ratio without ever
-    registering Elites in T.MOBS/MOB_NAMES."""
+    registering Elites in T.MOBS/MOB_NAMES) and swaps Grunt/Enforcer/Ambusher's names for their
+    Level 2-exclusive LEVEL2_STANDARD counterparts, same weight, standalone numbers -- see
+    leveling_validation.py's LEVEL2_STANDARD for why these carry no code-level relationship to
+    the base mobs despite the resemblance in their numbers."""
     if tier == LEVEL2_TIER:
         pool, weights = T.mob_pool_weights("standard")
-        names = list(pool) + _ELITE_NAMES
+        names = [f"{name}_L2" if f"{name}_L2" in LV.LEVEL2_STANDARD else name for name in pool]
+        names = names + _ELITE_NAMES
         wts = [w * 3 for w in weights] + [1] * len(_ELITE_NAMES)
         return names, wts
     return T.mob_pool_weights(tier)
@@ -557,13 +563,15 @@ def _pull_exceeds_risk(mod, has_stance, mob_name, class_name, hp, risk_tolerance
     enough lethal hands are found to already exceed the threshold, even
     if not every hand has been checked.
 
-    mob_pattern_hp: optional (pattern, mob_hp) pair, bypassing the mob_name -> T.MOBS lookup.
-    Used by the Level 2 test pool (see run_one_trip's mob_level param), which draws directly
-    from leveling_validation.mob_pool_for_level's weighted Standard+Elite pool instead of a
-    named tier lookup -- Elites were deliberately never registered in T.MOBS/MOB_NAMES (see
-    that param's own docstring for why), so there's no name to look up for them. mob_name is
-    still required and used for the T.MOBS path when this is None."""
-    pattern, mob_hp = mob_pattern_hp if mob_pattern_hp is not None else T.MOBS[mob_name][class_name]
+    mob_pattern_hp: optional (pattern, mob_hp) pair, bypassing the mob_name -> _pattern_hp_for_mob
+    lookup entirely. Used by the Level 2 test pool (see run_one_trip's mob_level param), which
+    draws directly from leveling_validation.mob_pool_for_level's weighted Standard+Elite pool
+    instead of a named tier lookup -- Elites were deliberately never registered in
+    T.MOBS/MOB_NAMES (see that param's own docstring for why), so there's no name to look up
+    for them; mob_name is None in that case. Every other caller passes a real mob_name and
+    leaves this None, resolving through _pattern_hp_for_mob (so Elite/_L2 names work here too,
+    not just plain T.MOBS names)."""
+    pattern, mob_hp = mob_pattern_hp if mob_pattern_hp is not None else _pattern_hp_for_mob(class_name, mob_name)
     hands = mod.ALL_HANDS
     threshold_count = risk_tolerance * len(hands)
     lethal = 0
@@ -801,6 +809,12 @@ def _engine_pull(class_name, mob_name, hand, pattern, mob_hp, starting_hp, decid
     return state.outcome == "win", state.hero_hp, state.round_num
 
 
+# SUPERSEDED by board_engine.py's run_solo_trip/run_solo_chain -- kept alive, not dead code.
+# Still the only implementation behind run_to_bag_upgrade/decay_stress_test/
+# compare_strategies/risk_exposure_report, none of which have a board_engine.py port yet (see
+# board_state.py's module docstring, "Retirement attempt (2026-09-16)" for the full history
+# and why deletion was paused). Do not delete run_one_trip/_trip_chain/_scouted_pull_mob
+# without either porting those four tools first or explicitly deciding they're obsolete.
 def run_one_trip(class_name, strategy, rng, bag=None, locked=None, active_quests=None,
                   bag_size=BAG_SIZE, risk_tolerance=RISK_TOLERANCE,
                   risk_tolerance_base=RISK_TOLERANCE_BASE, corpse_node=None,
@@ -1439,7 +1453,12 @@ def _trip_chain(class_name, strategy, rng, risk_tolerance=RISK_TOLERANCE,
             if not quest_bag:
                 break  # completely empty ecosystem
             candidate = quest_bag.pop(0)
-            if candidate in target_list:
+            # allow_duplicates: real quest-type entries never set this, so production markets
+            # stay 3 genuinely distinct names. Test-only isolation harnesses (quest_cost_gauntlet.py)
+            # that shrink LEVEL2_QUESTS down to a single synthetic entry set it, so the market can
+            # still fill all 3 slots with that one name instead of looping forever hunting for a
+            # 2nd/3rd distinct name that was never going to exist (found 2026-09-16).
+            if candidate in target_list and not LEVEL2_QUESTS[candidate].get("allow_duplicates"):
                 quest_discard.append(candidate)
             else:
                 target_list.append(candidate)

@@ -2,26 +2,30 @@ import mobData from './mobs_text.json';
 
 const sheetsContainer = document.getElementById('sheetsContainer');
 const filterControls = document.getElementById('filterControls');
+const levelControls = document.getElementById('levelControls');
 const qtyStandard = document.getElementById('qtyStandard');
 const qtyElite = document.getElementById('qtyElite');
 let currentFilter = 'all';
+let currentLevelFilter = 'all';
 
 function renderCards() {
   sheetsContainer.innerHTML = '';
-  
+
+  const levelMatches = (m) => currentLevelFilter === 'all' || m.level === parseInt(currentLevelFilter);
+
   let filteredMobs = [];
-  
+
   if (currentFilter === 'all' || currentFilter === 'Standard') {
     const stdMultiplier = parseInt(qtyStandard.value) || 0;
-    const stdMobs = mobData.filter(m => m.tier === "Standard");
+    const stdMobs = mobData.filter(m => m.tier === "Standard" && levelMatches(m));
     for (let i = 0; i < stdMultiplier; i++) {
       filteredMobs.push(...stdMobs);
     }
   }
-  
+
   if (currentFilter === 'all' || currentFilter === 'Elite') {
     const eliteMultiplier = parseInt(qtyElite.value) || 0;
-    const eliteMobs = mobData.filter(m => m.tier === "Elite");
+    const eliteMobs = mobData.filter(m => m.tier === "Elite" && levelMatches(m));
     for (let i = 0; i < eliteMultiplier; i++) {
       filteredMobs.push(...eliteMobs);
     }
@@ -102,6 +106,15 @@ filterControls.addEventListener('click', (e) => {
     document.querySelectorAll('.btn-filter').forEach(b => b.classList.remove('active'));
     e.target.classList.add('active');
     currentFilter = e.target.dataset.tier;
+    renderCards();
+  }
+});
+
+levelControls.addEventListener('click', (e) => {
+  if (e.target.classList.contains('btn-level-filter')) {
+    document.querySelectorAll('.btn-level-filter').forEach(b => b.classList.remove('active'));
+    e.target.classList.add('active');
+    currentLevelFilter = e.target.dataset.level;
     renderCards();
   }
 });

@@ -155,14 +155,42 @@ def _elite_pattern(mob_key, name):
     return pat
 
 
+# Three more Standard-tier mobs, Level 2-exclusive -- dealt in place of Grunt/Enforcer/Ambusher
+# in the Level 2 pool only (see _named_pool_for_tier's LEVEL2_TIER branch in macro_sim.py).
+# Deliberately standalone entries, same shape as ELITE_MELEE above, with no code-level
+# relationship to Grunt/Enforcer/Ambusher's own data -- the resemblance (same total
+# damage/Block/HP, just resequenced) is a derivation-history fact for CLASS_BALANCE_GUIDE.md
+# and DESIGN_DOC.md to record, not something the sim itself needs to track. Locked 2026-09-16
+# after a full-roster footprint search + combination sweep (see CLASS_BALANCE_GUIDE.md's
+# "Level 2 mob remix" section).
+LEVEL2_STANDARD = {
+    "Grunt_L2":    ([(3, 0), (2, 2), (3, 0)], 7),
+    "Enforcer_L2": ([(5, 1), (3, 1), (4, 2)], 6),
+    "Ambusher_L2": ([(4, 0), (4, 1), (2, 0)], 8),
+}
+
+
+def _level2_standard_pattern(mob_key, name):
+    pat, hp = LEVEL2_STANDARD[name]
+    if mob_key in T._RANGE_TAGGED_MOB_KEYS:
+        return [(a, b, "melee") for a, b in pat], hp
+    return pat, hp
+
+
 def mob_pool_for_level(mob_key, level):
     """Returns a flat list of (pattern, mob_hp) tuples, one entry per physical card copy --
-    level 1: 3 copies each of the 6 Standard mobs (18 entries). level 2: the same 18, plus 1
-    copy each of the 3 Elites (21 entries total). Matches OPEN_QUESTIONS.md's locked Tier 1
-    deck composition exactly (Spice cards excluded -- not combat, irrelevant to this check)."""
+    level 1: 3 copies each of the 6 Standard mobs (18 entries). level 2: 3 copies each of the
+    6 Standard mobs, with Grunt/Enforcer/Ambusher's copies swapped for their Level 2-exclusive
+    LEVEL2_STANDARD entries, plus 1 copy each of the 3 Elites (21 entries total). Matches
+    OPEN_QUESTIONS.md's locked Tier 1 deck composition exactly (Spice cards excluded -- not
+    combat, irrelevant to this check)."""
     pool = []
     for mob_name in T.MOB_NAMES:
-        pattern, mob_hp = T.MOBS[mob_name][mob_key]
+        l2_name = f"{mob_name}_L2"
+        if level >= 2 and l2_name in LEVEL2_STANDARD:
+            pattern, mob_hp = _level2_standard_pattern(mob_key, l2_name)
+        else:
+            pattern, mob_hp = T.MOBS[mob_name][mob_key]
         pool.extend([(pattern, mob_hp)] * 3)
     if level >= 2:
         for name in ELITE_MELEE:

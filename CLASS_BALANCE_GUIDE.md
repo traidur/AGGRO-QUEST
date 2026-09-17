@@ -1622,3 +1622,92 @@ Design Questions.
   to check — a class that reliably chains fewer pulls will fill fewer slots per trip, and
   whether that's an acceptable identity trade-off (same category as "mob-dependent
   performance can be a feature," above) or a real gap needing its own fix is untested.
+
+## Level 2 mob remix, locked -- Ambusher/Enforcer/Grunt get real stat changes for their Level 2 appearance
+
+`DESIGN_DOC.md`'s Level 2 mob roster reuses the same 6 locked Standard stat-blocks Level 1
+deals, just under Sunsworn/Undead flavor names instead of the Gilded Coast/Syndicate names
+(see `DESIGN_DOC.md`'s two mob roster tables). Explored whether a handful of those six could
+get a genuinely different Level 2 appearance -- not a full re-derivation (that's the "search
+for a brand new pool" cost the original roster paid, see "Retired roster" above), but a
+bounded, reversible resequencing of a mob's own already-locked numbers, checked against the
+same "total footprint across the whole roster" discipline `CLASS_BALANCE_GUIDE.md` already
+uses for adding new content (see Scout's section above).
+
+**Methodology.** For each of the 6 Standard mobs, tried every round-order permutation of its
+own `(dmg, block)` triples (same total damage/Block/HP, just resequenced) plus a few
+hand-picked "swap just one stat between rounds 1/2, leave the other stat attached to its own
+round" variants, and measured roster-wide disruption two ways:
+1. A fast search-pass diagnostic (300 trials/class, only recomputing the mixed-roster draw and
+   the one varied mob's own per-mob stats, since an unchanged mob's per-mob stats can't move
+   regardless of what else changes) to rank many candidates quickly.
+2. A full-trial (1500 trials/class) `full_report()`/`compare_reports()` re-verification on
+   whichever candidate(s) survived the search pass, since the search pass is a ranking signal,
+   not a number to lock anything against.
+
+**Footprint metric.** Per class: `|Δ mixed-roster avg pulls| + |Δ mixed-roster avg wins| + |Δ
+per-mob avg wins vs. that one mob|`, summed across all 9 classes. A single summed number can't
+distinguish "many classes moved a little" from "one class moved a lot" -- the per-class
+breakdown always needs a direct look before trusting the summary number (see the Scout
+rejection below, which is exactly this failure mode).
+
+**Individually cheapest candidates found:**
+- Ambusher `[(4,1),(4,0),(2,0)]` -> `[(4,0),(4,1),(2,0)]` (Block moved round 1->2): footprint
+  2.06, the lowest of any candidate tested. Single-pull win rate unchanged (100% every class,
+  both before and after) -- every class can still always clear it, this only shifts chained
+  HP-efficiency.
+- Enforcer `[(5,2),(3,0),(4,2)]` -> `[(5,1),(3,1),(4,2)]` (round 1 and round 2 Block both set
+  to 1, not a permutation -- redistributes the same total Block instead of just reordering
+  it): footprint 3.80, better than anything found in the pure-permutation search for this mob
+  (best permutation-only candidate was 4.98).
+- Grunt `[(2,0),(3,2),(3,0)]` -> `[(3,0),(2,2),(3,0)]` (round 1/2 damage swapped, each round
+  keeps its own Block): footprint 7.25 at the search pass.
+
+**Scout tested and rejected -- a real example of the footprint sum hiding a concentrated
+problem.** Scout `[(2,0),(3,0),(4,0)]` -> `[(3,0),(2,0),(4,0)]` (round 1/2 damage swapped)
+looked comparable to Grunt at the search pass (footprint 6.69 vs. Grunt's 7.25), but the
+full-trial per-class breakdown showed **Rogue's chained wins against Scout alone dropping from
+9.33 to 6.49 (-2.84, about -30%)** and **Warrior dropping 6.26->5.04 (-1.22)** -- both far
+outside the range of every other candidate tested (next-largest single-class swing anywhere
+else in this whole exercise was Enforcer's Druid line, -0.83). Grunt's own damage-swap
+independently produced an even larger version of the same problem, specifically for Rogue
+(9.27->5.81, -3.46, the largest single-class swing found in this entire exercise) -- two
+independent damage-swap candidates both hitting Rogue hardest is a real, structural signal,
+not noise from two data points. **Working hypothesis, not yet root-caused: Rogue's line
+selection is unusually sensitive to which of a mob's first two rounds carries the bigger raw
+damage number**, in a way none of the other 8 classes share to nearly the same degree --
+Enforcer and Ambusher's changes (Block-only edits, damage order untouched) never produced a
+single-class swing anywhere near this size. Worth root-causing before any *future* mob remix
+considers another damage-order swap, but not blocking this one, since Grunt's version of the
+same problem was accepted anyway (see below).
+
+**Combination search.** Tested all 2^5=32 subsets of the 5 candidates (Ambusher, Enforcer,
+Scout, Grunt, Raider -- Raider's own best candidate, a Block swap, had footprint 12.04, the
+most expensive of the five). Total footprint turned out to be almost perfectly additive --
+each candidate's own per-mob contribution just sums regardless of which others join it, with
+only a small, non-rank-flipping interaction effect from the mixed-roster component. No
+combination found a surprising synergy or cancellation cheaper than what the individual
+footprints already predicted.
+
+**Locked: Ambusher + Enforcer + Grunt, chosen over Ambusher + Enforcer + Scout.** By raw total
+footprint (full-trial, 9-class sum of absolute deltas), the Scout combination is actually
+*less* disruptive overall (≈11.95 vs. ≈13.32 for Grunt's combination) -- but by mixed-roster
+wins/pull spread across the 9 classes (the same "how close together does the roster cluster"
+question the original 6-mob pool and Scout's addition were both judged on), the Grunt
+combination keeps the roster tighter: baseline spread is 74.7%-81.0% (6.3pp, stdev≈2.16pp);
+adding Ambusher+Enforcer+Scout widens it to 73.2%-80.5% (7.3pp, stdev≈2.43pp); adding
+Ambusher+Enforcer+Grunt widens it less, to 73.8%-80.5% (6.7pp, stdev≈2.25pp). Deliberately
+chose the tighter-spread combination over the lower-total-footprint one -- keeping the 9
+classes close together was judged more important than minimizing total movement, since a
+wider spread is exactly the failure mode the original roster search (and Scout's own
+footprint-minimization) were built to avoid in the first place.
+
+**Not yet wired into real gameplay.** Like the mob flavor names themselves, this is a locked
+design decision with verified numbers, not live game content -- there is currently no
+level-aware mob-pattern lookup anywhere in `board_engine.py`/`macro_sim.py` (a Level 2 hero
+and a Level 1 hero draw from the identical `MOBS` dict today). Wiring this in needs a small,
+additive registry (e.g. a `LEVEL2_MOB_OVERRIDES` dict keyed by mob name, checked only when
+dealing a Standard mob to a Level 2 hero, falling back to the base `MOBS` entry otherwise) --
+deliberately not touching the already-verified `MOBS`/`_RAW_MOBS` shapes directly, the same
+reasoning that kept this exploration to temporary monkey-patches in throwaway `_`-prefixed
+scripts rather than live edits until the combination was actually chosen.

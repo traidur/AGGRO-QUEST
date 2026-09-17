@@ -52,10 +52,16 @@ except Exception as e:
 # from this file since it's cosmetic and doesn't vary by class. ATK/BLK/HP numbers are NEVER
 # read from here -- those come live from the real sim data passed into the template each time,
 # the same lesson the matchup-table fix (2026-08-26) already established for this exact risk.
+# Keyed by (mechanical_name, level), not by flavor name -- Bruiser/Raider/Scout aren't
+# remixed at Level 2, so they keep the SAME mechanical_name across both levels while still
+# needing different flavor text (pirate vs. Sunsworn) -- mechanical_name alone would collide
+# and silently drop one level's entry. Grunt/Enforcer/Ambusher's Level 2 entries carry their
+# real dealt name (Grunt_L2 etc, see leveling_validation.LEVEL2_STANDARD) as mechanical_name,
+# so this scheme handles both remixed and non-remixed mobs the same way.
 _MOBS_TEXT = {}
 try:
     with open(os.path.join(os.path.dirname(__file__), "../pnp-tool/src/mobs_text.json"), "r", encoding="utf-8") as f:
-        _MOBS_TEXT = {m["name"]: m for m in json.load(f)}
+        _MOBS_TEXT = {(m["mechanical_name"], m["level"]): m for m in json.load(f)}
 except Exception as e:
     print(f"Warning: could not load mobs_text.json: {e}")
 
@@ -176,7 +182,7 @@ def inject_globals():
             4: "The Vanguard Camp"
         },
         get_class_matchup=get_class_matchup,
-        get_mob_flavor=lambda mob_name: _MOBS_TEXT.get(mob_name.replace("_loot", ""), {}),
+        get_mob_flavor=lambda mob_name, level: _MOBS_TEXT.get((mob_name.replace("_loot", ""), level), {}),
         get_item_name=get_item_name,
         get_item_count=get_item_count,
         get_item_icon=get_item_icon,
@@ -403,10 +409,21 @@ def _build_combat_log(class_name, hand, mob_name, hero_hp, sequence, stance_sequ
     return rows, state.outcome
 
 
-def _outcome_message(kind, result):
+def _mob_level_for_pending(pending):
+    """Which Level (1 or 2) the dealt mob in `pending` belongs to, for get_mob_flavor's
+    (mechanical_name, level) lookup -- a Node-declared/recovery mob's Zone comes from
+    NODE_ZONE, a Border-crossing/Scouted-Pull mob's from its own target_zone (no node_name
+    exists for those, see get_travel_actions' cross_border action shape)."""
+    zone_id = M.NODE_ZONE[pending["node_name"]] if "node_name" in pending else pending["target_zone"]
+    return BE.TIER_TO_LEVEL[M.ZONE_TIER[zone_id]]
+
+
+def _outcome_message(kind, result, mob_level=None):
     outcome = result.get("outcome")
     mob = result.get("mob_name", "the foe").replace("_loot", "")
-    
+    if mob_level is not None:
+        mob = _MOBS_TEXT.get((mob, mob_level), {}).get("name", mob)
+
     msg = f"Outcome: {outcome}"
     if outcome == "win":
         msg = f"Victory over {mob}! +1 Gold."
@@ -700,7 +717,7 @@ def travel_action():
     # no combat, resolves in one shot.
     result = BE.apply_travel_action(hero, action, class_name, board, rng, M.RISK_TOLERANCE_BASE, True)
     if result.get("outcome") in ("win", "flee", "no_room"):
-        _flash(_outcome_message("instant", result))
+        _flash(_outcome_message("instant", result, mob_level=_mob_level_for_pending(action)))
     elif result.get("outcome") == "healed":
         _flash(f"HP now {hero.hp:.0f}/{hero.max_hp:.0f}.")
     return redirect(url_for("travel"))
@@ -746,6 +763,7 @@ def combat_plan():
     pattern, mob_hp = M._pattern_hp_for_mob(class_name, mob_name)
     return render_template(
         "combat_plan.html", class_name=class_name, mob_name=mob_name.replace("_loot", ""),
+        mob_level=_mob_level_for_pending(_S["pending_action"]),
         pattern=list(enumerate(pattern)), mob_hp=mob_hp, hero=hero,
         hand_options=_hand_options(class_name, hand), has_stance=M.HAS_STANCE[class_name],
         pending_kind=_S["pending_kind"], flash=_pop_flash(),
@@ -808,19 +826,20 @@ def combat_plan_submit():
     if result.get("outcome") == "died":
         death_node = result.get("death_marker", pending.get("node_name") if pending else None)
         BE.apply_death_post_processing(hero, _current_quest_pool(hero), death_node)
-        next_flashes.append(_outcome_message(kind, result))
+        next_flashes.append(_outcome_message(kind, result, mob_level=_mob_level_for_pending(pending)))
         _S["pending_next_phase"] = "town"
     else:
         if kind in ("recovery_node", "recovery_border"):
             hero.alive = True
             next_flashes.append("You've recovered your gear.")
-        next_flashes.append(_outcome_message(kind, result))
+        next_flashes.append(_outcome_message(kind, result, mob_level=_mob_level_for_pending(pending)))
         _S["pending_next_phase"] = "travel"
     _S["pending_next_flashes"] = next_flashes
 
     mob_pattern, mob_hp_total = M._pattern_hp_for_mob(class_name, pending["mob_name"])
     _S["phase"] = "combat_result"
     return render_template("combat_result.html", class_name=class_name, mob_name=pending["mob_name"].replace("_loot", ""),
+                            mob_level=_mob_level_for_pending(pending),
                             rows=log_rows, outcome=log_outcome, hero=hero,
                             pattern=list(enumerate(mob_pattern)), mob_hp=mob_hp_total)
 
@@ -1394,6 +1413,7 @@ def cmp_combat_plan():
     pattern, mob_hp = M._pattern_hp_for_mob(class_name, mob_name)
     return render_template(
         "combat_plan.html", class_name=class_name, mob_name=mob_name.replace("_loot", ""),
+        mob_level=_mob_level_for_pending(_S["pending_action"]),
         pattern=list(enumerate(pattern)), mob_hp=mob_hp, hero=hero,
         hand_options=_hand_options(class_name, hand), has_stance=M.HAS_STANCE[class_name],
         pending_kind=_S["pending_kind"], flash=_pop_flash(),

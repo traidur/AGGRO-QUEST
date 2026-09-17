@@ -338,6 +338,21 @@ Pilfered Goods/Syndicate Ledger/Contraband Crates/Stolen Signet):
 | bluff | Plundered Chest | 4 | 4 |
 | wreckage | Buried Treasure | 5 | 5 |
 
+**Mob roster, flavor names locked (2026-09-16) -- not yet wired into the sim's actual display
+names.** Level 1 only ever deals the 6 Standard-tier stat-blocks (see
+`sim/leveling_validation.py`'s `mob_pool_for_level`) -- Elites are Level-2-exclusive content and
+never appear at Level 1, so there is no Level 1 Elite naming to do. Flavor names lean on the
+same Gilded Coast/Syndicate vocabulary as the quest names above:
+
+| Mob (mechanical name) | Level 1 name |
+|---|---|
+| Grunt | Syndicate Deckhand |
+| Enforcer | Syndicate Enforcer |
+| Raider | The Cutthroat |
+| Scout | Syndicate Gunner |
+| Bruiser | The Powder Keg |
+| Ambusher | The Wrecker |
+
 **Built in `sim/macro_sim.py`** (2026-08-20) — `NODES`/`NODE_ZONE`/`QUESTS` carry all 8 entries
 across both Zones; Border Node crossing is a real Scouted Pull toll (`_scouted_pull_mob`/
 `_cross_to`/`_best_case_mob` in `run_one_trip`), fully discretionary in both directions now
@@ -360,8 +375,44 @@ Theme: **The Pale Wastes**, home to **The Sunsworn** -- a militant order that ar
 the corruption Zones 1/2's smuggler economy represents, and has curdled into something just as
 bad: paranoid zealot-knights, "relics" that are really just looted goods laundered through
 religious authority, confessions burned instead of heard. Deliberately an original setting, not
-a reskin of any existing copyrighted property -- see `OPEN_QUESTIONS.md` if this note needs
-revisiting later for why that mattered here.
+a reskin of any existing copyrighted property.
+
+**The Sunsworn's origin story, locked (2026-09-15) -- their creed is "The Unyielding Dawn."**
+Some past cataclysm ("the accident") blotted out the sun over this realm, turning the sky into
+a permanent, suffocating twilight. The Sunsworn were the realm's own Knights before that
+happened, and they didn't break when it did -- they doubled down. They believe the sun hasn't abandoned them, only that
+it's testing them, and that purging every last shadow from the land is what will make it
+return. Their corruption isn't demonic, it's the corruption of absolute, merciless zealotry:
+the old chivalric codes twisted to an extreme where weakness, retreat, or compromise are worse
+than death. They hoard holy relics, blessed oils, and sacred texts not out of greed but because
+they believe these are the only weapons left against the apocalypse.
+
+**The Tarnished Crusaders (aesthetic).** Heavy full-plate armor, tabards, greatswords, kite
+shields -- but the armor is obsessively, almost maniacally maintained, polished with blessed
+oils until it gleams blindingly bright by torchlight even waist-deep in a swamp of rotting
+corpses. Weapons are anointed with holy fire; massive iron braziers burn with sacred, white-hot
+flames along the parapets, and whole forests get burned just to keep the darkness at bay. High
+stone castles and cathedrals, fortified for a siege that never ends.
+
+**The Undead: the Risen Dead of the Long War.** Not an invading force -- the undead here are
+the realm's *own* citizens and soldiers, the ones who fell in the earliest days of the
+cataclysm. They're visually recognizable as what they once were: peasants, archers, fallen
+knights still wearing rusted, broken versions of the kingdom's own armor. Light burns them and
+also reminds them of the life they lost; holy magic makes their flesh smoke and blister, and
+they recoil from the Sunsworn's polished armor and holy fire. They don't skitter in the
+shadows -- they form endless shield-walls of the dead, battering against the cathedral doors
+night after night in a grim parody of medieval siege warfare.
+
+**The Three-Way Hostility.** The Sunsworn and the Undead are locked in a grinding, endless
+meat-grinder -- for every corpse the Knights burn down, more rise from the mud. The Sunsworn
+regard the player as "**The Unordained**": mercenaries, looters, and vagabonds trespassing in
+their sacred warzone, tolerated at best. **Flavor only, not a built mechanic:** in fiction, if a
+hero is caught carrying magical or holy items, the Sunsworn would demand they be surrendered
+"for the war effort," and refusal would mean being declared a heretic and executed -- this
+colors how the Sunsworn should read in any future flavor text or NPC dialogue, but it is not a
+forced encounter, item-confiscation, or execution mechanic in the actual game. The Undead, for
+their part, don't discriminate at all -- a hero is just living flesh caught in the middle of
+someone else's war.
 
 **Node/quest table, locked (2026-08-20):**
 
@@ -381,13 +432,47 @@ innermost one -- Zone 3's Broken Bridge is the crossing that leads toward Zone 4
 last; Zone 4's Sunward Throne sits *inside* the Gleaming Citadel, so it's the final, hardest
 node by construction, not just by assignment.
 
-Town node (both Zones' Town is the same amenity, per "a town is a town is a town" above; The
-Vanguard Camp is Zone 3/4's flavor name for it): **The Vanguard Camp** -- a fortified staging
-ground outside the warzone where mercenaries and disgraced knights trade supplies.
+Town node (each Zone's Town is the same amenity, per "a town is a town is a town" above --
+Zone 3 and Zone 4 each get their own distinct flavor name, locked 2026-09-15, matching Zone 1/2's
+pattern of two distinct Town names rather than one shared one):
+- **Zone 3: The Vanguard Camp** -- a fortified staging ground outside the warzone where
+  mercenaries and disgraced knights trade supplies. Matches Zone 3's own nodes reading as the
+  exposed frontline approaching the fight.
+- **Zone 4: The Pyre-Lit Bastion** -- a fortress town lit by the same sacred braziers described
+  in the Sunsworn's aesthetic above. Matches Zone 4 already holding the innermost, most-defended
+  nodes (Gleaming Citadel, Sunward Throne).
 
 Unused candidate loot names from the same brainstorm, kept for the record in case any fit
 better once quest reward tuning starts: Sanctified Reliquary, Martyr's Toll, Zealot's Bounty,
 Consecrated Ledger, Purged Confession.
+
+**Mob roster, flavor names locked (2026-09-15) -- not yet wired into the sim's actual display
+names.** Level 2 deals the same 6 Standard stat-blocks Level 1 uses (see Zone 1/2's own mob
+roster table above) as its base, plus 3 Elite stat-blocks that are exclusive to Level 2 and
+never appear at Level 1 at all (`sim/leveling_validation.py`'s `mob_pool_for_level`, weighted
+3:1 Standard:Elite by physical deck composition) -- a Level 2-specific flavor skin split across
+the Zone's two warring factions, roughly 2:1 Sunsworn:Undead since the Sunsworn are the zone's
+entrenched, numerous holding force and the Undead are the rarer, more unsettling threat they're
+fighting. **Three of the six Standard mobs also got a real stat remix for their Level 2
+appearance** (locked 2026-09-16, see `CLASS_BALANCE_GUIDE.md`'s Level 2 mob remix section for
+the full derivation and verification) -- same total damage/Block/HP as the Level 1 version,
+just resequenced or redistributed across rounds 1-2, picked for the combination that kept the
+9-class roster closest together rather than the combination with the least total movement. This
+mechanical heritage (which flavor name is really which common mob, and what changed) is kept
+here for design reference only -- PnP cards and the sim's own display never show the common
+name or the remix, only the finished flavor name:
+
+| Mob (mechanical name) | Tier | Faction | Level 2 name | Remix vs. Level 1 |
+|---|---|---|---|---|
+| Grunt | Standard | Sunsworn | Sunsworn Footman | `[(2,0),(3,2),(3,0)]` -> `[(3,0),(2,2),(3,0)]` (round 1/2 damage swapped, each round keeps its own Block) |
+| Enforcer | Standard | Sunsworn | Sunsworn Inquisitor | `[(5,2),(3,0),(4,2)]` -> `[(5,1),(3,1),(4,2)]` (round 1 and round 2 Block both set to 1) |
+| Raider | Standard | Sunsworn | Sunsworn Zealot | none -- identical to Level 1 |
+| Scout | Standard | Sunsworn | Pyre Archer | none -- identical to Level 1 (a remix candidate was tested and rejected, see CLASS_BALANCE_GUIDE.md) |
+| Bruiser | Standard | Undead | The Rotting Legion | none -- identical to Level 1 |
+| Ambusher | Standard | Undead | Grave Lurker | `[(4,1),(4,0),(2,0)]` -> `[(4,0),(4,1),(2,0)]` (Block moved from round 1 to round 2) |
+| Bulwark | Elite | Sunsworn | The Ashen Bulwark | n/a -- Level 2-exclusive, no Level 1 counterpart |
+| Warlord | Elite | Sunsworn | The Unyielding | n/a -- Level 2-exclusive, no Level 1 counterpart |
+| Berserker | Elite | Undead | The Grave Knight | n/a -- Level 2-exclusive, no Level 1 counterpart |
 
 **Built, 2026-08-21 (`sim/macro_sim.py`):** the full 4-Zone loop is real and playable end to
 end, not just designed on paper.

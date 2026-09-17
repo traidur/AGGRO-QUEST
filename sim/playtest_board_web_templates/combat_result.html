@@ -35,18 +35,18 @@
 </head>
 <body>
     {% include "_hero_sidebar.html" %}
-    <h2>{{ class_name|capitalize }} vs {{ mob_name }}</h2>
+    {% set flavor = get_mob_flavor(mob_name, mob_level) %}
+    <h2>{{ class_name|capitalize }} vs {{ flavor.name or mob_name }}</h2>
 
-    {% set flavor = get_mob_flavor(mob_name) %}
     <div class="mob-card{% if flavor.tier == 'Elite' %} elite{% endif %}">
         <div class="mob-card-hdr">
             <div class="mob-card-tier">{{ flavor.tier or 'Mob' }}</div>
-            <div class="mob-card-name">{{ mob_name }}</div>
+            <div class="mob-card-name">{{ flavor.name or mob_name }}</div>
             <div class="mob-card-hp"><div class="lbl">HP</div><div class="val">{{ mob_hp|int }}</div></div>
         </div>
         <div class="mob-card-art">
             <img src="{{ url_for('static', filename='mobs/' ~ mob_name|lower ~ '.jpg') }}"
-                 onerror="this.style.display='none'" alt="{{ mob_name }}">
+                 onerror="this.style.display='none'" alt="{{ flavor.name or mob_name }}">
             {% if flavor.type and flavor.type != 'melee' %}<div class="mob-card-type">🎯 {{ flavor.type }}</div>{% endif %}
         </div>
         <div class="mob-card-body">

@@ -48,7 +48,8 @@ def measure_cost(required, trials_per_class=50, chain_trips=50, seed=42, strateg
     orig_quests, orig_nodes, orig_count = M.QUESTS, M.NODES, M.ACTIVE_QUEST_COUNT
     orig_node_zone = M.NODE_ZONE
     orig_level2_stub, orig_threshold = M.LEVEL2_QUESTS, M.LEVEL2_XP_THRESHOLD
-    test_quest = {"Test Loot": dict(required=required, base_xp=required, gold_ladder=[0, 0, 0, 0])}
+    test_quest = {"Test Loot": dict(required=required, base_xp=required, gold_ladder=[0, 0, 0, 0],
+                                     allow_duplicates=True)}
     M.QUESTS = test_quest
     # _trip_chain's Level 1 starter batch (2026-08-21) is deliberately non-replenishing, but
     # this tool needs the same "Test Loot" quest redrawn every completion to gather repeated

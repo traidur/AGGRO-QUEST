@@ -23,6 +23,37 @@ declares a node -- no blind commitment into an unseen board) is NOT built here; 
 next layer, deliberately left for its own checkpoint given how much of this file's own design
 had to be corrected against the primary source before writing a single line.
 
+**Retirement attempt (2026-09-16), paused, not abandoned:** run_one_trip/_trip_chain were
+never actually deleted after board_engine.py's port was verified. Tried to finish the job:
+ported quest_cost_gauntlet.py's measure_cost to run_solo_chain (real dependent #1, done --
+turns-per-completion + decay-stage-at-turn-in replace trips-per-completion as the headline
+metric, since "trips" turned out to be a poor cost signal: a trip is elastic, it can absorb
+an arbitrarily long run of pulls before returning to Town, so trip *count* barely moves with
+quest size even when the real cost, in turns, roughly doubles from a 2-loot to a 5-loot
+quest -- checked directly, not assumed). Along the way found and fixed three unrelated
+pre-existing bugs blocking that port test (all in macro_sim.py): _pull_exceeds_risk's
+T.MOBS[...] fallback didn't know about Level 2/_L2/Elite names (crashed on Paladin);
+_trip_chain's _draw_unique looped forever whenever a test shrinks LEVEL2_QUESTS below 3
+distinct names (fixed via a real, production-safe allow_duplicates quest-data flag, off by
+default for every actual quest); town_markets is hardcoded to Zones {3, 4} only, so a Zone-1
+or Zone-2 test call crashes -- confirmed this ALSO breaks the tool's own original zone=1
+call that produced the currently-locked Level 1 Gold-ladder numbers in MACRO_LOOP_GUIDE.md,
+independent of anything this session touched.
+
+Stopped short of deleting run_one_trip/_trip_chain/_scouted_pull_mob because four MORE real,
+permanent tools in macro_sim.py still call them directly and have no board_engine.py
+equivalent yet: run_to_bag_upgrade (cited by name in MACRO_LOOP_GUIDE.md as the source of the
+locked BAG_UPGRADE_COST), decay_stress_test, compare_strategies, and risk_exposure_report
+(a risk-policy diagnostic cluster, called by each other and by an unnamed persona/before-after
+policy-comparison reporter further down the file). Porting quest_cost_gauntlet.py alone was
+not enough to safely delete the old functions -- shared helpers they call
+(_pull_exceeds_risk, _best_case_mob, _pattern_hp_for_mob, _next_border_toward,
+_reachable_free, _accessible_count, _add_loot/_add_food, NODES/NODE_ZONE/ZONE_TIER/QUESTS/
+LEVEL2_QUESTS) are NOT old-only -- board_engine.py calls every one of them directly too, so
+only run_one_trip, its nested _cross_to, and _scouted_pull_mob are actually safe to delete,
+and only once the four tools above are ported or explicitly decided obsolete. Not resumed
+this session -- flagging here so the remaining blocker isn't lost.
+
 **Locked rules this file implements:**
 - Deck composition (OPEN_QUESTIONS.md, "Tier 1's actual two decks, worked example"): Level 1 =
   18 Standard (3 copies each of Grunt/Bruiser/Enforcer/Raider/Ambusher/Scout) + 1 Spice = 19
@@ -64,11 +95,17 @@ SPICE = "__spice__"
 _ELITE_NAMES = list(LV.ELITE_MELEE.keys())
 _STANDARD_MOBS = T.MOB_TIERS["standard"]
 
+# Level 2 deals Grunt/Enforcer/Ambusher's card copies under their Level 2-exclusive remixed
+# names instead (LV.LEVEL2_STANDARD) -- same swap macro_sim.py's own _named_pool_for_tier
+# already applies for the old system's LEVEL2_TIER pool; Bruiser/Raider/Scout are untouched,
+# only 3 of the 6 Standard mobs were remixed (CLASS_BALANCE_GUIDE.md's "Level 2 mob remix").
+_LEVEL2_MOB_NAMES = [f"{mob}_L2" if f"{mob}_L2" in LV.LEVEL2_STANDARD else mob for mob in _STANDARD_MOBS]
+
 # Per-level deck recipe: {card_name: copy_count}. Numbers are the locked ones from
 # OPEN_QUESTIONS.md's "Tier 1's actual two decks, worked example" -- transcribed, not derived.
 LEVEL_DECK_COMPOSITION = {
     1: {**{mob: 2 for mob in _STANDARD_MOBS}, **{mob+"_loot": 1 for mob in _STANDARD_MOBS}, SPICE: 1},
-    2: {**{mob: 2 for mob in _STANDARD_MOBS}, **{mob+"_loot": 1 for mob in _STANDARD_MOBS}, **{elite: 1 for elite in _ELITE_NAMES}, SPICE: 2},
+    2: {**{mob: 2 for mob in _LEVEL2_MOB_NAMES}, **{mob+"_loot": 1 for mob in _LEVEL2_MOB_NAMES}, **{elite: 1 for elite in _ELITE_NAMES}, SPICE: 2},
 }
 
 
