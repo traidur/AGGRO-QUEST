@@ -286,6 +286,7 @@
                 {% elif a.type == 'use_smoke_bomb' %}💨 Use Smoke Bomb
                 {% elif a.type == 'use_food' %}🍞 Eat Food
                 {% elif a.type == 'use_potion' %}🧪 Drink Potion
+                {% elif a.type == 'enter_zone' %}🚪 Enter Zone {{ a.target_zone }} ({{ town_names[a.target_zone] }})
                 {% else %}{{ a.type }}
                 {% endif %}
             </button>

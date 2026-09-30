@@ -56,16 +56,20 @@
             <div class="mob-card-hp"><div class="lbl">HP</div><div class="val">{{ mob_hp|int }}</div></div>
         </div>
         <div class="mob-card-art">
-            <img src="{{ url_for('static', filename='mobs/' ~ mob_name|lower ~ '.jpg') }}"
+            <img src="{{ url_for('static', filename='mobs/' ~ (mob_name|lower).replace('_loot', '').replace('_l2', '') ~ '.jpg') }}"
                  onerror="this.style.display='none'" alt="{{ flavor.name or mob_name }}">
-            {% if flavor.type and flavor.type != 'melee' %}<div class="mob-card-type">🎯 {{ flavor.type }}</div>{% endif %}
+            <div class="mob-card-role-badge">
+                <span>{{ get_role_icon(mob_name) }}</span>
+                <span>{{ mob_name.replace('_loot', '').replace('_l2', '').capitalize() }}</span>
+            </div>
         </div>
         <div class="mob-card-body">
+            {% set dmg_icon = '🏹' if flavor.type == 'ranged' else '⚔️' %}
             {% for i, rnd in pattern %}
             <div class="mob-card-round">
                 <div class="rnum">RND {{ i + 1 }}</div>
                 <div class="rstats">
-                    <span class="stat-dmg">⚔️ {{ rnd[0] }}</span>
+                    <span class="stat-dmg">{{ dmg_icon }} {{ rnd[0] }}</span>
                     <span class="stat-blk">🛡️ {{ rnd[1] }}</span>
                 </div>
             </div>
@@ -81,6 +85,33 @@
                 <option value="G">Guardian (Shields Up)</option>
                 <option value="C">Champion (Heavy Swings)</option>
             </select>
+        </div>
+        {% endif %}
+
+        {% if available_equipment %}
+        <div class="panel" style="background: rgba(35, 25, 15, 0.85); border: 1px solid #c79c6e; padding: 12px 16px; margin-bottom: 16px; border-radius: 6px; box-shadow: 0 4px 10px rgba(0,0,0,0.5);">
+            <div style="font-family: 'Cinzel', serif; font-size: 15px; font-weight: bold; color: #ffd700; margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                <span>⚔️ Equipment Activation</span>
+                <span style="font-size: 12px; font-weight: normal; color: #bbb; font-family: 'Crimson Pro', serif; font-style: italic;">(Single-use per excursion; resets at Town)</span>
+            </div>
+            <div style="display: flex; gap: 24px; flex-wrap: wrap;">
+                {% for slot, recipe in available_equipment.items() %}
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="color: #c79c6e; font-weight: bold; text-transform: capitalize;">{{ slot }}:</span>
+                    <span style="color: #fff; font-size: 14px;">{{ recipe.name }} <em style="color: #aaccff; font-size: 12px;">({{ get_equip_text(recipe) }})</em></span>
+                    <select name="equip_{{ slot }}" style="margin: 0; padding: 4px 8px; background: #222; color: #ffd700; border: 1px solid #c79c6e; border-radius: 4px; font-size: 13px;">
+                        <option value="none">Save for later</option>
+                        <option value="0">Activate in Round 1</option>
+                        <option value="1">Activate in Round 2</option>
+                        <option value="2">Activate in Round 3</option>
+                    </select>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% elif hero.equipment %}
+        <div class="panel" style="background: rgba(20, 20, 20, 0.6); border: 1px solid #444; padding: 8px 12px; margin-bottom: 16px; border-radius: 4px; font-size: 13px; color: #888;">
+            🛡️ Equipped gear has already been used this excursion and will refresh upon returning to Town.
         </div>
         {% endif %}
 
@@ -164,6 +195,10 @@
                 htmlText += "<br><br><b>(Costs 4 HP)</b>";
             }
 
+            let upgradeBadge = (data.is_upgraded || data.level2) ? `<div class="aggro-badge" style="background: linear-gradient(135deg, #b8860b, #ffd700); color: #000; font-weight: bold; margin-right: 4px;" title="Replaces ${data.replaces || ''}">★ UPGRADED</div>` : '';
+            let replacesNotice = data.replaces ? `<div style="font-size: 8.5px; color: #ffd700; letter-spacing: 0.5px; text-transform: uppercase; margin-top: -2px; margin-bottom: 2px; text-align: center;">★ Upgraded from ${data.replaces}</div>` : '';
+            let extraCardClass = (data.is_upgraded || data.level2) ? ' card-upgraded' : '';
+
             if (data.split) {
                 let aggroG = data.aggro_G !== undefined ? data.aggro_G : data.aggro.replace('Aggro ', '');
                 let cHtml = data.champion_text.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
@@ -181,11 +216,15 @@
                 }
 
                 return `
-                    <div class="card cls-${className}">
+                    <div class="card cls-${className}${extraCardClass}">
                     <div class="card-hdr">
                         <div class="card-name">${name}</div>
-                        <div class="aggro-badge" title="Aggro">A: ${aggroText}</div>
+                        <div style="display:flex; align-items:center;">
+                            ${upgradeBadge}
+                            <div class="aggro-badge" title="Aggro">A: ${aggroText}</div>
+                        </div>
                     </div>
+                    ${replacesNotice}
                     ${typeBarHtml}
                     <div class="card-body" style="padding-bottom: 2pt;">
                         <div class="split-top" style="border-bottom: none; padding-bottom: 0;">
@@ -216,11 +255,15 @@
                 `;
             } else {
                 return `
-                    <div class="card cls-${className}">
+                    <div class="card cls-${className}${extraCardClass}">
                     <div class="card-hdr">
                         <div class="card-name">${name}</div>
-                        <div class="aggro-badge" title="Aggro">A: ${aggroText}</div>
+                        <div style="display:flex; align-items:center;">
+                            ${upgradeBadge}
+                            <div class="aggro-badge" title="Aggro">A: ${aggroText}</div>
+                        </div>
                     </div>
+                    ${replacesNotice}
                     ${typeBarHtml}
                     <div class="art-zone">${badgesHtml}</div>
                     <div class="divider"></div>

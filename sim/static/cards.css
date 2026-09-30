@@ -79,6 +79,7 @@
 
 /* AGGRO CARD GRAPHICS */
 .card { width: var(--card-w); height: var(--card-h); display: flex; color: #111; flex-direction: column; overflow: hidden; position: relative; background: white; border: 0.5pt dashed #c89b3c; }
+.card.card-upgraded { border: 1.5pt solid #ffd700; box-shadow: 0 0 12px rgba(255, 215, 0, 0.45); }
 .card-hdr { display: flex; align-items: center; padding: 5pt 6pt 4pt; height: 32pt; flex-shrink: 0; position: relative; gap: 4pt; }
 .card-hdr::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(255,255,255,0.08) 0%, transparent 100%); pointer-events: none; }
 .card-name { flex: 1; text-align: center; font-family: 'Cinzel', serif; font-weight: 700; color: white; line-height: 1.15; letter-spacing: 0.1pt; font-size: 14pt;}

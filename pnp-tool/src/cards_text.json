@@ -2102,7 +2102,7 @@
       "type": "equipment",
       "slot": "weapon",
       "text": "If this attack is lethal, prevent all damage taken this round.",
-      "cost": "4g + 2 Crag-Iron, 1 Sun-Copper",
+      "cost": "4g + 3 Sun-Copper",
       "grade": 2
     },
     "Sunder 2-Hander": {
@@ -2110,7 +2110,7 @@
       "type": "equipment",
       "slot": "weapon",
       "text": "+1 DMG this round and all subsequent rounds of this pull.",
-      "cost": "3g + 2 Crag-Iron, 1 Sun-Copper",
+      "cost": "3g + 3 Sun-Copper",
       "grade": 2
     },
     "Reinforced Heavy Armor": {
@@ -2126,7 +2126,7 @@
       "type": "equipment",
       "slot": "armor",
       "text": "Deal 3 DMG, unless At Range this round.",
-      "cost": "3g + 1 Crag-Iron, 1 Sun-Copper",
+      "cost": "3g + 2 Sun-Copper",
       "grade": 2
     },
     "Persistent Heavy Armor": {
@@ -2134,7 +2134,7 @@
       "type": "equipment",
       "slot": "armor",
       "text": "+3 Block this round, and +3 Block next round.",
-      "cost": "5g + 1 Crag-Iron, 1 Bristle-Pelt",
+      "cost": "5g + 1 Sun-Copper, 1 Bristle-Pelt",
       "grade": 2
     },
     "Honed Wand": {
@@ -2174,7 +2174,7 @@
       "type": "equipment",
       "slot": "weapon",
       "text": "+2 Heal.",
-      "cost": "4g + 2 Snap-Root, 1 River-Mint",
+      "cost": "4g + 3 River-Mint",
       "grade": 2
     },
     "Sunder Staff": {
@@ -2182,7 +2182,7 @@
       "type": "equipment",
       "slot": "weapon",
       "text": "+1 DMG this round and all subsequent rounds of this pull.",
-      "cost": "3g + 2 Snap-Root, 1 Sun-Copper",
+      "cost": "3g + 2 River-Mint, 1 Sun-Copper",
       "grade": 2
     },
     "Reinforced Light Armor": {
@@ -2198,7 +2198,7 @@
       "type": "equipment",
       "slot": "armor",
       "text": "Evade one melee attack this round.",
-      "cost": "5g + 1 Scavenged Pelt, 1 River-Mint",
+      "cost": "5g + 1 Bristle-Pelt, 1 River-Mint",
       "grade": 2
     },
     "Persistent Light Armor": {
@@ -2206,7 +2206,7 @@
       "type": "equipment",
       "slot": "armor",
       "text": "+1 Block this round, and +1 Block next round.",
-      "cost": "5g + 1 Scavenged Pelt, 1 Bristle-Pelt",
+      "cost": "5g + 2 Bristle-Pelt",
       "grade": 2
     },
     "Reinforced Medium Armor": {
@@ -2222,7 +2222,7 @@
       "type": "equipment",
       "slot": "armor",
       "text": "Evade one melee attack this round.",
-      "cost": "5g + 1 Scavenged Pelt, 1 River-Mint",
+      "cost": "5g + 1 Bristle-Pelt, 1 River-Mint",
       "grade": 2
     },
     "Thorns Medium Armor": {
@@ -2230,7 +2230,7 @@
       "type": "equipment",
       "slot": "armor",
       "text": "Deal 2 DMG, unless At Range this round.",
-      "cost": "3g + 1 Scavenged Pelt, 1 Sun-Copper",
+      "cost": "3g + 1 Bristle-Pelt, 1 Sun-Copper",
       "grade": 2
     },
     "Persistent Medium Armor": {
@@ -2238,7 +2238,7 @@
       "type": "equipment",
       "slot": "armor",
       "text": "+2 Block this round, and +2 Block next round.",
-      "cost": "5g + 1 Scavenged Pelt, 1 Bristle-Pelt",
+      "cost": "5g + 2 Bristle-Pelt",
       "grade": 2
     }
   },

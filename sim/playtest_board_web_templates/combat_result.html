@@ -45,16 +45,20 @@
             <div class="mob-card-hp"><div class="lbl">HP</div><div class="val">{{ mob_hp|int }}</div></div>
         </div>
         <div class="mob-card-art">
-            <img src="{{ url_for('static', filename='mobs/' ~ mob_name|lower ~ '.jpg') }}"
+            <img src="{{ url_for('static', filename='mobs/' ~ (mob_name|lower).replace('_loot', '').replace('_l2', '') ~ '.jpg') }}"
                  onerror="this.style.display='none'" alt="{{ flavor.name or mob_name }}">
-            {% if flavor.type and flavor.type != 'melee' %}<div class="mob-card-type">🎯 {{ flavor.type }}</div>{% endif %}
+            <div class="mob-card-role-badge">
+                <span>{{ get_role_icon(mob_name) }}</span>
+                <span>{{ mob_name.replace('_loot', '').replace('_l2', '').capitalize() }}</span>
+            </div>
         </div>
         <div class="mob-card-body">
+            {% set dmg_icon = '🏹' if flavor.type == 'ranged' else '⚔️' %}
             {% for i, rnd in pattern %}
             <div class="mob-card-round">
                 <div class="rnum">RND {{ i + 1 }}</div>
                 <div class="rstats">
-                    <span class="stat-dmg">⚔️ {{ rnd[0] }}</span>
+                    <span class="stat-dmg">{{ dmg_icon }} {{ rnd[0] }}</span>
                     <span class="stat-blk">🛡️ {{ rnd[1] }}</span>
                 </div>
             </div>
@@ -68,6 +72,11 @@
         <div class="played">
             {{ row.card }}{% if row.variant %} <span style="color: var(--text-muted); font-size: 14px;">({{ row.variant }})</span>{% endif %}
             {% if row.stance %}<span style="color: var(--text-muted); font-size: 14px;"> — {{ 'Guardian' if row.stance == 'G' else 'Champion' }}</span>{% endif %}
+            {% if row.equipment %}
+            <div style="margin-top: 5px; font-size: 13px; color: #ffd700; font-family: 'Barlow Condensed', sans-serif; letter-spacing: 0.5px;">
+                ⚔️ Activated: {{ row.equipment|join(', ') }}
+            </div>
+            {% endif %}
         </div>
         <div>
             <div class="mob-side">Mob: ATK {{ row.mob_atk }} <span class="blocked">BLK {{ row.mob_blk }}</span></div>

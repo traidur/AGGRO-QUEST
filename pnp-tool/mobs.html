@@ -30,6 +30,16 @@
             Elite <input type="number" id="qtyElite" value="1" min="0" max="10" style="width: 40px; background: #333; color: white; border: 1px solid #555; border-radius: 4px; padding: 2px 4px;">
           </label>
         </div>
+        <div id="artFitControls" class="filter-controls" style="margin-left: 20px; align-items: center; display: flex; flex-wrap: nowrap; gap: 6px;">
+          <label style="color: #fff; font-size: 14px; font-weight: bold; font-family: 'Barlow Condensed', sans-serif;">ART:</label>
+          <button class="btn btn-fit active" id="btnFitContain" style="padding: 4px 8px; font-size: 12px;">Fit</button>
+          <button class="btn btn-fit" id="btnFitCover" style="padding: 4px 8px; font-size: 12px;">Fill</button>
+          <div style="display: flex; align-items: center; gap: 6px; margin-left: 8px;">
+            <label style="color: #ccc; font-size: 12px; font-family: 'Barlow Condensed', sans-serif;">Zoom</label>
+            <input type="range" id="artZoom" min="60" max="140" value="100" step="5" style="width: 70px; accent-color: #E53935; cursor: pointer;">
+            <span id="zoomVal" style="color: #aaa; font-size: 12px; width: 32px; font-family: 'Barlow Condensed', sans-serif;">100%</span>
+          </div>
+        </div>
       </div>
       <div class="ui-right">
         <a href="/" class="btn" style="text-decoration: none; margin-right: 12px; background: #37474F;">Home</a>

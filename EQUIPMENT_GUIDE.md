@@ -183,9 +183,6 @@ without being an exact material-name match — both are 4+ tiers out (not needed
 3+ exist), so revisit before they're actually used if this becomes a real concern.
 
 **Not yet locked:**
-- Whether a recipe requiring a given subtype accepts only that exact subtype, or allows a
-  higher-tier substitute (e.g., Sun-Copper usable anywhere Crag-Iron is required) — a real
-  design choice affecting how forgiving crafting feels, not yet decided either way.
 - Whether unequipped spare materials/items sit in the Bag (competing with quest loot for space)
   or have their own separate storage.
 
@@ -227,14 +224,15 @@ Two constraints locked alongside the idea, both still needing real numbers/imple
 Class-gating stays intact for ready-made items too — a Warrior still shouldn't see a Wand-based
 item in the market, same restriction crafting already enforces.
 
-## Selling unwanted Gathering Tokens for Gold — intent locked 2026-09-08, price not yet decided
+## Selling unwanted Gathering Tokens for Gold — 1 Gold baseline (NEEDS PLAYTESTING, NOT LOCKED)
 
-Confirmed direction: a hero should be able to sell a Gathering Token they can't or don't want to
-use back to Town for Gold, so an unwanted token isn't permanently dead Bag space. A rough
-starting number (1 Gold) was floated but explicitly NOT locked — it depends on how often a hero
-actually ends up holding an unusable token (the real token-dealing rate) weighed against this
-game's existing Gold-per-trip pacing, neither of which has been checked yet. Revisit with real
-numbers before implementing; don't build this from the floated number alone.
+Confirmed rule: a hero can sell any Gathering Token (Ore, Herb, Skin across all Tiers) back to Town
+for **1 Gold each** (`apply_town_action` `sell` action) to prevent unwanted tokens from becoming
+permanently dead Bag space.
+
+**Note:** 1 Gold is the current working baseline implemented as of 2026-09-25, but this price
+explicitly **needs more playtesting and is NOT locked**. It may be tuned once we have more empirical
+data on token accumulation and gold economy pacing across full campaigns.
 
 ## Post-Audit Design Locks (2026-09-08)
 
@@ -291,3 +289,13 @@ first pass, not a final locked price — open to revision once more of the econo
 (Gathering Token sell-back price, the ready-made-market premium) is itself locked. Crafting
 itself is real and reachable in gameplay today (`board_engine.py`'s `craft_equipment` action),
 not just designed on paper.
+
+### 6. Pure-Tier Recipes & Minimum-Tier Material Substitution (Locked 2026-09-28)
+Following playtesting in Zone 2, the Lead Designer locked the material substitution and tier-gating rules:
+1. **Pure-Tier Recipes:** Grade 1 recipes require Grade 1 gathering materials as their baseline; Grade 2 recipes require Grade 2 gathering materials as their baseline (for both Base frame and Ingredient rider). This eliminates forced backtracking to Zone 1 to gather low-tier weeds or pelts for high-level gear.
+   - Staff Base: 2 Snap-Root (Grade 1) / 2 River-Mint (Grade 2)
+   - 1-Hander / 2-Hander Base: Crag-Iron (Grade 1) / Sun-Copper (Grade 2)
+   - Heavy Armor Base: Crag-Iron (Grade 1) / Sun-Copper (Grade 2)
+   - Light / Medium Armor Base: Scavenged Pelt (Grade 1) / Bristle-Pelt (Grade 2)
+2. **Minimum-Tier Requirement ("Bare Minimum" Rule):** Any material listed on a recipe defines the *minimum tier* required of that category (Ore, Herb, Skin). Any higher-tier material of the same category can satisfy that requirement (e.g., Sun-Copper satisfies a Crag-Iron requirement; River-Mint satisfies a Snap-Root requirement). A lower-tier material can never satisfy a higher-tier requirement.
+3. **Consumption Priority:** When a hero crafts an item and holds multiple eligible tiers in their bag, the crafting process automatically consumes the lowest-tier eligible materials first, protecting rare high-tier materials for advanced recipes.

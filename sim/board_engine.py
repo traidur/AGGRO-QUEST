@@ -588,7 +588,14 @@ def get_town_actions(hero, purchase_queue, board=None):
                 continue
         if hero.gold < item["cost"]:
             continue
-        actions.append({"type": "buy", "tag": item["tag"], "kind": item["kind"], "cost": item["cost"]})
+        act = {"type": "buy", "tag": item["tag"], "kind": item["kind"], "cost": item["cost"]}
+        if item["kind"] == "skill" and hero.class_name in M.LEVEL2_PURCHASED_ORDER:
+            idx = item.get("index")
+            if idx is not None and idx < len(M.LEVEL2_PURCHASED_ORDER[hero.class_name]):
+                old_name, new_name, _ = M.LEVEL2_PURCHASED_ORDER[hero.class_name][idx]
+                act["old_card"] = old_name
+                act["new_card"] = new_name
+        actions.append(act)
 
     if not at_trainer:
         if board and zone_id in (3, 4) and len(hero.active_quests) < M.ACTIVE_QUEST_COUNT:
@@ -609,30 +616,40 @@ def get_town_actions(hero, purchase_queue, board=None):
                 if hero.decay_stage.get(loot, 0) > 0:
                     actions.append({"type": "use_charm", "loot": loot})
 
-        vendor_trash_prices = {"tarnished_silverware": 1, "intact_pelt": 2, "flawless_gemstone": 3}
-        for item_name, price in vendor_trash_prices.items():
+        vendor_prices = {
+            "tarnished_silverware": 1, "intact_pelt": 2, "flawless_gemstone": 3,
+            # Gathering tokens vendored for 1 Gold each (working baseline, needs playtesting / NOT locked, 2026-09-25)
+            "Snap-Root": 1, "Crag-Iron": 1, "Scavenged Pelt": 1,
+            "River-Mint": 1, "Sun-Copper": 1, "Bristle-Pelt": 1,
+            "Ember-Vein Ore": 1, "Glacier-Metal": 1, "Nether-Slag": 1, "Crown-Gold": 1,
+            "Scorch-Blossom": 1, "Lantern-Spore": 1, "Astral-Moss": 1, "Tyrant's-Crest": 1,
+            "Ridge-Scale": 1, "Iron-Fleece": 1, "Phantom-Web": 1, "Behemoth Leather": 1,
+        }
+        for item_name, price in vendor_prices.items():
             if M._accessible_count(hero.bag, hero.locked, item_name) > 0:
                 actions.append({"type": "sell", "item_name": item_name, "gain": price})
 
         recipes = EQ.get_recipes_for_class(hero.class_name)
+        bag_counts = {}
+        for slot in hero.bag:
+            if isinstance(slot, dict) and "items" in slot:
+                for k, v in slot["items"].items():
+                    bag_counts[k] = bag_counts.get(k, 0) + v
+            elif isinstance(slot, str):
+                bag_counts[slot] = bag_counts.get(slot, 0) + 1
+
         for recipe in recipes:
             if hero.equipment.get(recipe["slot"]) == recipe:
                 continue
-            can_afford = True
-            bag_counts = {}
-            for slot in hero.bag:
-                if isinstance(slot, dict) and "items" in slot:
-                    for k, v in slot["items"].items():
-                        bag_counts[k] = bag_counts.get(k, 0) + v
-                elif isinstance(slot, str):
-                    bag_counts[slot] = bag_counts.get(slot, 0) + 1
-            for cost_k, cost_v in recipe["cost"].items():
-                if cost_k == "Gold":
-                    if hero.gold < cost_v: can_afford = False
-                else:
-                    if bag_counts.get(cost_k, 0) < cost_v: can_afford = False
+            can_afford, to_consume = EQ.can_craft_recipe(recipe, hero.gold, bag_counts)
             if can_afford:
-                actions.append({"type": "craft_equipment", "recipe": recipe})
+                consume_items = [f"{v} {k}" for k, v in to_consume.items()]
+                actions.append({
+                    "type": "craft_equipment",
+                    "recipe": recipe,
+                    "consume": to_consume,
+                    "consume_items": consume_items,
+                })
 
     actions.append({"type": "leave_trainer" if at_trainer else "leave_town"})
     return actions
@@ -667,11 +684,15 @@ def apply_town_action(hero, action, purchase_queue, board=None, rng=None):
     counter; only an actual Town visit implies resting between excursions."""
     if action["type"] == "craft_equipment":
         recipe = action["recipe"]
-        for cost_k, cost_v in recipe["cost"].items():
-            if cost_k == "Gold":
-                hero.gold -= cost_v
-            else:
-                for _ in range(cost_v): hero.bag.remove(cost_k)
+        hero.gold -= recipe["cost_gold"]
+        consume = action.get("consume")
+        if consume:
+            for item_k, item_v in consume.items():
+                M._remove_item(hero.bag, hero.locked, item_k, item_v)
+        else:
+            for cost_k, cost_v in recipe["cost"].items():
+                if cost_k != "Gold":
+                    M._remove_item(hero.bag, hero.locked, cost_k, cost_v)
         hero.equipment[recipe["slot"]] = recipe
         # A freshly-crafted item always starts unused, even when it's replacing an
         # already-used item in the same slot -- without this, the new item would be

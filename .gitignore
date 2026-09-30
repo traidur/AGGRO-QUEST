@@ -1,4 +1,7 @@
 .claude/
+.claude-terminal/
 .tmp.driveupload/
 __pycache__/
 *.pyc
+scratch/
+sim/savegame*.pkl

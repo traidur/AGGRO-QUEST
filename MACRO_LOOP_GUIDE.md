@@ -453,3 +453,26 @@ until that sweep happens.
 - **Bag size derivation.** Currently 2 (unchanged); whether it should move, and to what,
   needs the same back-solved treatment the Bag Upgrade price and the Bag Tetris revision
   above got, not a guessed number.
+
+## The Anti-Grind Equilibrium: Food Price as the Natural Wilderness Cap (Research Task, 2026-09-28)
+
+**The Vulnerability:**
+In early- and mid-game, Quest Decay is the primary clock: every turn spent roaming rots active quest payouts. However, when the quest deck eventually exhausts in the late game, that decay pressure drops to zero. A risk-averse player who fears the End Boss could theoretically stall the endgame indefinitely by repeatedly pulling low-tier trash mobs in safe zones for +1 Gold per win and 1 Gold gathering tokens, then healing back to full.
+
+**The Design Directive (Carrots, Not Sticks):**
+Do **not** introduce artificial turn limits, doom tracks, or arbitrary rule cutoffs (e.g. shutting down bounties). Instead, use the internal economic friction of the health recovery loop. 
+
+Every combat pull inflicts damage. Surviving in the field requires Food resets (or Potion sips). If Food is priced correctly relative to bare mob income, wilderness grinding becomes **mathematically net-zero or net-negative**:
+
+$$\text{Net Gold per Pull} = \text{Gross Income per Pull} - \text{Expected Recovery Cost per Pull} \le 0$$
+
+Where:
+* **Gross Income per Pull:** $+1\text{ Gold}$ (mob kill) $+$ average Gathering Token vendor value ($\approx 1\text{ Gold}$).
+* **Expected Recovery Cost per Pull:** $\frac{\text{Average HP Damage Taken per Pull}}{\text{Hero Max HP}} \times P_{\text{food}}$.
+
+**The Simulation Objective (To Be Swept):**
+1. Run `sim/condensed_trip.py` and `sim/macro_sim.py` across all 9 classes against Zone 1 and Zone 2 mob rosters to measure the exact average damage taken per pull and the true pulls-per-Food-reset.
+2. Back-solve for the minimum Food price ($P_{\text{food}}$, currently hypothesized at 5G–6G) where:
+   $$\text{Pulls per Food Reset} \times \text{Income per Pull} \le P_{\text{food}}$$
+3. Under this equilibrium, quests remain the *only* viable source of net profit (since quest bounties pay out large lump sums of 6–12 Gold). Bare mob pulls cannot sustain the cost of eating to survive them, eliminating the infinite grind naturally and deterministically.
+

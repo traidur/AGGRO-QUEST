@@ -690,17 +690,184 @@ def _find_food_placement(bag, locked):
     return None
 
 def _can_fit_food(bag, locked):
-    return _find_food_placement(bag, locked) is not None
+    """True if food can fit directly, OR if existing unlocked non-food items can be
+    rearranged to make room for a 2x2 food block."""
+    if _find_food_placement(bag, locked) is not None:
+        return True
+    cols = 3
+    items = [bag[idx] for idx in range(len(bag)) if not locked[idx] and bag[idx] is not None and bag[idx] not in ("food", "food_filler")]
+    for i in range(len(bag)):
+        if i % cols < cols - 1 and i + cols < len(bag):
+            idxs = [i, i+1, i+cols, i+cols+1]
+            if any(locked[idx] for idx in idxs):
+                continue
+            if any(bag[idx] in ("food", "food_filler") for idx in idxs):
+                continue
+            remaining_slots = [j for j in range(len(bag)) if not locked[j] and j not in idxs and bag[j] not in ("food", "food_filler")]
+            if len(remaining_slots) >= len(items):
+                return True
+    return False
 
 def _add_food(bag, locked):
+    """Adds a 2x2 food block to the bag. If items are in the way but total space permits,
+    automatically shifts unlocked non-food items into remaining slots to make room."""
+    cols = 3
     idx = _find_food_placement(bag, locked)
     if idx is not None:
-        cols = 3
         bag[idx] = "food"
         bag[idx+1] = "food_filler"
         bag[idx+cols] = "food_filler"
         bag[idx+cols+1] = "food_filler"
         return True
+
+    items = [bag[idx] for idx in range(len(bag)) if not locked[idx] and bag[idx] is not None and bag[idx] not in ("food", "food_filler")]
+    for i in range(len(bag)):
+        if i % cols < cols - 1 and i + cols < len(bag):
+            idxs = [i, i+1, i+cols, i+cols+1]
+            if any(locked[idx] for idx in idxs):
+                continue
+            if any(bag[idx] in ("food", "food_filler") for idx in idxs):
+                continue
+            remaining_slots = [j for j in range(len(bag)) if not locked[j] and j not in idxs and bag[j] not in ("food", "food_filler")]
+            if len(remaining_slots) >= len(items):
+                for j in range(len(bag)):
+                    if not locked[j] and bag[j] not in ("food", "food_filler"):
+                        bag[j] = None
+                bag[i] = "food"
+                bag[i+1] = "food_filler"
+                bag[i+cols] = "food_filler"
+                bag[i+cols+1] = "food_filler"
+                for item_idx, item in enumerate(items):
+                    bag[remaining_slots[item_idx]] = item
+                return True
+    return False
+
+def _organize_bag(bag, locked):
+    """Compacts and neatly organizes the bag:
+    - If food is present, it is placed at the top-left (indices [0, 1, 3, 4] if unlocked,
+      or the first available unlocked 2x2 block).
+    - All non-food items are sorted by type (potions first, other consumables second,
+      gathering tokens third, quest loot fourth, others last) and packed into the
+      remaining unlocked slots.
+    - If no food is present and items <= 5, items are packed into perimeter slots
+      ([2, 5, 8, 7, 6]), keeping [0, 1, 3, 4] completely open for 2x2 food.
+    """
+    cols = 3
+    has_food = any(slot == "food" for slot in bag)
+    items = [slot for i, slot in enumerate(bag) if not locked[i] and slot is not None and slot not in ("food", "food_filler")]
+
+    def item_sort_key(slot):
+        if not isinstance(slot, dict) or "items" not in slot:
+            return (9, str(slot))
+        names = list(slot["items"].keys())
+        if not names:
+            return (9, "")
+        name = names[0].lower()
+        if "potion" in name:
+            return (1, name)
+        if name in ("smoke_bomb", "scroll_of_vanquishing", "preserving_charm"):
+            return (2, name)
+        gathering_names = {
+            "snap-root", "crag-iron", "scavenged pelt",
+            "river-mint", "sun-copper", "bristle-pelt",
+            "ember-vein ore", "glacier-metal", "nether-slag", "crown-gold",
+            "scorch-blossom", "lantern-spore", "astral-moss", "tyrant's-crest",
+            "ridge-scale", "iron-fleece", "phantom-web", "behemoth leather"
+        }
+        if name in gathering_names or any(g in name for g in gathering_names):
+            return (3, name)
+        return (4, name)
+
+    items.sort(key=item_sort_key)
+
+    for i in range(len(bag)):
+        if not locked[i]:
+            bag[i] = None
+
+    if has_food:
+        for i in range(len(bag)):
+            if i % cols < cols - 1 and i + cols < len(bag):
+                idxs = [i, i+1, i+cols, i+cols+1]
+                if not any(locked[idx] for idx in idxs):
+                    bag[i] = "food"
+                    bag[i+1] = "food_filler"
+                    bag[i+cols] = "food_filler"
+                    bag[i+cols+1] = "food_filler"
+                    break
+        rem = [i for i in range(len(bag)) if not locked[i] and bag[i] is None]
+        for idx, item in zip(rem, items):
+            bag[idx] = item
+    else:
+        if len(items) <= 5 and not any(locked[idx] for idx in [0, 1, 3, 4]):
+            preferred = [2, 5, 8, 7, 6]
+            unlocked_pref = [p for p in preferred if not locked[p]]
+            other_rem = [i for i in range(len(bag)) if not locked[i] and i not in unlocked_pref]
+            target_slots = unlocked_pref + other_rem
+            for idx, item in zip(target_slots, items):
+                bag[idx] = item
+        else:
+            rem = [i for i in range(len(bag)) if not locked[i]]
+            for idx, item in zip(rem, items):
+                bag[idx] = item
+    return bag
+
+def _swap_bag_slots(bag, locked, from_idx, to_idx, cols=3):
+    """Swaps two slots in the bag, correctly handling 1-slot items and 2x2 food."""
+    if not (0 <= from_idx < len(bag) and 0 <= to_idx < len(bag)):
+        return False
+    if locked[from_idx] or locked[to_idx]:
+        return False
+    if from_idx == to_idx:
+        return True
+
+    from_is_filler = bag[from_idx] == "food_filler"
+    to_is_filler = bag[to_idx] == "food_filler"
+
+    actual_from = from_idx
+    if from_is_filler:
+        for offset in [1, cols, cols+1]:
+            if from_idx >= offset and bag[from_idx - offset] == "food":
+                actual_from = from_idx - offset
+                break
+
+    actual_to = to_idx
+    if to_is_filler:
+        for offset in [1, cols, cols+1]:
+            if to_idx >= offset and bag[to_idx - offset] == "food":
+                actual_to = to_idx - offset
+                break
+
+    # Case 1: Simple 1-slot swap (neither is food)
+    if bag[actual_from] != "food" and bag[actual_to] != "food":
+        bag[from_idx], bag[to_idx] = bag[to_idx], bag[from_idx]
+        return True
+
+    # Case 2: Moving food
+    if bag[actual_from] == "food":
+        food_origin = actual_from
+        new_target = to_idx
+        if not (new_target % cols < cols - 1 and new_target + cols < len(bag)):
+            return False
+        new_idxs = [new_target, new_target+1, new_target+cols, new_target+cols+1]
+        if any(locked[idx] for idx in new_idxs):
+            return False
+        old_idxs = [food_origin, food_origin+1, food_origin+cols, food_origin+cols+1]
+        displaced = [bag[idx] for idx in new_idxs if idx not in old_idxs and bag[idx] is not None]
+        freed = [idx for idx in old_idxs if idx not in new_idxs and not locked[idx]]
+        if len(freed) < len(displaced):
+            return False
+        for idx in old_idxs:
+            bag[idx] = None
+        for idx in new_idxs:
+            bag[idx] = None
+        bag[new_target] = "food"
+        bag[new_target+1] = "food_filler"
+        bag[new_target+cols] = "food_filler"
+        bag[new_target+cols+1] = "food_filler"
+        for idx, item in zip(freed, displaced):
+            bag[idx] = item
+        return True
+
     return False
 
 def _remove_food(bag, index):
@@ -730,6 +897,13 @@ def _add_item(bag, locked, item_name):
     if i is not None:
         bag[i]["items"][item_name] = bag[i]["items"].get(item_name, 0) + 1
         return True
+    has_food = any(slot == "food" for slot in bag)
+    if not has_food and len(bag) == 9:
+        preferred = [2, 5, 8, 7, 6, 0, 1, 3, 4]
+        for j in preferred:
+            if not locked[j] and bag[j] is None:
+                bag[j] = {"items": {item_name: 1}}
+                return True
     for j, slot in enumerate(bag):
         if not locked[j] and slot is None:
             bag[j] = {"items": {item_name: 1}}
@@ -744,11 +918,15 @@ def _accessible_count(bag, locked, item_name):
     """Total item_name sitting in non-locked slots -- what the hero can actually use toward
     quest completion (for a loot name) or consume (for 'potion' etc.) right now. Locked
     (post-death) contents don't count until recovered."""
-    return sum(
-        slot["items"].get(item_name, 0)
-        for i, slot in enumerate(bag)
-        if not locked[i] and isinstance(slot, dict)
-    )
+    total = 0
+    for i, slot in enumerate(bag):
+        if locked[i]:
+            continue
+        if isinstance(slot, dict) and "items" in slot:
+            total += slot["items"].get(item_name, 0)
+        elif isinstance(slot, str) and slot == item_name:
+            total += 1
+    return total
 
 
 def _remove_item(bag, locked, item_name, amount):
@@ -759,7 +937,13 @@ def _remove_item(bag, locked, item_name, amount):
     for i, slot in enumerate(bag):
         if remaining <= 0:
             break
-        if locked[i] or not isinstance(slot, dict):
+        if locked[i]:
+            continue
+        if isinstance(slot, str) and slot == item_name:
+            bag[i] = None
+            remaining -= 1
+            continue
+        if not isinstance(slot, dict) or "items" not in slot:
             continue
         have = slot["items"].get(item_name, 0)
         if have <= 0:

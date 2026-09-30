@@ -25,15 +25,33 @@ function hpTrackHtml(maxHp) {
   return rows;
 }
 
+const ROLE_ICONS = {
+  'grunt': '🛡️',
+  'bruiser': '⏳',
+  'enforcer': '💥',
+  'raider': '⚔️',
+  'ambusher': '🗡️',
+  'scout': '🎯',
+  'bulwark': '🏰',
+  'berserker': '🩸',
+  'warlord': '👑'
+};
+
+function formatRole(name) {
+  const key = (name || '').replace(/_L\d+$/i, '').toLowerCase();
+  const icon = ROLE_ICONS[key] || '';
+  return icon ? `${icon} ${name}` : name;
+}
+
 function matchupBlockHtml(label, m) {
   return `
     <div class="matchup-block">
       <div class="matchup-label">${label}</div>
       <div class="matchup-row matchup-best">
-        <strong>Comfortable:</strong> ${m.best_1} (${m.best_1_cost}%), ${m.best_2} (${m.best_2_cost}%)
+        <strong>Comfortable:</strong> ${formatRole(m.best_1)} (${m.best_1_cost}%), ${formatRole(m.best_2)} (${m.best_2_cost}%)
       </div>
       <div class="matchup-row matchup-worst">
-        <strong>Struggles:</strong> ${m.worst_1} (${m.worst_1_cost}%), ${m.worst_2} (${m.worst_2_cost}%)
+        <strong>Struggles:</strong> ${formatRole(m.worst_1)} (${m.worst_1_cost}%), ${formatRole(m.worst_2)} (${m.worst_2_cost}%)
       </div>
     </div>
   `;

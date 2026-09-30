@@ -69,7 +69,7 @@ import argparse
 import random
 import pickle
 
-SAVE_FILE = "sim/savegame.pkl"
+SAVE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "savegame.pkl")
 
 from flask import Flask, redirect, render_template, request, url_for
 
@@ -84,6 +84,8 @@ import equipment_data as EQ
 from board_state import HeroBoardState
 
 app = Flask(__name__, template_folder="playtest_board_web_templates")
+app.config["TEMPLATES_AUTO_RELOAD"] = True
+app.jinja_env.auto_reload = True
 
 # Single-user global state -- deliberately not per-session (matches playtest_web.py's own
 # "local single-player tool, no sessions needed" convention). _S holds everything needed to
@@ -149,6 +151,26 @@ def get_class_matchup(class_name, xp):
     return _MATCHUP_BY_LEVEL[level].get(class_name, {})
 
 
+_ROLE_ICONS = {
+    'grunt': '🛡️',
+    'bruiser': '⏳',
+    'enforcer': '💥',
+    'raider': '⚔️',
+    'ambusher': '🗡️',
+    'scout': '🎯',
+    'bulwark': '🏰',
+    'berserker': '🩸',
+    'warlord': '👑',
+}
+
+
+def get_role_icon(role_name):
+    if not role_name:
+        return ''
+    key = str(role_name).replace('_loot', '').replace('_l2', '').replace('_L2', '').lower()
+    return _ROLE_ICONS.get(key, '⚔️')
+
+
 def get_quest_progress(hero, quest):
     pool = M.LEVEL2_QUESTS if hero.xp >= M.LEVEL2_XP_THRESHOLD else M.QUESTS
     if quest not in pool:
@@ -171,6 +193,76 @@ def get_item_icon(item_name):
     }
     return icons.get(item_name, "📦")
 
+ITEMS_WITH_ART = {"food", "potion", "preserving_charm", "scroll_of_vanquishing", "smoke_bomb"}
+
+def has_item_art(item_name):
+    return (item_name or "").lower() in ITEMS_WITH_ART
+
+def get_hero_upgrades(hero):
+    if not hero:
+        return []
+    class_name = hero.class_name
+    upgrades = []
+    class_cards = _CARDS_TEXT.get(class_name, {})
+    if class_name in M.LEVEL2_MANDATORY and ("mandatory" in hero.acquired or hero.xp >= 6):
+        _, old_name, new_name, new_card = M.LEVEL2_MANDATORY[class_name]
+        cdata = class_cards.get(new_name, {})
+        upgrades.append({
+            "tier": "Level 2 Trait",
+            "old_name": old_name,
+            "new_name": new_name,
+            "text": cdata.get("text", ""),
+            "badges": cdata.get("badges", {}),
+            "card_data": cdata
+        })
+    if class_name in M.LEVEL2_PURCHASED_ORDER:
+        for i, (old_name, new_name, new_card) in enumerate(M.LEVEL2_PURCHASED_ORDER[class_name]):
+            if f"skill_{i}" in hero.acquired:
+                cdata = class_cards.get(new_name, {})
+                upgrades.append({
+                    "tier": f"Talent {i+1}",
+                    "old_name": old_name,
+                    "new_name": new_name,
+                    "text": cdata.get("text", ""),
+                    "badges": cdata.get("badges", {}),
+                    "card_data": cdata
+                })
+    return upgrades
+
+def get_hero_deck(hero):
+    if not hero:
+        return []
+    class_name = hero.class_name
+    mod = M.CARD_SOURCE.get(class_name)
+    if not mod or not hasattr(mod, "DECK"):
+        return []
+    swaps = BE._level2_swaps_for(class_name, hero.acquired)
+    class_cards = _CARDS_TEXT.get(class_name, {})
+    deck = []
+    for c in mod.DECK:
+        if c in swaps:
+            new_name, _ = swaps[c]
+            cdata = class_cards.get(new_name, {})
+            deck.append({
+                "name": new_name,
+                "is_upgraded": True,
+                "replaces": c,
+                "text": cdata.get("text", ""),
+                "badges": cdata.get("badges", {}),
+                "data": cdata
+            })
+        else:
+            cdata = class_cards.get(c, {})
+            deck.append({
+                "name": c,
+                "is_upgraded": False,
+                "replaces": None,
+                "text": cdata.get("text", ""),
+                "badges": cdata.get("badges", {}),
+                "data": cdata
+            })
+    return deck
+
 @app.context_processor
 def inject_globals():
     return dict(
@@ -186,9 +278,13 @@ def inject_globals():
         get_item_name=get_item_name,
         get_item_count=get_item_count,
         get_item_icon=get_item_icon,
+        has_item_art=has_item_art,
         get_quest_progress=get_quest_progress,
         get_recipes=EQ.get_recipes_for_class,
-        get_equip_text=_get_equip_text
+        get_equip_text=_get_equip_text,
+        get_hero_upgrades=get_hero_upgrades,
+        get_hero_deck=get_hero_deck,
+        get_role_icon=get_role_icon
     )
 
 
@@ -211,18 +307,27 @@ def reset_session():
 reset_session()
 
 
-def make_sequence_decide_fn(sequence, stance_sequence=None):
-    """Web-facing decide_fn -- replays a human's pre-submitted full card ordering (and Warrior
-    stance choice) instead of computing anything live. Mirrors QuestIntelligence.decide_combat's
-    cache-and-replay shape exactly, except the sequence comes from a submitted web form instead
-    of the solver -- see this module's own docstring for why committing to a full ordering up
-    front costs nothing in decision quality versus round-by-round play."""
+def make_sequence_decide_fn(sequence, stance_sequence=None, equipment_sequence=None):
+    """Web-facing decide_fn -- replays a human's pre-submitted full card ordering, Warrior
+    stance choice, and equipment activation choices instead of computing anything live."""
     def decide_fn(state, actions):
         variant = sequence[state.round_num]
         stance = stance_sequence[state.round_num] if stance_sequence else None
+        target_eq = equipment_sequence[state.round_num] if equipment_sequence else []
+
+        # 1. Look for legal action matching variant, stance, and exact equipment activations
+        for action in actions:
+            if (action["variant"] == variant and 
+                action.get("stance") == stance and 
+                action.get("legal") and 
+                sorted(action.get("equipment", [])) == sorted(target_eq)):
+                return action
+
+        # 2. Fallback if specific equipment was unavailable or omitted
         for action in actions:
             if action["variant"] == variant and action.get("stance") == stance and action.get("legal"):
                 return action
+
         raise ValueError(f"submitted sequence illegal at round {state.round_num}: "
                           f"variant={variant!r} stance={stance!r}")
     return decide_fn
@@ -247,7 +352,7 @@ def _build_map_data(board, active_hero_idx=0):
     # Place heroes
     for i, h in enumerate(board.heroes):
         z, n = h.position
-        if isinstance(z, int) and n == "town":
+        if isinstance(z, int) and (n == "town" or n is None):
             if z in zones:
                 zones[z]["town_heroes"].append(i)
         elif isinstance(z, int) and n == "trainer":
@@ -310,14 +415,20 @@ def _pop_flash():
     return msgs
 
 
-def _hand_options(class_name, hand):
+def _hand_options(class_name, hand, hero=None):
     """List of (hand_idx, card_name, variant, label, dict_json) for every selectable option in a hand --"""
     import condensed_necromancer as N
     import json
     options = []
     class_data = _CARDS_TEXT.get(class_name, {})
+    swaps = BE._level2_swaps_for(class_name, hero.acquired) if hero else {}
     for i, card_name in enumerate(hand):
-        card_data = class_data.get(card_name, {})
+        card_data = dict(class_data.get(card_name, {}))
+        for old_c, (new_c, _) in swaps.items():
+            if new_c == card_name:
+                card_data["is_upgraded"] = True
+                card_data["replaces"] = old_c
+                break
         if class_name == "necromancer" and card_name == N.BONEGUARD_OFFERING:
             options.append((i, card_name, N.BONEGUARD_OFFERING, card_name, json.dumps(card_data)))
             options.append((i, card_name, N.BONEGUARD_OFFERING_BOOSTED, f"{card_name} (Boosted)", json.dumps(card_data)))
@@ -326,8 +437,8 @@ def _hand_options(class_name, hand):
     return options
 
 
-def _parse_combat_plan(form, class_name, hand):
-    """Parses the combat_plan form into (sequence, stance_sequence, error). Each round field is
+def _parse_combat_plan(form, class_name, hand, hero=None):
+    """Parses the combat_plan form into (sequence, stance_sequence, equipment_sequence, error). Each round field is
     'hand_idx|variant'; validates the 3 rounds use 3 DIFFERENT hand slots (a hand card, once
     played, leaves the hand -- see combat_engine._remaining_hand) before ever touching
     combat_engine, so an invalid submission bounces back to the same page with a message
@@ -337,26 +448,55 @@ def _parse_combat_plan(form, class_name, hand):
     for round_num in range(3):
         raw = form.get(f"round_{round_num}", "")
         if "|" not in raw:
-            return None, None, f"Round {round_num + 1} needs a card chosen."
+            return None, None, None, f"Round {round_num + 1} needs a card chosen."
         idx_s, variant = raw.split("|", 1)
         try:
             idx = int(idx_s)
         except ValueError:
-            return None, None, f"Round {round_num + 1}: invalid submission."
+            return None, None, None, f"Round {round_num + 1}: invalid submission."
         if idx in used_idxs or not (0 <= idx < len(hand)):
-            return None, None, f"Round {round_num + 1}: each hand card can only be played once."
+            return None, None, None, f"Round {round_num + 1}: each hand card can only be played once."
         used_idxs.add(idx)
         sequence.append(variant)
     stance_sequence = None
     if M.HAS_STANCE[class_name]:
         stance = form.get("stance")
         if stance not in ("G", "C"):
-            return None, None, "Choose a stance (Guardian or Crusader)."
+            return None, None, None, "Choose a stance (Guardian or Crusader)."
         stance_sequence = [stance] * 3
-    return sequence, stance_sequence, None
+
+    equipment_sequence = [[], [], []]
+    if hero and hero.equipment:
+        for slot in hero.equipment.keys():
+            if slot in hero.equipment_used:
+                continue
+            choice = form.get(f"equip_{slot}", "none")
+            if choice in ("0", "1", "2"):
+                equipment_sequence[int(choice)].append(slot)
+
+    return sequence, stance_sequence, equipment_sequence, None
 
 
-def _validate_sequence(class_name, hand, mob_name, hero_hp, sequence, stance_sequence):
+def _normalize_hand(hand, class_name, acquired):
+    """If hero has acquired Level 2 upgrades, replaces any old Level 1 cards in hand with their
+    upgraded names so planning and execution match."""
+    if not hand:
+        return hand
+    swaps = BE._level2_swaps_for(class_name, acquired)
+    if not swaps:
+        return hand
+    return tuple(swaps[c][0] if c in swaps else c for c in hand)
+
+
+def _draw_hero_hand(hero, class_name, rng):
+    """Draws a random hand for the hero from their current deck (respecting Level 2 upgrades)."""
+    mod = M.CARD_SOURCE[class_name]
+    swaps = BE._level2_swaps_for(class_name, hero.acquired)
+    with LV.leveled_kit(mod, swaps):
+        return rng.choice(mod.ALL_HANDS)
+
+
+def _validate_sequence(class_name, hand, mob_name, hero_hp, sequence, stance_sequence, equipment_sequence=None, hero=None):
     """Dry-runs the submitted sequence through combat_engine directly (a throwaway PullState,
     never touching the real hero/board) before committing to it for real -- combat resolution
     is fully deterministic given hand+mob+sequence (no RNG anywhere in get_legal_actions/
@@ -364,21 +504,26 @@ def _validate_sequence(class_name, hand, mob_name, hero_hp, sequence, stance_seq
     cheap and catches a conditionally-illegal card (e.g. Warrior's Execute, only legal below
     50% mob HP) before it wastes the player's real turn instead of crashing mid-resolution.
     Returns None if the whole sequence is legal round-by-round, else an error string."""
-    pattern, mob_hp = M._pattern_hp_for_mob(class_name, mob_name)
-    state = E.new_pull_with_hp(class_name, mob_name, hand, pattern, mob_hp, hero_hp)
-    decide_fn = make_sequence_decide_fn(sequence, stance_sequence)
-    try:
-        while state.outcome is None:
-            actions = E.get_legal_actions(state)
-            action = decide_fn(state, actions)
-            state = E.apply_action(state, action)
-        return None
-    except ValueError as e:
-        return (f"That plan isn't legal: {e}. Some cards (like a Warrior's Execute) are only "
-                f"playable once the mob is low enough -- try a different order.")
+    mod = M.CARD_SOURCE[class_name]
+    swaps = BE._level2_swaps_for(class_name, hero.acquired) if hero else {}
+    with LV.leveled_kit(mod, swaps):
+        pattern, mob_hp = M._pattern_hp_for_mob(class_name, mob_name)
+        state = E.new_pull_with_hp(class_name, mob_name, hand, pattern, mob_hp, hero_hp,
+                                   equipment=hero.equipment if hero else None,
+                                   equipment_used=set(hero.equipment_used) if hero else None)
+        decide_fn = make_sequence_decide_fn(sequence, stance_sequence, equipment_sequence)
+        try:
+            while state.outcome is None:
+                actions = E.get_legal_actions(state)
+                action = decide_fn(state, actions)
+                state = E.apply_action(state, action)
+            return None
+        except ValueError as e:
+            return (f"That plan isn't legal: {e}. Some cards (like a Warrior's Execute) are only "
+                    f"playable once the mob is low enough -- try a different order.")
 
 
-def _build_combat_log(class_name, hand, mob_name, hero_hp, sequence, stance_sequence):
+def _build_combat_log(class_name, hand, mob_name, hero_hp, sequence, stance_sequence, equipment_sequence=None, hero=None):
     """Same dry-run shape as _validate_sequence (a throwaway PullState, never the real hero) --
     called only after _validate_sequence has already confirmed the plan is legal, so this one
     never raises. Reconstructs a round-by-round display log purely from combat_engine's own
@@ -388,25 +533,37 @@ def _build_combat_log(class_name, hand, mob_name, hero_hp, sequence, stance_sequ
     that real call) because combat has zero RNG once hand+mob+sequence are fixed -- this dry
     run is guaranteed to produce numbers identical to the real one, the same determinism
     _validate_sequence already relies on. Returns (rows, final_outcome)."""
-    pattern, mob_hp = M._pattern_hp_for_mob(class_name, mob_name)
-    state = E.new_pull_with_hp(class_name, mob_name, hand, pattern, mob_hp, hero_hp)
-    decide_fn = make_sequence_decide_fn(sequence, stance_sequence)
-    rows = []
-    while state.outcome is None:
-        actions = E.get_legal_actions(state)
-        action = decide_fn(state, actions)
-        round_pattern = pattern[state.round_num]
-        state = E.apply_action(state, action)
-        rows.append(dict(
-            round_num=state.round_num, card=action["card"],
-            variant=action["variant"] if action["variant"] != action["card"] else None,
-            stance=action.get("stance"),
-            mob_atk=round_pattern[0], mob_blk=round_pattern[1],
-            raw_dmg=action["raw_dmg"], block=action["block"], heal=action["heal"],
-            dmg_dealt=action["dmg_dealt"], dmg_taken=action["dmg_taken"],
-            hp_after=state.hero_hp, mob_hp_after=state.mob_hp_remaining,
-        ))
-    return rows, state.outcome
+    mod = M.CARD_SOURCE[class_name]
+    swaps = BE._level2_swaps_for(class_name, hero.acquired) if hero else {}
+    with LV.leveled_kit(mod, swaps):
+        pattern, mob_hp = M._pattern_hp_for_mob(class_name, mob_name)
+        state = E.new_pull_with_hp(class_name, mob_name, hand, pattern, mob_hp, hero_hp,
+                                   equipment=hero.equipment if hero else None,
+                                   equipment_used=set(hero.equipment_used) if hero else None)
+        decide_fn = make_sequence_decide_fn(sequence, stance_sequence, equipment_sequence)
+        rows = []
+        while state.outcome is None:
+            actions = E.get_legal_actions(state)
+            action = decide_fn(state, actions)
+            round_pattern = pattern[state.round_num]
+            state = E.apply_action(state, action)
+            eq_names = []
+            for s in action.get("equipment", []):
+                if hero and hero.equipment and s in hero.equipment and isinstance(hero.equipment[s], dict):
+                    eq_names.append(hero.equipment[s].get("name", s))
+                else:
+                    eq_names.append(s.title())
+            rows.append(dict(
+                round_num=state.round_num, card=action["card"],
+                variant=action["variant"] if action["variant"] != action["card"] else None,
+                stance=action.get("stance"),
+                equipment=eq_names,
+                mob_atk=round_pattern[0], mob_blk=round_pattern[1],
+                raw_dmg=action["raw_dmg"], block=action["block"], heal=action["heal"],
+                dmg_dealt=action["dmg_dealt"], dmg_taken=action["dmg_taken"],
+                hp_after=state.hero_hp, mob_hp_after=state.mob_hp_remaining,
+            ))
+        return rows, state.outcome
 
 
 def _mob_level_for_pending(pending):
@@ -480,20 +637,50 @@ def _new_hero(class_name, rng):
 
 @app.route("/bag/discard/<int:idx>", methods=["POST"])
 def discard_bag_item(idx):
+    if not _S.get("board") or not _S["board"].heroes:
+        return redirect(url_for("index"))
     hero = _S["board"].heroes[_S["active_hero_idx"]] if _S["mode"] == "solo" else _S["board"].heroes[_S["cmp_declare_order"][0] if _S.get("cmp_declare_order") else 0]
     if 0 <= idx < len(hero.bag) and not hero.locked[idx]:
-        hero.bag[idx] = None
-    return redirect(request.referrer)
+        if hero.bag[idx] == "food":
+            M._remove_food(hero.bag, idx)
+        else:
+            hero.bag[idx] = None
+    return redirect(request.referrer or url_for("travel"))
+
+@app.route("/bag/organize", methods=["POST"])
+def organize_bag():
+    if not _S.get("board") or not _S["board"].heroes:
+        return redirect(url_for("index"))
+    hero = _S["board"].heroes[_S["active_hero_idx"]] if _S["mode"] == "solo" else _S["board"].heroes[_S["cmp_declare_order"][0] if _S.get("cmp_declare_order") else 0]
+    M._organize_bag(hero.bag, hero.locked)
+    return redirect(request.referrer or url_for("travel"))
+
+@app.route("/bag/swap", methods=["POST"])
+def swap_bag():
+    if not _S.get("board") or not _S["board"].heroes:
+        return redirect(url_for("index"))
+    hero = _S["board"].heroes[_S["active_hero_idx"]] if _S["mode"] == "solo" else _S["board"].heroes[_S["cmp_declare_order"][0] if _S.get("cmp_declare_order") else 0]
+    try:
+        from_idx = int(request.form.get("from_idx", -1))
+        to_idx = int(request.form.get("to_idx", -1))
+        M._swap_bag_slots(hero.bag, hero.locked, from_idx, to_idx)
+    except Exception as e:
+        app.logger.warning(f"Failed to swap bag slots: {e}")
+    return redirect(request.referrer or url_for("travel"))
 
 @app.route("/bag/discard_pending/<int:idx>", methods=["POST"])
 def discard_pending_item(idx):
+    if not _S.get("board") or not _S["board"].heroes:
+        return redirect(url_for("index"))
     hero = _S["board"].heroes[_S["active_hero_idx"]] if _S["mode"] == "solo" else _S["board"].heroes[_S["cmp_declare_order"][0] if _S.get("cmp_declare_order") else 0]
     if 0 <= idx < len(hero.pending_loot):
         hero.pending_loot.pop(idx)
-    return redirect(request.referrer)
+    return redirect(request.referrer or url_for("travel"))
 
 @app.route("/bag/claim_pending", methods=["POST"])
 def claim_pending_items():
+    if not _S.get("board") or not _S["board"].heroes:
+        return redirect(url_for("index"))
     hero = _S["board"].heroes[_S["active_hero_idx"]] if _S["mode"] == "solo" else _S["board"].heroes[_S["cmp_declare_order"][0] if _S.get("cmp_declare_order") else 0]
     leftover = []
     for item in hero.pending_loot:
@@ -504,7 +691,7 @@ def claim_pending_items():
     hero.pending_loot = leftover
     if leftover:
         _flash("Not enough room in bag for all pending items.")
-    return redirect(request.referrer)
+    return redirect(request.referrer or url_for("travel"))
 
 
 @app.route("/start", methods=["POST"])
@@ -644,8 +831,7 @@ def recovery_intro():
     node_names = BE._nodes_in_zone(zone_id)
     B.deal_zone(board, zone_id, level, node_names, rng)
     mob_name = board.zones[zone_id].dealt[node_name]
-    mod = M.CARD_SOURCE[class_name]
-    hand = rng.choice(mod.ALL_HANDS)
+    hand = _draw_hero_hand(hero, class_name, rng)
     _S["pending_kind"] = "recovery_node"
     _S["pending_action"] = {"node_name": node_name, "mob_name": mob_name}
     _S["pending_hand"] = hand
@@ -681,8 +867,7 @@ def travel_action():
     action = actions[idx]
 
     if action["type"] == "declare_node":
-        mod = M.CARD_SOURCE[class_name]
-        hand = rng.choice(mod.ALL_HANDS)
+        hand = _draw_hero_hand(hero, class_name, rng)
         _S["pending_kind"] = "declare"
         _S["pending_action"] = action
         _S["pending_hand"] = hand
@@ -742,8 +927,7 @@ def scouted_pick_choose():
     candidates = _S["pending_border"]["candidates"]
     mob_name = candidates[0] if pick == "0" else candidates[1]
 
-    mod = M.CARD_SOURCE[class_name]
-    hand = _S["rng"].choice(mod.ALL_HANDS)
+    hand = _draw_hero_hand(hero, class_name, _S["rng"])
     _S["pending_action"] = dict(_S["pending_border"], mob_name=mob_name)
     _S["pending_hand"] = hand
     _S["phase"] = "combat_plan"
@@ -758,14 +942,20 @@ def scouted_pick_choose():
 def combat_plan():
     hero = _S["board"].heroes[0]
     class_name = _S["class_names"][0]
+    _S["pending_hand"] = _normalize_hand(_S["pending_hand"], class_name, hero.acquired)
     hand = _S["pending_hand"]
     mob_name = _S["pending_action"]["mob_name"]
     pattern, mob_hp = M._pattern_hp_for_mob(class_name, mob_name)
+    available_equipment = {
+        slot: recipe for slot, recipe in hero.equipment.items()
+        if slot not in hero.equipment_used
+    }
     return render_template(
         "combat_plan.html", class_name=class_name, mob_name=mob_name.replace("_loot", ""),
         mob_level=_mob_level_for_pending(_S["pending_action"]),
         pattern=list(enumerate(pattern)), mob_hp=mob_hp, hero=hero,
-        hand_options=_hand_options(class_name, hand), has_stance=M.HAS_STANCE[class_name],
+        available_equipment=available_equipment,
+        hand_options=_hand_options(class_name, hand, hero=hero), has_stance=M.HAS_STANCE[class_name],
         pending_kind=_S["pending_kind"], flash=_pop_flash(),
     )
 
@@ -776,13 +966,14 @@ def combat_plan_submit():
     class_name = _S["class_names"][0]
     board = _S["board"]
     rng = _S["rng"]
+    _S["pending_hand"] = _normalize_hand(_S["pending_hand"], class_name, hero.acquired)
     hand = _S["pending_hand"]
     kind = _S["pending_kind"]
     pending = _S["pending_action"]
 
-    sequence, stance_sequence, error = _parse_combat_plan(request.form, class_name, hand)
+    sequence, stance_sequence, equipment_sequence, error = _parse_combat_plan(request.form, class_name, hand, hero=hero)
     if error is None:
-        error = _validate_sequence(class_name, hand, pending["mob_name"], hero.hp, sequence, stance_sequence)
+        error = _validate_sequence(class_name, hand, pending["mob_name"], hero.hp, sequence, stance_sequence, equipment_sequence=equipment_sequence, hero=hero)
     if error:
         _flash(error)
         return redirect(url_for("combat_plan"))
@@ -790,8 +981,8 @@ def combat_plan_submit():
     # Built BEFORE the real resolution below, from a separate throwaway dry run -- see
     # _build_combat_log's own docstring for why that's safe (zero RNG once the plan is fixed).
     log_rows, log_outcome = _build_combat_log(class_name, hand, pending["mob_name"], hero.hp,
-                                               sequence, stance_sequence)
-    decide_fn = make_sequence_decide_fn(sequence, stance_sequence)
+                                               sequence, stance_sequence, equipment_sequence=equipment_sequence, hero=hero)
+    decide_fn = make_sequence_decide_fn(sequence, stance_sequence, equipment_sequence)
 
     if kind == "declare":
         result = BE.apply_travel_action(hero, pending, class_name, board, rng,
@@ -1084,7 +1275,8 @@ def cmp_declare_action():
     if action["type"] == "declare_node":
         _S["cmp_claimed_this_round"].add(action["node_name"])
     BE.declare_for_hero(board, hero_idx, action)
-    _S["cmp_declare_order"].pop(0)
+    if _S["cmp_declare_order"]:
+        _S["cmp_declare_order"].pop(0)
     return _cmp_process_declare_queue()
 
 
@@ -1370,8 +1562,8 @@ def _cmp_process_resolve_queue():
             _S["phase"] = "cmp_scouted_pick"
             return redirect(url_for("cmp_scouted_pick"))
 
-        mod = M.CARD_SOURCE[class_names[hero_idx]]
-        hand = rng.choice(mod.ALL_HANDS)
+        hero = board.heroes[hero_idx]
+        hand = _draw_hero_hand(hero, class_names[hero_idx], rng)
         _S["pending_kind"] = "cmp_declare_node"
         _S["pending_action"] = action
         _S["pending_hand"] = hand
@@ -1390,13 +1582,13 @@ def cmp_scouted_pick():
 @app.route("/cmp/scouted_pick/choose", methods=["POST"])
 def cmp_scouted_pick_choose():
     hero_idx = _S["active_hero_idx"]
+    hero = _S["board"].heroes[hero_idx]
     class_name = _S["class_names"][hero_idx]
     pick = request.form.get("pick")
     candidates = _S["pending_border"]["candidates"]
     mob_name = candidates[0] if pick == "0" else candidates[1]
 
-    mod = M.CARD_SOURCE[class_name]
-    hand = _S["rng"].choice(mod.ALL_HANDS)
+    hand = _draw_hero_hand(hero, class_name, _S["rng"])
     _S["pending_action"] = dict(_S["pending_border"], mob_name=mob_name)
     _S["pending_hand"] = hand
     _S["phase"] = "cmp_combat_plan"
@@ -1408,14 +1600,20 @@ def cmp_combat_plan():
     hero_idx = _S["active_hero_idx"]
     hero = _S["board"].heroes[hero_idx]
     class_name = _S["class_names"][hero_idx]
+    _S["pending_hand"] = _normalize_hand(_S["pending_hand"], class_name, hero.acquired)
     hand = _S["pending_hand"]
     mob_name = _S["pending_action"]["mob_name"]
     pattern, mob_hp = M._pattern_hp_for_mob(class_name, mob_name)
+    available_equipment = {
+        slot: recipe for slot, recipe in hero.equipment.items()
+        if slot not in hero.equipment_used
+    }
     return render_template(
         "combat_plan.html", class_name=class_name, mob_name=mob_name.replace("_loot", ""),
         mob_level=_mob_level_for_pending(_S["pending_action"]),
         pattern=list(enumerate(pattern)), mob_hp=mob_hp, hero=hero,
-        hand_options=_hand_options(class_name, hand), has_stance=M.HAS_STANCE[class_name],
+        available_equipment=available_equipment,
+        hand_options=_hand_options(class_name, hand, hero=hero), has_stance=M.HAS_STANCE[class_name],
         pending_kind=_S["pending_kind"], flash=_pop_flash(),
         turn_label=_cmp_label(hero_idx), action_url=url_for("cmp_combat_plan_submit"),
     )
@@ -1428,17 +1626,18 @@ def cmp_combat_plan_submit():
     class_name = _S["class_names"][hero_idx]
     board = _S["board"]
     rng = _S["rng"]
+    _S["pending_hand"] = _normalize_hand(_S["pending_hand"], class_name, hero.acquired)
     hand = _S["pending_hand"]
     kind = _S["pending_kind"]
     pending = _S["pending_action"]
 
-    sequence, stance_sequence, error = _parse_combat_plan(request.form, class_name, hand)
+    sequence, stance_sequence, equipment_sequence, error = _parse_combat_plan(request.form, class_name, hand, hero=hero)
     if error is None:
-        error = _validate_sequence(class_name, hand, pending["mob_name"], hero.hp, sequence, stance_sequence)
+        error = _validate_sequence(class_name, hand, pending["mob_name"], hero.hp, sequence, stance_sequence, equipment_sequence=equipment_sequence, hero=hero)
     if error:
         _flash(error)
         return redirect(url_for("cmp_combat_plan"))
-    decide_fn = make_sequence_decide_fn(sequence, stance_sequence)
+    decide_fn = make_sequence_decide_fn(sequence, stance_sequence, equipment_sequence)
 
     if kind == "cmp_declare_node":
         result = BE.apply_travel_action(hero, pending, class_name, board, rng,
@@ -1501,7 +1700,21 @@ def load_game():
             _S.setdefault("flash", []).append("Game loaded successfully.")
             if _S.get("mode") == "competitive":
                 return redirect(url_for("cmp_declare"))
-            return redirect(url_for("travel")) # Best-effort redirect; they can navigate back if needed
+            
+            phase = _S.get("phase")
+            if phase == "combat_plan":
+                return redirect(url_for("combat_plan"))
+            if phase == "scouted_pick":
+                return redirect(url_for("scouted_pick"))
+            
+            hero = _S["board"].heroes[0] if _S.get("board") and _S["board"].heroes else None
+            if hero and hero.position:
+                if hero.position[1] == "town":
+                    return redirect(url_for("town"))
+                if hero.position[1] == "trainer":
+                    return redirect(url_for("trainer"))
+
+            return redirect(url_for("travel"))
         except Exception as e:
             app.logger.error(f"Load failed: {e}")
             _S.setdefault("flash", []).append(f"Failed to load: {e}")

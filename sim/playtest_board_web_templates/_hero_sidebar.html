@@ -56,13 +56,13 @@ Bag/Quest-Log blocks -- one copy instead of four. -->
     <div class="sidebar-section-hdr">Class Guide</div>
     <div class="guide-block guide-best">
         <strong>BEST AGAINST</strong>
-        {{ match.best_1 }} ({{ match.best_1_cost }}%)<br>
-        {{ match.best_2 }} ({{ match.best_2_cost }}%)
+        {{ get_role_icon(match.best_1) }} {{ match.best_1 }} ({{ match.best_1_cost }}%)<br>
+        {{ get_role_icon(match.best_2) }} {{ match.best_2 }} ({{ match.best_2_cost }}%)
     </div>
     <div class="guide-block guide-worst">
         <strong>WORST AGAINST</strong>
-        {{ match.worst_1 }} ({{ match.worst_1_cost }}%)<br>
-        {{ match.worst_2 }} ({{ match.worst_2_cost }}%)
+        {{ get_role_icon(match.worst_1) }} {{ match.worst_1 }} ({{ match.worst_1_cost }}%)<br>
+        {{ get_role_icon(match.worst_2) }} {{ match.worst_2 }} ({{ match.worst_2_cost }}%)
     </div>
     {% endif %}
 
@@ -84,36 +84,135 @@ Bag/Quest-Log blocks -- one copy instead of four. -->
         {% endfor %}
     </div>
 
-    <div class="sidebar-section-hdr">Bag</div>
-    <div class="bag-grid">
+    {% set upgrades = get_hero_upgrades(hero) %}
+    {% set deck = get_hero_deck(hero) %}
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+        <div class="sidebar-section-hdr" style="margin: 0;">Card Upgrades</div>
+        <button type="button" onclick="toggleDeckModal()" title="View full 6-card combat deck" style="background: rgba(40,40,40,0.8); color: #ffd700; border: 1px solid #c79c6e; padding: 2px 8px; border-radius: 4px; font-size: 11px; cursor: pointer;">🃏 Deck ({{ deck|length }})</button>
+    </div>
+    <div style="font-size: 13px; margin-bottom: 12px; background: rgba(0,0,0,0.3); border: 1px solid #443322; border-radius: 4px; padding: 6px 8px;">
+        {% if upgrades %}
+            {% for up in upgrades %}
+            <div style="margin-bottom: 6px; padding-bottom: 4px; {% if not loop.last %}border-bottom: 1px dashed rgba(255,255,255,0.1);{% endif %}">
+                <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                    <span style="color: #ffd700; font-weight: bold; font-family: 'Cinzel', serif;">★ {{ up.new_name }}</span>
+                    <span style="color: #c79c6e; font-size: 10px; text-transform: uppercase;">{{ up.tier }}</span>
+                </div>
+                <div style="color: #999; font-size: 11px;">
+                    Replaces <span style="text-decoration: line-through; color: #888;">{{ up.old_name }}</span>
+                </div>
+                {% if up.text %}
+                <div style="color: #ddd; font-size: 11px; margin-top: 2px; line-height: 1.25;">
+                    {{ up.text|replace('**', '') }}
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        {% else %}
+            <div style="color: #777; font-style: italic; font-size: 12px;">Base Deck &bull; No upgrades yet (Level 1)</div>
+        {% endif %}
+    </div>
+
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+        <div class="sidebar-section-hdr" style="margin: 0;">Bag</div>
+        <form method="POST" action="/bag/organize" style="margin: 0;">
+            <button type="submit" title="Auto-pack and organize bag" style="background: rgba(40,40,40,0.8); color: #ffd700; border: 1px solid #c79c6e; padding: 2px 8px; border-radius: 4px; font-size: 11px; cursor: pointer;">🧹 Organize</button>
+        </form>
+    </div>
+    <div class="bag-grid" id="sidebar-bag-grid">
         {% for i in range(hero.bag|length) %}
             {% if hero.locked[i] %}
-                <div class="bag-slot locked" title="Locked Slot"></div>
+                <div class="bag-slot locked" title="Locked Slot" data-idx="{{ i }}"></div>
             {% elif hero.bag[i] %}
                 {% set item_name = get_item_name(hero.bag[i]) %}
                 {% set item_count = get_item_count(hero.bag[i]) %}
                 {% if item_name != "food_filler" %}
-                <div class="bag-slot" title="{{ item_name.replace('_', ' ')|title }}{% if item_count > 1 %} (x{{ item_count }}){% endif %}"
-                     style="position: relative; {% if item_name == 'food' %}grid-column: span 2; grid-row: span 2; width: 100%; height: 100%;{% endif %}">
-                    <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 24px; background: #2a2a2a; border-radius: 4px;">{{ get_item_icon(item_name) }}</div>
+                <div class="bag-slot occupied" title="{{ item_name.replace('_', ' ')|title }}{% if item_count > 1 %} (x{{ item_count }}){% endif %}"
+                     data-idx="{{ i }}"
+                     draggable="true"
+                     ondragstart="bagDragStart(event, {{ i }})"
+                     ondragover="bagDragOver(event)"
+                     ondrop="bagDrop(event, {{ i }})"
+                     onclick="bagSlotClick({{ i }})"
+                     style="position: relative; cursor: pointer; {% if item_name == 'food' %}grid-column: span 2; grid-row: span 2; width: 100%; height: 100%;{% endif %}">
+                    <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 24px; background: #2a2a2a; border-radius: 4px; pointer-events: none;">{{ get_item_icon(item_name) }}</div>
+                    {% if has_item_art(item_name) %}
                     <img src="{{ url_for('static', filename=item_name|lower ~ '.jpg') }}"
                          onerror="this.style.display='none';"
-                         alt="{{ item_name }}" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; border-radius: 4px;">
+                         alt="{{ item_name }}" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; border-radius: 4px; pointer-events: none;">
+                    {% endif %}
                     {% if item_count > 1 %}
-                    <div style="position: absolute; bottom: 1px; right: 1px; background: rgba(0,0,0,0.8); color: white; border-radius: 50%; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; border: 1px solid #c79c6e; z-index: 2;">{{ item_count }}</div>
+                    <div style="position: absolute; bottom: 1px; right: 1px; background: rgba(0,0,0,0.8); color: white; border-radius: 50%; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; border: 1px solid #c79c6e; z-index: 2; pointer-events: none;">{{ item_count }}</div>
                     {% endif %}
                     {% if hero.pending_loot %}
-                    <form method="POST" action="/bag/discard/{{ i }}" style="position: absolute; top: 0; right: 0; margin: 0; z-index: 3;">
+                    <form method="POST" action="/bag/discard/{{ i }}" style="position: absolute; top: 0; right: 0; margin: 0; z-index: 3;" onclick="event.stopPropagation();">
                         <button type="submit" style="background: rgba(255,0,0,0.8); color: white; border: none; width: 16px; height: 16px; font-size: 10px; cursor: pointer; border-radius: 0 4px 0 4px; padding: 0;">X</button>
                     </form>
                     {% endif %}
                 </div>
                 {% endif %}
             {% else %}
-                <div class="bag-slot empty" title="Empty Slot"></div>
+                <div class="bag-slot empty" title="Empty Slot — Click or drag item here"
+                     data-idx="{{ i }}"
+                     ondragover="bagDragOver(event)"
+                     ondrop="bagDrop(event, {{ i }})"
+                     onclick="bagSlotClick({{ i }})"
+                     style="cursor: pointer;"></div>
             {% endif %}
         {% endfor %}
     </div>
+
+    <form id="bag-swap-form" method="POST" action="/bag/swap" style="display: none;">
+        <input type="hidden" name="from_idx" id="bag-swap-from" value="-1">
+        <input type="hidden" name="to_idx" id="bag-swap-to" value="-1">
+    </form>
+
+    <script>
+    let selectedBagIdx = null;
+
+    function bagSlotClick(idx) {
+        if (selectedBagIdx === null) {
+            const slotEl = document.querySelector(`.bag-slot[data-idx="${idx}"]`);
+            if (slotEl && slotEl.classList.contains('occupied')) {
+                selectedBagIdx = idx;
+                slotEl.classList.add('bag-slot-selected');
+            }
+        } else {
+            if (selectedBagIdx === idx) {
+                const slotEl = document.querySelector(`.bag-slot[data-idx="${idx}"]`);
+                if (slotEl) slotEl.classList.remove('bag-slot-selected');
+                selectedBagIdx = null;
+            } else {
+                document.getElementById('bag-swap-from').value = selectedBagIdx;
+                document.getElementById('bag-swap-to').value = idx;
+                document.getElementById('bag-swap-form').submit();
+            }
+        }
+    }
+
+    function bagDragStart(e, idx) {
+        e.dataTransfer.setData('text/plain', idx);
+        e.dataTransfer.effectAllowed = 'move';
+    }
+
+    function bagDragOver(e) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+    }
+
+    function bagDrop(e, targetIdx) {
+        e.preventDefault();
+        const fromIdxStr = e.dataTransfer.getData('text/plain');
+        if (fromIdxStr !== '') {
+            const fromIdx = parseInt(fromIdxStr, 10);
+            if (!isNaN(fromIdx) && fromIdx !== targetIdx) {
+                document.getElementById('bag-swap-from').value = fromIdx;
+                document.getElementById('bag-swap-to').value = targetIdx;
+                document.getElementById('bag-swap-form').submit();
+            }
+        }
+    }
+    </script>
 
     <div class="sidebar-section-hdr">Quest Log</div>
     <div class="quest-log">
@@ -133,4 +232,40 @@ Bag/Quest-Log blocks -- one copy instead of four. -->
             <div class="empty">(No active quests)</div>
         {% endif %}
     </div>
+
+    <!-- 6-Card Deck Modal -->
+    <div id="deck-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 9999; align-items: center; justify-content: center;" onclick="if(event.target===this) toggleDeckModal();">
+        <div style="background: #1a1a1a; border: 2px solid #c79c6e; border-radius: 8px; width: 640px; max-width: 90vw; padding: 20px; box-shadow: 0 0 25px rgba(0,0,0,0.9); max-height: 85vh; overflow-y: auto;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #443322; padding-bottom: 8px;">
+                <h3 style="margin: 0; color: #ffd700; font-family: 'Cinzel', serif; font-size: 18px;">{{ hero.class_name|title }} Combat Deck (6 Cards)</h3>
+                <button type="button" onclick="toggleDeckModal()" style="background: none; border: none; color: #aaa; font-size: 22px; cursor: pointer; line-height: 1;">&times;</button>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px;">
+                {% for card in deck %}
+                <div style="background: #252525; border: {% if card.is_upgraded %}2px solid #ffd700{% else %}1px solid #444{% endif %}; border-radius: 6px; padding: 10px; display: flex; flex-direction: column; justify-content: space-between; {% if card.is_upgraded %}box-shadow: 0 0 10px rgba(255,215,0,0.25);{% endif %}">
+                    <div>
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px;">
+                            <strong style="color: {% if card.is_upgraded %}#ffd700{% else %}#fff{% endif %}; font-family: 'Cinzel', serif; font-size: 13px;">{{ card.name }}</strong>
+                            {% if card.is_upgraded %}
+                            <span style="background: #b8860b; color: #000; font-size: 8.5px; font-weight: bold; padding: 1px 4px; border-radius: 2px; text-transform: uppercase;">★ UPGRADE</span>
+                            {% endif %}
+                        </div>
+                        {% if card.replaces %}
+                        <div style="color: #aaa; font-size: 10px; margin-bottom: 6px; font-style: italic;">Replaces <span style="text-decoration: line-through;">{{ card.replaces }}</span></div>
+                        {% endif %}
+                        <div style="color: #ccc; font-size: 11px; line-height: 1.35;">{{ card.text|replace('**', '') }}</div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    <script>
+    function toggleDeckModal() {
+        const modal = document.getElementById('deck-modal');
+        if (modal) {
+            modal.style.display = (modal.style.display === 'none' || modal.style.display === '') ? 'flex' : 'none';
+        }
+    }
+    </script>
 </div>

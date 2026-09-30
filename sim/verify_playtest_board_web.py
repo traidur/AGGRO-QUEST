@@ -17,6 +17,9 @@ import random
 import board_engine as BE
 import macro_sim as M
 import playtest_board_web as PW
+import tempfile
+import os
+PW.SAVE_FILE = os.path.join(tempfile.gettempdir(), "test_savegame.pkl")
 
 
 def _pick_travel_action(rng):
