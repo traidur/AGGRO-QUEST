@@ -78,6 +78,18 @@
     </div>
 
     <form id="combat-form" method="POST" action="{{ action_url or '/combat_plan/submit' }}">
+        {% if mob_name in ('monstrous_clutch', 'broodmother') %}
+        <div class="panel" style="background: rgba(60, 20, 20, 0.85); border: 1.5px solid #d32f2f; padding: 14px; margin-bottom: 20px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <strong style="color: #ff8a80; font-family: 'Cinzel', serif; font-size: 16px;">🥚 NEST RAID OPTION:</strong>
+                <div style="font-size: 14px; color: #ddd; margin-top: 4px;">Take 2 unpreventable Damage to seize the Beast Egg and flee without fighting.</div>
+            </div>
+            <button type="submit" name="nest_raid" value="1" formaction="/combat_plan/nest_raid" class="btn" style="background: #b71c1c; border-color: #ff5252; padding: 10px 18px; font-weight: bold; cursor: pointer;">
+                Snatch Egg & Flee (Take 2 DMG)
+            </button>
+        </div>
+        {% endif %}
+
         {% if has_stance %}
         <div class="panel" style="display:flex; justify-content: space-between; align-items:center;">
             <label style="margin:0; font-size:16px;">Warrior Stance:</label>

@@ -22,6 +22,28 @@ import os
 PW.SAVE_FILE = os.path.join(tempfile.gettempdir(), "test_savegame.pkl")
 
 
+def _pick_event_choice(hero, mob_name):
+    mob_name = mob_name.replace("_loot", "")
+    zone_id = hero.position[0] if isinstance(hero.position, tuple) else 1
+    target_zone = 2 if zone_id == 1 else (1 if zone_id == 2 else (4 if zone_id == 3 else 3))
+    choice_map = {
+        "sacred_well": "well_safe",
+        "forgotten_passage": f"passage_{target_zone}",
+        "dead_scouts_map": "take_map",
+        "ruined_watchtower": "scout_horizon",
+        "wandering_hermit": "hermit_pass",
+        "runic_monolith": "attune_rune",
+        "abandoned_hearth": "field_rest",
+        "masters_forge": "field_smith",
+        "wandering_peddler": "peddler_potion",
+        "trappers_cache": "cache_kit_a",
+        "alchemists_alembic": "alembic_salvage",
+        "monstrous_clutch": "clutch_snatch",
+        "couriers_satchel": "satchel_instant",
+    }
+    return choice_map.get(mob_name, "well_safe")
+
+
 def _pick_travel_action(rng):
     hero = PW._S["board"].heroes[0]
     actions = BE.get_travel_actions(hero, PW._S["board"], PW._S["rng"])
@@ -84,6 +106,11 @@ def run_scripted_session(class_name, seed, max_steps=120, verbose=False):
                 resp = _submit_combat_plan(client, rng)
             elif phase == "combat_result":
                 resp = client.post("/combat_plan/continue", data={}, follow_redirects=True)
+            elif phase == "event_resolve":
+                hero = PW._S["board"].heroes[0]
+                mob_name = PW._S["pending_action"]["mob_name"]
+                choice_key = _pick_event_choice(hero, mob_name)
+                resp = client.post("/event/choose", data={"choice_key": choice_key}, follow_redirects=True)
             else:
                 return False, f"unexpected phase {phase!r} at step {step}"
 
@@ -181,6 +208,12 @@ def run_scripted_competitive_session(specs, seed, max_rounds=6, verbose=False):
                 resp = client.post("/cmp/pvp/plan/submit", data=data, follow_redirects=True)
             elif phase == "cmp_round_result":
                 resp = client.post("/cmp/round_result/continue", data={}, follow_redirects=True)
+            elif phase == "event_resolve":
+                hero_idx = PW._S.get("active_hero_idx", 0)
+                hero = PW._S["board"].heroes[hero_idx]
+                mob_name = PW._S["pending_action"]["mob_name"]
+                choice_key = _pick_event_choice(hero, mob_name)
+                resp = client.post("/event/choose", data={"choice_key": choice_key}, follow_redirects=True)
             else:
                 return False, f"unexpected phase {phase!r} at step {steps}"
 

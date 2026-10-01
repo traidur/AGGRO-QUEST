@@ -1,0 +1,212 @@
+[
+  {
+    "id": "scuttling_hoarder",
+    "name": "The Scuttling Hoarder",
+    "type": "combat",
+    "tier": "Spice Combat",
+    "hp": 5,
+    "pattern": [[2, 0], [2, 0], [0, 0]],
+    "note": "Flees after Round 2.",
+    "reward": "Drops 4 + Zone Level Gold.",
+    "spine_role": "HOARDER",
+    "spine_icon": "💰"
+  },
+  {
+    "id": "warded_strongbox",
+    "name": "The Warded Strongbox",
+    "type": "combat",
+    "tier": "Spice Combat",
+    "hp": 14,
+    "pattern": [[0, 0], [0, 0], [0, 0]],
+    "note": "Damage race (deals 0 damage).",
+    "reward": "Instant: 3 Gold | Delivered: Gilded Relic (sells for 6G in Town).",
+    "spine_role": "CHEST",
+    "spine_icon": "🔒"
+  },
+  {
+    "id": "sacred_well",
+    "name": "The Sacred Well",
+    "type": "event",
+    "tier": "Spice Event",
+    "subtitle": "Ancient Shrine",
+    "flavor": "Crystal-clear water pools inside moss-covered flagstones, humming with celestial resonance.",
+    "choices": [
+      { "title": "Drink Deep (Safe)", "desc": "Safely restore 2 HP immediately." },
+      { "title": "Commune with Depths (Gamble)", "desc": "Reveal top 4 class cards. If any contain Heal or Block, restore 4 HP. Otherwise 0 HP." }
+    ],
+    "spine_role": "WELL",
+    "spine_icon": "✨"
+  },
+  {
+    "id": "forgotten_passage",
+    "name": "Forgotten Passage",
+    "type": "event",
+    "tier": "Spice Event",
+    "subtitle": "Secret Route",
+    "flavor": "An overgrown stone archway cuts beneath the mountain spine, bypassing patrolled borders.",
+    "choices": [
+      { "title": "Bypass Border Toll", "desc": "Travel directly to an adjacent zone without paying border toll or fighting a border mob." }
+    ],
+    "spine_role": "PASSAGE",
+    "spine_icon": "🚪"
+  },
+  {
+    "id": "dead_scouts_map",
+    "name": "The Dead Scout's Map",
+    "type": "event",
+    "tier": "Spice Event",
+    "subtitle": "Relic Discovery",
+    "flavor": "Clutched in the gauntlet of a fallen surveyor lies a parchment charting hidden monster caches.",
+    "choices": [
+      { "title": "Take the Map", "desc": "Held card. Your next combat win grants 1 bonus Level Loot card." }
+    ],
+    "spine_role": "MAP",
+    "spine_icon": "🗺️"
+  },
+  {
+    "id": "ruined_watchtower",
+    "name": "The Ruined Watchtower",
+    "type": "event",
+    "tier": "Spice Event",
+    "subtitle": "Vantage Point",
+    "flavor": "From this broken battlement, the valley stretches out, revealing roaming monsters and shifting threats.",
+    "choices": [
+      { "title": "Survey the Valley", "desc": "Discard other 3 cards in this zone and deal 3 fresh cards from the zone deck." }
+    ],
+    "spine_role": "TOWER",
+    "spine_icon": "🏰"
+  },
+  {
+    "id": "wandering_hermit",
+    "name": "The Wandering Hermit",
+    "type": "event",
+    "tier": "Spice Event",
+    "subtitle": "Enigmatic Mystic",
+    "flavor": "An ascetic sage sits beside a stone cairn, carving protective bone runes against doom.",
+    "choices": [
+      { "title": "Purchase Bone Ward", "desc": "Pay 2 + Zone Level Gold. On your next death, Bag does not lock, no corpse retrieval needed, 1-stage quest decay." }
+    ],
+    "spine_role": "HERMIT",
+    "spine_icon": "🧙"
+  },
+  {
+    "id": "runic_monolith",
+    "name": "The Runic Monolith",
+    "type": "event",
+    "tier": "Spice Event",
+    "subtitle": "Arcane Wonder",
+    "flavor": "Ancient glyphs pulse with crimson light along an obsidian slab, sharpening your martial reflexes.",
+    "choices": [
+      { "title": "Attune with Monolith", "desc": "Look into your martial arts and reserve 1 card face-up for your next combat hand." }
+    ],
+    "spine_role": "MONOLITH",
+    "spine_icon": "🔮"
+  },
+  {
+    "id": "abandoned_hearth",
+    "name": "The Abandoned Hearth",
+    "type": "event",
+    "tier": "Spice Event",
+    "subtitle": "Sheltered Campsite",
+    "flavor": "Cold embers lie in an alcove sheltered from wind and beasts. A rest here will knit deep wounds.",
+    "choices": [
+      { "title": "Make Camp & Rest", "desc": "Fully restore HP to max in the wilderness without trip decay or returning to Town." }
+    ],
+    "spine_role": "HEARTH",
+    "spine_icon": "🔥"
+  },
+  {
+    "id": "masters_forge",
+    "name": "The Master's Forge",
+    "type": "event",
+    "tier": "Spice Event",
+    "subtitle": "Field Smithing",
+    "flavor": "A master smith's anvil and roaring bellows sit untended, ready to shape steel without workshop fees.",
+    "choices": [
+      { "title": "Field Smithing", "desc": "Craft 1 equipment recipe from materials in Bag with 0 forge fee (or salvage +1 Crag-Iron)." }
+    ],
+    "spine_role": "FORGE",
+    "spine_icon": "⚒️"
+  },
+  {
+    "id": "wandering_peddler",
+    "name": "The Wandering Peddler",
+    "type": "event",
+    "tier": "Spice Event",
+    "subtitle": "Wilderness Merchant",
+    "flavor": "A heavily laden merchant packs sundries and elixirs, eager to barter far from Town taxes.",
+    "choices": [
+      { "title": "Buy Potion (3G)", "desc": "Purchase 1 Healing Potion for 3 Gold." },
+      { "title": "Buy Food (2G)", "desc": "Purchase 1 Food Ration for 2 Gold." },
+      { "title": "Sell Materials (1G)", "desc": "Sell all gathering tokens for 1 Gold each." }
+    ],
+    "spine_role": "PEDDLER",
+    "spine_icon": "🎒"
+  },
+  {
+    "id": "trappers_cache",
+    "name": "The Trapper's Cache",
+    "type": "event",
+    "tier": "Spice Event",
+    "subtitle": "Hidden Stash",
+    "flavor": "Concealed beneath hollowed boughs lies an oiled leather pack left behind by an old frontier trapper.",
+    "choices": [
+      { "title": "Kit A: Elusive Scout", "desc": "Take 1 Smoke Bomb and 1 Food Ration." },
+      { "title": "Kit B: Seasoned Veteran", "desc": "Take 1 Level Consumable (Whetstone/Charm) and 1 Food Ration." }
+    ],
+    "spine_role": "CACHE",
+    "spine_icon": "📦"
+  },
+  {
+    "id": "alchemists_alembic",
+    "name": "The Alchemist's Field Alembic",
+    "type": "event",
+    "tier": "Spice Event",
+    "subtitle": "Strange Apparatus",
+    "flavor": "A brass distillation apparatus bubbles gently over a blue spirit flame, distilling rare essences.",
+    "choices": [
+      { "title": "Distill Field Tincture", "desc": "Transmute 1 Herb from your bag into 2 Healing Potions." },
+      { "title": "Salvage Scrap Metal", "desc": "Dismantle parts of the apparatus to obtain 1 Crag-Iron ore." }
+    ],
+    "spine_role": "ALEMBIC",
+    "spine_icon": "🧪"
+  },
+  {
+    "id": "monstrous_clutch",
+    "name": "The Monstrous Clutch",
+    "type": "combat",
+    "tier": "Spice Combat",
+    "hp": 8,
+    "pattern": [[4, 0], [3, 0], [3, 0]],
+    "ability": "<strong>NEST RAID:</strong> Before combat, take 2 unpreventable DMG to seize the Beast Egg and flee immediately.",
+    "reward": "Beast Egg (sells 4+ZL Gold / eat +4 HP) + Zone Level Gold.",
+    "spine_role": "BROOD",
+    "spine_icon": "🥚"
+  },
+  {
+    "id": "couriers_satchel",
+    "name": "The Courier's Satchel",
+    "type": "event",
+    "tier": "Spice Event",
+    "subtitle": "Abandoned Pack",
+    "flavor": "An embossed leather satchel lies beside the trail, sealed with wax and addressed to the Town magistrate.",
+    "choices": [
+      { "title": "Pocket Contents Now", "desc": "Pocket travel stipend immediately for 2 + Zone Level Gold." },
+      { "title": "Deliver Sealed Satchel", "desc": "Take 1x1 Satchel. Deliver to Town for 4 + Zone Level Gold + 1 Bounty credit." }
+    ],
+    "spine_role": "SATCHEL",
+    "spine_icon": "✉️"
+  },
+  {
+    "id": "arcane_golem",
+    "name": "The Arcane Golem",
+    "type": "combat",
+    "tier": "Spice Combat",
+    "hp": 10,
+    "pattern": [[0, 2], [3, 0], [4, 0]],
+    "note": "Charges R1 (Block 2), strikes hard R2/R3.",
+    "reward": "Drops 1 Level Loot Card + 1 + Zone Level Gold.",
+    "spine_role": "GOLEM",
+    "spine_icon": "🗿"
+  }
+]

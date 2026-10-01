@@ -243,6 +243,18 @@
     "Green Loot": {
       "color": "#1b5e20",
       "desc": "Quest Loot Token"
+    },
+    "Courier's Satchel": {
+      "color": "#5d4037",
+      "desc": "1x1 Bag Delivery Token. Delivers to Town for 4+ZL Gold + 1 Bounty Credit."
+    },
+    "Beast Egg": {
+      "color": "#33691e",
+      "desc": "1x1 Bag Delivery Token. Sells in Town for 4+ZL Gold, or eat anytime to restore 4 HP."
+    },
+    "Gilded Relic": {
+      "color": "#ff8f00",
+      "desc": "1x1 Bag Delivery Token. Sells in Town for 6 Gold."
     }
   }
 }

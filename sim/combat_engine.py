@@ -23,6 +23,7 @@ from dataclasses import dataclass, field, replace
 import equipment_data as EQ
 from equipment_mechanics import apply_equipment_mechanics
 from equipment_solver import best_line_with_equipment
+import spice_data as SD
 from typing import Optional
 
 import condensed_cleric as C
@@ -96,12 +97,17 @@ def new_pull(class_name: str, mob_name: str, seed: int = None) -> PullState:
     rng = random.Random(seed)
     mod = CARD_SOURCE[class_name]
     hand = tuple(rng.sample(mod.DECK, 4))
-    pattern, mob_hp = T.MOBS[mob_name][class_name]
+    if SD.is_spice_combat(mob_name):
+        pattern, mob_hp = SD.get_spice_pattern_hp(class_name, mob_name)
+        max_rounds = SD.get_spice_max_rounds(mob_name)
+    else:
+        pattern, mob_hp = T.MOBS[mob_name][class_name]
+        max_rounds = ROUNDS
     hero_hp = float(getattr(mod, HP_ATTR[class_name]))
     return PullState(
         class_name=class_name, hero_hp=hero_hp, hero_max_hp=initial_max_hp(class_name, hero_hp),
         mob_name=mob_name, mob_pattern=pattern, mob_hp_total=float(mob_hp),
-        mob_hp_remaining=float(mob_hp), hand=hand,
+        mob_hp_remaining=float(mob_hp), hand=hand, max_rounds=max_rounds,
     )
 
 
@@ -385,10 +391,12 @@ def new_pull_with_hp(class_name: str, mob_name: str, hand, pattern, mob_hp: floa
     hero.equipment_used, a trip-level Durability tracker) ends up correctly updated once this
     pull resolves, with no extra return-value plumbing needed. Defaults to a fresh local set
     when no caller-owned set is given (e.g. new_pull()'s own standalone callers)."""
+    if max_rounds is None:
+        max_rounds = SD.get_spice_max_rounds(mob_name)
     return PullState(
         class_name=class_name, hero_hp=starting_hp, hero_max_hp=initial_max_hp(class_name, starting_hp),
         mob_name=mob_name, mob_pattern=pattern, mob_hp_total=float(mob_hp),
         mob_hp_remaining=float(mob_hp), hand=tuple(hand), equipment=equipment or {}, eq_state=eq_state or {},
         equipment_used=equipment_used if equipment_used is not None else set(),
-        max_rounds=max_rounds if max_rounds is not None else ROUNDS,
+        max_rounds=max_rounds,
     )

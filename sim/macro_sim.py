@@ -94,6 +94,7 @@ import condensed_wizard as Z
 import condensed_druid as D
 import condensed_necromancer as Nc
 import combat_engine as E
+import spice_data as SD
 
 CARD_SOURCE = {"warrior": W, "wizard": Z, "cleric": C, "paladin": P, "rogue": R, "ranger": G, "runecaster": N,
                "druid": D, "necromancer": Nc}
@@ -177,6 +178,8 @@ def _pattern_hp_for_mob(class_name, mob_name):
     knows how to resolve any kind of mob name, so _scouted_pull_mob/_best_case_mob/the main
     node-pull draw don't each need their own Elite-vs-Level2Standard-vs-Standard branch."""
     mob_name = mob_name.replace("_loot", "")
+    if SD.is_spice_combat(mob_name):
+        return SD.get_spice_pattern_hp(class_name, mob_name)
     if mob_name in LV.ELITE_MELEE:
         return LV._elite_pattern(class_name, mob_name), LV.ELITE_HP
     if mob_name in LV.LEVEL2_STANDARD:
@@ -874,9 +877,12 @@ def _remove_food(bag, index):
     cols = 3
     if bag[index] == "food":
         bag[index] = None
-        bag[index+1] = None
-        bag[index+cols] = None
-        bag[index+cols+1] = None
+        if index + 1 < len(bag) and bag[index+1] == "food":
+            bag[index+1] = None
+        if index + cols < len(bag) and bag[index+cols] == "food":
+            bag[index+cols] = None
+        if index + cols + 1 < len(bag) and bag[index+cols+1] == "food":
+            bag[index+cols+1] = None
 
 def _bag_has_room(bag, locked):
     """Is there an item slot with room, or an empty unlocked slot to open one?"""

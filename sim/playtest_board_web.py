@@ -81,6 +81,7 @@ import leveling_validation as LV
 import sim_pvp as PvP
 import class_mob_matchup_chart as MC
 import equipment_data as EQ
+import spice_data as SD
 from board_state import HeroBoardState
 
 app = Flask(__name__, template_folder="playtest_board_web_templates")
@@ -274,7 +275,10 @@ def inject_globals():
             4: "The Vanguard Camp"
         },
         get_class_matchup=get_class_matchup,
-        get_mob_flavor=lambda mob_name, level: _MOBS_TEXT.get((mob_name.replace("_loot", ""), level), {}),
+        get_mob_flavor=lambda mob_name, level: (
+            {"name": SD.get_spice_display_name(mob_name), "tier": "Spice Combat" if SD.is_spice_combat(mob_name) else "Spice Event", "type": "melee"}
+            if SD.is_spice(mob_name) else _MOBS_TEXT.get((mob_name.replace("_loot", ""), level), {})
+        ),
         get_item_name=get_item_name,
         get_item_count=get_item_count,
         get_item_icon=get_item_icon,
@@ -493,7 +497,15 @@ def _draw_hero_hand(hero, class_name, rng):
     mod = M.CARD_SOURCE[class_name]
     swaps = BE._level2_swaps_for(class_name, hero.acquired)
     with LV.leveled_kit(mod, swaps):
-        return rng.choice(mod.ALL_HANDS)
+        hand = rng.choice(mod.ALL_HANDS)
+    if getattr(hero, "reserved_card", None):
+        reserved = hero.reserved_card
+        hero.reserved_card = None
+        if reserved not in hand:
+            hand_list = list(hand)
+            hand_list[0] = reserved
+            hand = tuple(hand_list)
+    return hand
 
 
 def _validate_sequence(class_name, hand, mob_name, hero_hp, sequence, stance_sequence, equipment_sequence=None, hero=None):
@@ -578,12 +590,17 @@ def _mob_level_for_pending(pending):
 def _outcome_message(kind, result, mob_level=None):
     outcome = result.get("outcome")
     mob = result.get("mob_name", "the foe").replace("_loot", "")
-    if mob_level is not None:
+    if SD.is_spice(mob):
+        mob = SD.get_spice_display_name(mob)
+    elif mob_level is not None:
         mob = _MOBS_TEXT.get((mob, mob_level), {}).get("name", mob)
 
     msg = f"Outcome: {outcome}"
     if outcome == "win":
-        msg = f"Victory over {mob}! +1 Gold."
+        if result.get("is_spice"):
+            msg = f"Victory at {mob}!"
+        else:
+            msg = f"Victory over {mob}! +1 Gold."
     elif outcome == "flee":
         msg = f"Survived but didn't finish off {mob} -- no loot this time."
     elif outcome == "no_room":
@@ -729,6 +746,14 @@ def town():
         setup = BE.enter_town(hero, class_name, _S["strategy"], _S["rng"], _S["board"])
         if setup["quests_completed"]:
             _flash(f"Turned in {setup['quests_completed']} quest(s).")
+        satchel_count = M._accessible_count(hero.bag, hero.locked, "couriers_satchel")
+        if satchel_count > 0:
+            zone_id = hero.position[0] if isinstance(hero.position, tuple) else 1
+            gain = (4 + SD.zone_level_for_zone(zone_id)) * satchel_count
+            hero.gold += gain
+            hero.tokens += satchel_count
+            M._remove_loot(hero.bag, hero.locked, "couriers_satchel", satchel_count)
+            _flash(f"Delivered {satchel_count} Courier's Satchel: +{gain} Gold, +{satchel_count} Bounty Credit!")
         _S["town_entered"] = True
     actions = BE.get_town_actions(hero, _S["purchase_queues"][0], _S["board"])
     return render_template("town.html", hero=hero, actions=list(enumerate(actions)), board=_S["board"],
@@ -831,6 +856,11 @@ def recovery_intro():
     node_names = BE._nodes_in_zone(zone_id)
     B.deal_zone(board, zone_id, level, node_names, rng)
     mob_name = board.zones[zone_id].dealt[node_name]
+    if SD.is_spice_event(mob_name):
+        _S["pending_kind"] = "recovery_spice_event"
+        _S["pending_action"] = {"node_name": node_name, "mob_name": mob_name}
+        _S["phase"] = "event_resolve"
+        return redirect(url_for("event_resolve"))
     hand = _draw_hero_hand(hero, class_name, rng)
     _S["pending_kind"] = "recovery_node"
     _S["pending_action"] = {"node_name": node_name, "mob_name": mob_name}
@@ -867,6 +897,12 @@ def travel_action():
     action = actions[idx]
 
     if action["type"] == "declare_node":
+        mob_name = action.get("mob_name")
+        if SD.is_spice_event(mob_name):
+            _S["pending_kind"] = "spice_event"
+            _S["pending_action"] = action
+            _S["phase"] = "event_resolve"
+            return redirect(url_for("event_resolve"))
         hand = _draw_hero_hand(hero, class_name, rng)
         _S["pending_kind"] = "declare"
         _S["pending_action"] = action
@@ -909,6 +945,327 @@ def travel_action():
 
 
 # ---------------------------------------------------------------------------
+# Spice Event Resolution
+# ---------------------------------------------------------------------------
+
+@app.route("/event/resolve")
+def event_resolve():
+    if _S.get("board") is None or not _S.get("pending_action"):
+        return redirect(url_for("travel"))
+    board = _S["board"]
+    is_cmp = (board.mode == "competitive")
+    hero_idx = _S.get("active_hero_idx", 0) if is_cmp else 0
+    hero = board.heroes[hero_idx]
+    action = _S["pending_action"]
+    mob_name = action["mob_name"].replace("_loot", "")
+    zone_id = hero.position[0] if isinstance(hero.position, tuple) else 1
+    zone_lvl = SD.zone_level_for_zone(zone_id)
+    display_name = SD.get_spice_display_name(mob_name)
+    level = BE.TIER_TO_LEVEL[M.ZONE_TIER.get(zone_id, "tier_1")]
+    level_consumable = "Whetstone" if level == 1 else "Preserving Charm"
+
+    flavor = ""
+    badge = "Wilderness Encounter"
+    choices = []
+
+    if mob_name == "sacred_well":
+        badge = "Ancient Shrine"
+        flavor = "Crystal-clear water pools inside moss-covered flagstones, humming with celestial resonance."
+        choices = [
+            {"key": "well_safe", "title": "Drink Deep", "desc": "Safely restore 2 HP immediately.", "tag": "Safe (+2 HP)"},
+            {"key": "well_gamble", "title": "Commune with the Depths", "desc": "Reveal 4 class cards. If any contain Heal or Block, restore 4 HP. Otherwise, 0 HP.", "tag": "Gamble (+4 HP or 0)"},
+        ]
+    elif mob_name == "forgotten_passage":
+        badge = "Secret Route"
+        flavor = "An overgrown stone archway cuts beneath the mountain spine, bypassing patrolled borders."
+        target_zone = 2 if zone_id == 1 else (1 if zone_id == 2 else (4 if zone_id == 3 else 3))
+        choices = [
+            {"key": f"passage_{target_zone}", "title": f"Bypass to Zone {target_zone}", "desc": f"Slip through the tunnel directly into Zone {target_zone} with no border toll or mob encounter.", "tag": f"Free Travel -> Zone {target_zone}"},
+        ]
+    elif mob_name == "dead_scouts_map":
+        badge = "Relic Discovery"
+        flavor = "Clutched in the gauntlet of a fallen surveyor lies a parchment charting hidden monster caches."
+        choices = [
+            {"key": "take_map", "title": "Take the Map", "desc": "Hold the map. Your next combat win grants 1 bonus Level Loot card.", "tag": "Bonus Loot on Win"},
+        ]
+    elif mob_name == "ruined_watchtower":
+        badge = "Vantage Point"
+        flavor = "From this broken battlement, the valley stretches out, revealing roaming monsters and shifting threats."
+        choices = [
+            {"key": "scout_horizon", "title": "Survey the Valley", "desc": "Discard all other cards in this zone and deal 3 fresh cards from the zone deck.", "tag": "Redeal Zone"},
+        ]
+    elif mob_name == "wandering_hermit":
+        badge = "Enigmatic Mystic"
+        flavor = "An ascetic sage sits beside a stone cairn, carving protective bone runes against doom."
+        cost = 2 + zone_lvl
+        choices = [
+            {"key": "hermit_ward", "title": "Purchase Bone Ward", "desc": f"Pay {cost} Gold. On your next death, Bag does not lock, no corpse retrieval needed, 1-stage quest decay.", "tag": f"-{cost} Gold (Ward)"},
+            {"key": "hermit_pass", "title": "Politely Decline", "desc": "Bow respectfully and continue your journey without buying the ward.", "tag": "Free"},
+        ]
+    elif mob_name == "runic_monolith":
+        badge = "Arcane Wonder"
+        flavor = "Ancient glyphs pulse with crimson light along an obsidian slab, sharpening your martial reflexes."
+        choices = [
+            {"key": "attune_rune", "title": "Attune with the Monolith", "desc": "Look into your martial arts and reserve 1 card face-up for your next combat hand.", "tag": "Guaranteed Card"},
+        ]
+    elif mob_name == "abandoned_hearth":
+        badge = "Sheltered Campsite"
+        flavor = "Cold embers lie in an alcove sheltered from wind and beasts. A rest here will knit deep wounds."
+        choices = [
+            {"key": "field_rest", "title": "Make Camp & Rest", "desc": "Restore HP to full in the wilderness without trip decay or returning to Town.", "tag": "Full HP Restore"},
+        ]
+    elif mob_name == "masters_forge":
+        badge = "Field Smithing"
+        flavor = "A master smith's anvil and roaring bellows sit untended, ready to shape steel without a workshop fee."
+        choices = [
+            {"key": "field_smith", "title": "Field Smithing", "desc": "Craft 1 equipment recipe from materials in your bag with 0 forge fee (or salvage +1 Crag-Iron).", "tag": "0 Gold Forge Fee"},
+        ]
+    elif mob_name == "wandering_peddler":
+        badge = "Wilderness Merchant"
+        flavor = "A heavily laden merchant packs sundries and elixirs, eager to barter far from Town taxes."
+        choices = [
+            {"key": "peddler_potion", "title": "Buy Healing Potion", "desc": "Purchase 1 Healing Potion for 3 Gold.", "tag": "3 Gold"},
+            {"key": "peddler_food", "title": "Buy Field Ration", "desc": "Purchase 1 Food Ration for 2 Gold.", "tag": "2 Gold"},
+            {"key": "peddler_sell", "title": "Sell Gathering Materials", "desc": "Sell all raw gathering materials in your bag for 1 Gold each.", "tag": "1 Gold Each"},
+        ]
+    elif mob_name == "trappers_cache":
+        badge = "Hidden Stash"
+        flavor = "Concealed beneath hollowed boughs lies an oiled leather pack left behind by an old frontier trapper."
+        choices = [
+            {"key": "cache_kit_a", "title": "Cache Kit A: Elusive Scout", "desc": "Take 1 Smoke Bomb and 1 Food Ration.", "tag": "Smoke Bomb + Food"},
+            {"key": "cache_kit_b", "title": "Cache Kit B: Seasoned Veteran", "desc": f"Take 1 {level_consumable} and 1 Food Ration.", "tag": f"{level_consumable} + Food"},
+        ]
+    elif mob_name == "alchemists_alembic":
+        badge = "Strange Apparatus"
+        flavor = "A brass distillation apparatus bubbles gently over a blue spirit flame, extracting potent essences."
+        choices = [
+            {"key": "alembic_brew", "title": "Distill Field Tincture", "desc": "Transmute 1 Herb from your bag into 2 Healing Potions.", "tag": "1 Herb -> 2 Potions"},
+            {"key": "alembic_salvage", "title": "Salvage Scrap Metal", "desc": "Dismantle parts of the apparatus to obtain 1 Crag-Iron ore.", "tag": "+1 Crag-Iron"},
+        ]
+    elif mob_name == "couriers_satchel":
+        badge = "Abandoned Pack"
+        flavor = "An embossed leather satchel lies beside the trail, sealed with wax and addressed to the Town magistrate."
+        choices = [
+            {"key": "satchel_instant", "title": "Pocket Contents Now", "desc": f"Break the seal and pocket the travel stipend immediately for {2 + zone_lvl} Gold.", "tag": f"+{2 + zone_lvl} Gold"},
+            {"key": "satchel_deliver", "title": "Deliver Sealed Satchel", "desc": f"Take the 1x1 Courier's Satchel. Deliver it to Town to claim {4 + zone_lvl} Gold and +1 Bounty credit.", "tag": "1x1 Bag Token"},
+        ]
+
+    return render_template(
+        "event_resolve.html",
+        hero=hero,
+        board=board,
+        event_display_name=display_name,
+        event_badge=badge,
+        event_flavor=flavor,
+        choices=choices,
+        flash=_pop_flash(),
+    )
+
+
+@app.route("/event/choose", methods=["POST"])
+def event_choose():
+    if _S.get("board") is None or not _S.get("pending_action"):
+        return redirect(url_for("travel"))
+
+    board = _S["board"]
+    is_cmp = (board.mode == "competitive")
+    hero_idx = _S.get("active_hero_idx", 0) if is_cmp else 0
+    hero = board.heroes[hero_idx]
+    class_name = _S["class_names"][hero_idx]
+    rng = _S["rng"]
+    pending = _S["pending_action"]
+    node_name = pending["node_name"]
+    zone_id = hero.position[0] if isinstance(hero.position, tuple) else 1
+    zone_lvl = SD.zone_level_for_zone(zone_id)
+    level = BE.TIER_TO_LEVEL[M.ZONE_TIER.get(zone_id, "tier_1")]
+    choice_key = request.form.get("choice_key", "")
+
+    if choice_key == "well_safe":
+        hero.hp = min(hero.max_hp, hero.hp + 2)
+        _flash("You drank deep from the Sacred Well and restored 2 HP.")
+    elif choice_key == "well_gamble":
+        mod = M.CARD_SOURCE[class_name]
+        swaps = BE._level2_swaps_for(class_name, hero.acquired)
+        with LV.leveled_kit(mod, swaps):
+            sample_hands = rng.sample(mod.ALL_HANDS, min(4, len(mod.ALL_HANDS)))
+            all_cards = [c for h in sample_hands for c in h]
+            has_defense = any("Block" in c or "Heal" in c or "Shield" in c or "Ward" in c for c in all_cards)
+        if has_defense:
+            hero.hp = min(hero.max_hp, hero.hp + 4)
+            _flash("The Sacred Well resonated with your restorative essence! Restored 4 HP.")
+        else:
+            _flash("The Sacred Well remained silent. 0 HP restored.")
+    elif choice_key.startswith("passage_"):
+        target_z = int(choice_key.split("_")[1])
+        hero.position = (target_z, None)
+        _flash(f"You slipped through the Forgotten Passage into Zone {target_z}!")
+    elif choice_key == "take_map":
+        hero.acquired.add("dead_scouts_map")
+        _flash("You took the Dead Scout's Map. Your next combat win will yield 1 bonus Level Loot card.")
+    elif choice_key == "scout_horizon":
+        B.discard_zone(board, zone_id, level)
+        B.deal_zone(board, zone_id, level, rng)
+        _flash("You surveyed the horizon from the watchtower. Fresh cards have been dealt across the zone.")
+    elif choice_key == "hermit_ward":
+        cost = 2 + zone_lvl
+        if hero.gold >= cost:
+            hero.gold -= cost
+            hero.bone_ward = True
+            _flash(f"You paid {cost} Gold. The Hermit granted you the Bone Ward!")
+        else:
+            _flash("You cannot afford the Hermit's Bone Ward.")
+    elif choice_key == "hermit_pass":
+        _flash("You bowed to the Hermit and continued on your journey.")
+    elif choice_key == "attune_rune":
+        mod = M.CARD_SOURCE[class_name]
+        swaps = BE._level2_swaps_for(class_name, hero.acquired)
+        with LV.leveled_kit(mod, swaps):
+            sample = rng.choice(mod.ALL_HANDS)
+            hero.reserved_card = sample[0]
+            _flash(f"You attuned to the Monolith. '{sample[0]}' is reserved for your next combat hand!")
+    elif choice_key == "field_rest":
+        hero.hp = hero.max_hp
+        _flash(f"You rested at the Abandoned Hearth. HP restored to {hero.max_hp:.0f}/{hero.max_hp:.0f}!")
+    elif choice_key == "field_smith":
+        recipes = EQ.get_recipes_for_class(hero.class_name)
+        crafted = False
+        bag_counts = {}
+        for slot in hero.bag:
+            if isinstance(slot, dict) and "items" in slot:
+                for k, v in slot["items"].items():
+                    bag_counts[k] = bag_counts.get(k, 0) + v
+            elif isinstance(slot, str):
+                bag_counts[slot] = bag_counts.get(slot, 0) + 1
+        for recipe in recipes:
+            if hero.equipment.get(recipe["slot"]) == recipe:
+                continue
+            can_afford, to_consume = EQ.can_craft_recipe(recipe, 9999, bag_counts)
+            if can_afford:
+                for mat, amt in to_consume.items():
+                    M._remove_item(hero.bag, hero.locked, mat, amt)
+                hero.equipment[recipe["slot"]] = recipe
+                _flash(f"Field Smithing crafted {recipe['base']} ({recipe['rider']}) with 0 forge fee!")
+                crafted = True
+                break
+        if not crafted:
+            if M._bag_has_room(hero.bag, hero.locked):
+                M._add_item(hero.bag, hero.locked, "Crag-Iron")
+            else:
+                hero.pending_loot.append("Crag-Iron")
+            _flash("No equipment craftable from current materials. Salvaged +1 Crag-Iron from the forge!")
+    elif choice_key == "peddler_potion":
+        if hero.gold >= 3 and M._bag_has_room(hero.bag, hero.locked):
+            hero.gold -= 3
+            M._add_item(hero.bag, hero.locked, "potion")
+            _flash("Purchased 1 Potion from the Peddler for 3 Gold.")
+        else:
+            _flash("Cannot afford Potion or bag is full.")
+    elif choice_key == "peddler_food":
+        if hero.gold >= 2 and M._bag_has_room(hero.bag, hero.locked):
+            hero.gold -= 2
+            M._add_food(hero.bag, hero.locked)
+            _flash("Purchased 1 Food Ration from the Peddler for 2 Gold.")
+        else:
+            _flash("Cannot afford Food or bag is full.")
+    elif choice_key == "peddler_sell":
+        sell_tokens = [slot for slot in hero.bag if slot in SD.HERB_TOKENS or slot in SD.ORE_TOKENS or slot in {"Scavenged Pelt", "Bristle-Pelt"}]
+        count = len(sell_tokens)
+        for t in sell_tokens:
+            M._remove_item(hero.bag, hero.locked, t, 1)
+        hero.gold += count
+        _flash(f"Sold {count} gathering materials to the Peddler for {count} Gold.")
+    elif choice_key == "cache_kit_a":
+        if M._bag_has_room(hero.bag, hero.locked):
+            M._add_item(hero.bag, hero.locked, "smoke_bomb")
+        else:
+            hero.pending_loot.append("smoke_bomb")
+        if M._bag_has_room(hero.bag, hero.locked):
+            M._add_food(hero.bag, hero.locked)
+        else:
+            hero.pending_loot.append("food")
+        _flash("Claimed Kit A: 1 Smoke Bomb and 1 Food Ration!")
+    elif choice_key == "cache_kit_b":
+        cons = "whetstone" if level == 1 else "preserving_charm"
+        if M._bag_has_room(hero.bag, hero.locked):
+            M._add_item(hero.bag, hero.locked, cons)
+        else:
+            hero.pending_loot.append(cons)
+        if M._bag_has_room(hero.bag, hero.locked):
+            M._add_food(hero.bag, hero.locked)
+        else:
+            hero.pending_loot.append("food")
+        _flash(f"Claimed Kit B: 1 {cons.replace('_', ' ').title()} and 1 Food Ration!")
+    elif choice_key == "alembic_brew":
+        herbs = [s for s in hero.bag if s in SD.HERB_TOKENS]
+        if herbs:
+            M._remove_item(hero.bag, hero.locked, herbs[0], 1)
+            for _ in range(2):
+                if M._bag_has_room(hero.bag, hero.locked):
+                    M._add_item(hero.bag, hero.locked, "potion")
+                else:
+                    hero.pending_loot.append("potion")
+            _flash(f"Transmuted 1 {herbs[0]} into 2 Healing Potions!")
+        else:
+            _flash("No herbs in Bag to distill.")
+    elif choice_key == "alembic_salvage":
+        ore = "Crag-Iron" if level == 1 else "Sun-Copper"
+        if M._bag_has_room(hero.bag, hero.locked):
+            M._add_item(hero.bag, hero.locked, ore)
+        else:
+            hero.pending_loot.append(ore)
+        _flash(f"Salvaged +1 {ore} from the alembic!")
+    elif choice_key == "clutch_snatch":
+        hero.hp = max(1.0, hero.hp - 2)
+        if M._bag_has_room(hero.bag, hero.locked):
+            M._add_item(hero.bag, hero.locked, "beast_egg")
+        else:
+            hero.pending_loot.append("beast_egg")
+        _flash("Snatched the Beast Egg and took 2 damage!")
+    elif choice_key == "satchel_instant":
+        gain = 2 + zone_lvl
+        hero.gold += gain
+        _flash(f"Pocketed {gain} Gold from the Courier's Satchel.")
+    elif choice_key == "satchel_deliver":
+        if M._bag_has_room(hero.bag, hero.locked):
+            M._add_item(hero.bag, hero.locked, "couriers_satchel")
+        else:
+            hero.pending_loot.append("couriers_satchel")
+        _flash("Took the Courier's Satchel. Deliver it to Town for reward + Bounty credit!")
+
+    if _S.get("pending_kind") == "recovery_spice_event":
+        hero.corpse_node = None
+        hero.alive = True
+        BE.apply_recovery_post_processing(hero)
+        _flash("You've recovered your gear.")
+
+    hero.turns += 1
+    if zone_id in board.zones:
+        gathering_item = board.zones[zone_id].gathering_tokens.pop(node_name, None)
+        if gathering_item:
+            if M._bag_has_room(hero.bag, hero.locked):
+                M._add_item(hero.bag, hero.locked, gathering_item)
+                _flash(f"Gathered {gathering_item} from the node.")
+            else:
+                hero.pending_loot.append(gathering_item)
+                _flash(f"Gathered {gathering_item} (Bag Full).")
+
+    if choice_key != "scout_horizon":
+        B.discard_zone(board, zone_id, level)
+
+    _S["pending_kind"] = None
+    _S["pending_action"] = None
+    _S["pending_hand"] = None
+    _S["pending_border"] = None
+
+    if is_cmp:
+        _S["cmp_resolve_order"].pop(0)
+        return _cmp_process_resolve_queue()
+
+    _S["phase"] = "travel"
+    return redirect(url_for("travel"))
+
+
+# ---------------------------------------------------------------------------
 # Scouted Pull reveal-and-pick (ordinary crossing OR a Border-shaped recovery)
 # ---------------------------------------------------------------------------
 
@@ -926,6 +1283,11 @@ def scouted_pick_choose():
     pick = request.form.get("pick")
     candidates = _S["pending_border"]["candidates"]
     mob_name = candidates[0] if pick == "0" else candidates[1]
+
+    if SD.is_spice_event(mob_name):
+        _S["pending_action"] = dict(_S["pending_border"], mob_name=mob_name, node_name=_S["pending_border"].get("border_name"))
+        _S["phase"] = "event_resolve"
+        return redirect(url_for("event_resolve"))
 
     hand = _draw_hero_hand(hero, class_name, _S["rng"])
     _S["pending_action"] = dict(_S["pending_border"], mob_name=mob_name)
@@ -957,7 +1319,37 @@ def combat_plan():
         available_equipment=available_equipment,
         hand_options=_hand_options(class_name, hand, hero=hero), has_stance=M.HAS_STANCE[class_name],
         pending_kind=_S["pending_kind"], flash=_pop_flash(),
+        nest_raid_url=url_for("combat_plan_nest_raid"),
     )
+
+
+@app.route("/combat_plan/nest_raid", methods=["POST"])
+def combat_plan_nest_raid():
+    board = _S.get("board")
+    if board is None or not _S.get("pending_action"):
+        return redirect(url_for("travel"))
+    hero = board.heroes[0]
+    hero.hp = max(1.0, hero.hp - 2)
+    hero.turns += 1
+    if M._bag_has_room(hero.bag, hero.locked):
+        M._add_item(hero.bag, hero.locked, "beast_egg")
+        _flash("You raided the nest, suffered 2 unpreventable Damage, and fled with the Beast Egg!")
+    else:
+        hero.pending_loot.append("beast_egg")
+        _flash("You raided the nest and suffered 2 damage! Bag full — Beast Egg is pending.")
+
+    pending = _S.get("pending_action", {})
+    node_name = pending.get("node_name")
+    if node_name:
+        zone_id = hero.position[0] if isinstance(hero.position, tuple) else 1
+        zone = board.zones.get(zone_id)
+        if zone and node_name in zone.nodes:
+            zone.nodes[node_name].card = None
+
+    _S["pending_action"] = None
+    _S["pending_hand"] = None
+    _S["phase"] = "travel"
+    return redirect(url_for("travel"))
 
 
 @app.route("/combat_plan/submit", methods=["POST"])
@@ -1023,6 +1415,20 @@ def combat_plan_submit():
         if kind in ("recovery_node", "recovery_border"):
             hero.alive = True
             next_flashes.append("You've recovered your gear.")
+        if result.get("outcome") == "win" and "dead_scouts_map" in hero.acquired:
+            hero.acquired.remove("dead_scouts_map")
+            zone_id = hero.position[0] if isinstance(hero.position, tuple) else 1
+            level = BE.TIER_TO_LEVEL[M.ZONE_TIER.get(zone_id, "tier_1")]
+            deck = board.loot_decks.get(level)
+            if deck:
+                bonus_card = deck.draw(rng)
+                if bonus_card:
+                    if M._bag_has_room(hero.bag, hero.locked):
+                        M._add_item(hero.bag, hero.locked, bonus_card)
+                        next_flashes.append(f"The Dead Scout's Map guided you to bonus loot: {bonus_card.replace('_', ' ').title()}!")
+                    else:
+                        hero.pending_loot.append(bonus_card)
+                        next_flashes.append(f"The Dead Scout's Map guided you to bonus loot (Bag Full): {bonus_card.replace('_', ' ').title()}!")
         next_flashes.append(_outcome_message(kind, result, mob_level=_mob_level_for_pending(pending)))
         _S["pending_next_phase"] = "travel"
     _S["pending_next_flashes"] = next_flashes
@@ -1563,6 +1969,12 @@ def _cmp_process_resolve_queue():
             return redirect(url_for("cmp_scouted_pick"))
 
         hero = board.heroes[hero_idx]
+        mob_name = action.get("mob_name")
+        if SD.is_spice_event(mob_name):
+            _S["pending_kind"] = "cmp_spice_event"
+            _S["pending_action"] = action
+            _S["phase"] = "event_resolve"
+            return redirect(url_for("event_resolve"))
         hand = _draw_hero_hand(hero, class_names[hero_idx], rng)
         _S["pending_kind"] = "cmp_declare_node"
         _S["pending_action"] = action
@@ -1587,6 +1999,12 @@ def cmp_scouted_pick_choose():
     pick = request.form.get("pick")
     candidates = _S["pending_border"]["candidates"]
     mob_name = candidates[0] if pick == "0" else candidates[1]
+
+    if SD.is_spice_event(mob_name):
+        _S["pending_kind"] = "cmp_spice_event"
+        _S["pending_action"] = dict(_S["pending_border"], mob_name=mob_name, node_name=_S["pending_border"].get("border_name"))
+        _S["phase"] = "event_resolve"
+        return redirect(url_for("event_resolve"))
 
     hand = _draw_hero_hand(hero, class_name, _S["rng"])
     _S["pending_action"] = dict(_S["pending_border"], mob_name=mob_name)
@@ -1616,7 +2034,37 @@ def cmp_combat_plan():
         hand_options=_hand_options(class_name, hand, hero=hero), has_stance=M.HAS_STANCE[class_name],
         pending_kind=_S["pending_kind"], flash=_pop_flash(),
         turn_label=_cmp_label(hero_idx), action_url=url_for("cmp_combat_plan_submit"),
+        nest_raid_url=url_for("cmp_combat_plan_nest_raid"),
     )
+
+
+@app.route("/cmp/combat_plan/nest_raid", methods=["POST"])
+def cmp_combat_plan_nest_raid():
+    board = _S.get("board")
+    if board is None or not _S.get("pending_action"):
+        return redirect(url_for("cmp_travel"))
+    hero_idx = _S["active_hero_idx"]
+    hero = board.heroes[hero_idx]
+    hero.hp = max(1.0, hero.hp - 2)
+    hero.turns += 1
+    if M._bag_has_room(hero.bag, hero.locked):
+        M._add_item(hero.bag, hero.locked, "beast_egg")
+        _flash("You raided the nest, suffered 2 unpreventable Damage, and fled with the Beast Egg!")
+    else:
+        hero.pending_loot.append("beast_egg")
+        _flash("You raided the nest and suffered 2 damage! Bag full — Beast Egg is pending.")
+
+    pending = _S.get("pending_action", {})
+    node_name = pending.get("node_name")
+    if node_name:
+        zone_id = hero.position[0] if isinstance(hero.position, tuple) else 1
+        zone = board.zones.get(zone_id)
+        if zone and node_name in zone.nodes:
+            zone.nodes[node_name].card = None
+
+    _S["pending_action"] = None
+    _S["pending_hand"] = None
+    return _cmp_process_resolve_queue()
 
 
 @app.route("/cmp/combat_plan/submit", methods=["POST"])
@@ -1647,6 +2095,19 @@ def cmp_combat_plan_submit():
         result = BE.resolve_border_crossing(hero, class_name, pending["border_name"], pending["target_zone"],
                                              pending["mob_name"], rng, M.RISK_TOLERANCE_BASE, True,
                                              decide_fn=decide_fn, hand=hand)
+
+    if result.get("outcome") == "win" and "dead_scouts_map" in hero.acquired:
+        hero.acquired.remove("dead_scouts_map")
+        zone_id = hero.position[0] if isinstance(hero.position, tuple) else 1
+        level = BE.TIER_TO_LEVEL[M.ZONE_TIER.get(zone_id, "tier_1")]
+        deck = board.loot_decks.get(level)
+        if deck:
+            bonus_card = deck.draw(rng)
+            if bonus_card:
+                if M._bag_has_room(hero.bag, hero.locked):
+                    M._add_item(hero.bag, hero.locked, bonus_card)
+                else:
+                    hero.pending_loot.append(bonus_card)
 
     if result.get("outcome") == "died":
         BE.apply_competitive_death_post_processing(hero, _S["cmp_quest_pools"][hero_idx])

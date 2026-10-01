@@ -41,6 +41,7 @@ import condensed_trip as T
 import leveling_validation as LV
 import macro_sim as M
 import equipment_data as EQ
+import spice_data as SD
 from board_state import HeroBoardState
 
 # tier string (macro_sim's own ZONE_TIER values) -> level deck key (board_state.LevelDeck's
@@ -82,23 +83,24 @@ def _level2_swaps_for(class_name, acquired):
 
 
 def legal_node_declares(zone_board):
-    """Nodes in this Zone whose dealt card is a real, fightable mob right now -- excludes
-    anything currently Spice-dealt (see board_state.SPICE's own docstring: no mechanic exists
-    yet for declaring one)."""
-    return [node_name for node_name, card in zone_board.dealt.items() if not B.is_spice(card)]
+    """Nodes in this Zone whose dealt card is valid to declare right now."""
+    return [node_name for node_name, card in zone_board.dealt.items() if card is not None and card != B.SPICE]
 
 
 def choose_node_to_declare(hero, zone_board, quest_pool):
-    """Which dealt Node in this Zone to pull at this turn -- mirrors run_one_trip's own
-    quest-routing preference (whichever incomplete quest's Node is present) exactly, restricted
-    to Nodes actually dealt in THIS Zone (cross-zone routing is a later chunk) and skipping any
-    Node currently Spice-dealt. Returns a Node name, or None if nothing declarable here serves
-    an incomplete quest right now."""
+    """Which dealt Node in this Zone to pull at this turn -- prioritizes incomplete quest
+    nodes first, then high-value Spice cards, then any legal node."""
     incomplete = [loot for loot in hero.active_quests
                   if M._accessible_count(hero.bag, hero.locked, loot) < quest_pool[loot]["required"]]
     for loot in incomplete:
         node_name = next((n for n, (tier, l) in M.NODES.items() if l == loot and n in zone_board.dealt), None)
-        if node_name is not None and not B.is_spice(zone_board.dealt[node_name]):
+        if node_name is not None and zone_board.dealt[node_name] is not None and zone_board.dealt[node_name] != B.SPICE:
+            return node_name
+    for node_name, card in zone_board.dealt.items():
+        if card is not None and card != B.SPICE and (SD.is_spice_combat(card) or SD.is_spice_event(card)):
+            return node_name
+    for node_name, card in zone_board.dealt.items():
+        if card is not None and card != B.SPICE:
             return node_name
     return None
 
@@ -212,6 +214,42 @@ def _pull_and_resolve(hero, class_name, mod, mob_name, loot_name, rng, suppress_
 
     Mutates hero in place. Returns {"outcome": "win"/"flee"/"died"/"no_room", "mob_name": ...}."""
     mob_base = mob_name.replace("_loot", "")
+    if SD.is_spice_event(mob_base):
+        zone_id = hero.position[0] if isinstance(hero.position, tuple) else 1
+        zone_lvl = SD.zone_level_for_zone(zone_id)
+        hero.turns += 1
+        if mob_base == "sacred_well":
+            hero.hp = min(hero.max_hp, hero.hp + 2)
+        elif mob_base == "dead_scouts_map":
+            hero.acquired.add("dead_scouts_map")
+        elif mob_base == "wandering_hermit":
+            cost = 2 + zone_lvl
+            if hero.gold >= cost:
+                hero.gold -= cost
+                hero.bone_ward = True
+        elif mob_base == "runic_monolith":
+            hero.reserved_card = rng.choice(mod.ALL_HANDS)[0]
+        elif mob_base == "abandoned_hearth":
+            hero.hp = hero.max_hp
+        elif mob_base == "monstrous_clutch":
+            hero.hp = max(1.0, hero.hp - 2)
+            if M._bag_has_room(hero.bag, hero.locked):
+                M._add_item(hero.bag, hero.locked, "beast_egg")
+            else:
+                hero.pending_loot.append("beast_egg")
+        elif mob_base == "couriers_satchel":
+            if M._bag_has_room(hero.bag, hero.locked):
+                M._add_item(hero.bag, hero.locked, "couriers_satchel")
+            else:
+                hero.gold += (2 + zone_lvl)
+        elif mob_base == "trappers_cache":
+            if M._bag_has_room(hero.bag, hero.locked):
+                M._add_food(hero.bag, hero.locked)
+        elif mob_base == "alchemists_alembic":
+            if M._bag_has_room(hero.bag, hero.locked):
+                M._add_item(hero.bag, hero.locked, "Crag-Iron")
+        return {"outcome": "win", "mob_name": mob_base, "drops_loot": False, "drops_double_loot": False, "is_spice": True}
+
     pattern, mob_hp = M._pattern_hp_for_mob(class_name, mob_base)
     if hand is None:
         hand = rng.choice(mod.ALL_HANDS)
@@ -231,6 +269,27 @@ def _pull_and_resolve(hero, class_name, mod, mob_name, loot_name, rng, suppress_
         return {"outcome": "died", "mob_name": mob_base}
 
     if win:
+        if SD.is_spice_combat(mob_base):
+            zone_id = hero.position[0] if isinstance(hero.position, tuple) else 1
+            zone_lvl = SD.zone_level_for_zone(zone_id)
+            if mob_base == "scuttling_hoarder":
+                hero.gold += (4 + zone_lvl)
+            elif mob_base == "warded_strongbox":
+                if M._bag_has_room(hero.bag, hero.locked):
+                    M._add_item(hero.bag, hero.locked, "gilded_relic")
+                else:
+                    hero.gold += 3
+            elif mob_base in ("broodmother", "monstrous_clutch"):
+                hero.gold += zone_lvl
+                if M._bag_has_room(hero.bag, hero.locked):
+                    M._add_item(hero.bag, hero.locked, "beast_egg")
+                else:
+                    hero.pending_loot.append("beast_egg")
+            elif mob_base == "arcane_golem":
+                hero.gold += (1 + zone_lvl)
+            drops_loot = (mob_base == "arcane_golem")
+            return {"outcome": "win", "mob_name": mob_base, "drops_loot": drops_loot, "drops_double_loot": False, "is_spice": True}
+
         # Gold is unconditional on any win, recovery pull or not -- "the +1 Gold still
         # requires an actual win though, not just survival -- same win-only standard as
         # every other pull, not a separate rule for recovery" (run_one_trip's own comment,
@@ -618,6 +677,10 @@ def get_town_actions(hero, purchase_queue, board=None):
 
         vendor_prices = {
             "tarnished_silverware": 1, "intact_pelt": 2, "flawless_gemstone": 3,
+            # Spice delivery tokens
+            "gilded_relic": 6,
+            "beast_egg": 4 + SD.zone_level_for_zone(zone_id),
+            "couriers_satchel": 4 + SD.zone_level_for_zone(zone_id),
             # Gathering tokens vendored for 1 Gold each (working baseline, needs playtesting / NOT locked, 2026-09-25)
             "Snap-Root": 1, "Crag-Iron": 1, "Scavenged Pelt": 1,
             "River-Mint": 1, "Sun-Copper": 1, "Bristle-Pelt": 1,
@@ -850,6 +913,8 @@ def get_travel_actions(hero, board, rng):
             actions.append({"type": "use_food"})
         if any(not hero.locked[i] and M._is_potion_slot(hero.bag[i]) for i in range(len(hero.bag))):
             actions.append({"type": "use_potion"})
+        if any(not hero.locked[i] and hero.bag[i] == "beast_egg" for i in range(len(hero.bag))):
+            actions.append({"type": "use_beast_egg"})
 
     actions.append({"type": "return_to_town"})
     if zone_or_border in M.TRAINER_ZONES:
@@ -1005,6 +1070,11 @@ def apply_travel_action(hero, action, class_name, board, rng,
         hero.hp = min(hero.max_hp, hero.hp + M.POTION_HEAL)
         M._remove_item(hero.bag, hero.locked, "potion", 1)
         hero.consumables_used["potion"] += 1
+        return {"outcome": "healed"}
+
+    if action["type"] == "use_beast_egg":
+        hero.hp = min(hero.max_hp, hero.hp + 4)
+        M._remove_item(hero.bag, hero.locked, "beast_egg", 1)
         return {"outcome": "healed"}
 
     if action["type"] == "visit_trainer":
@@ -1520,6 +1590,22 @@ def apply_death_post_processing(hero, quest_pool, death_node):
     than a second, hand-written copy that could quietly drift from it.
 
     Mutates hero in place. No return value."""
+    if getattr(hero, "bone_ward", False):
+        hero.bone_ward = False
+        hero.corpse_node = None
+        for loot in hero.active_quests:
+            q = quest_pool[loot]
+            hero.decay_stage[loot] = min(hero.decay_stage.get(loot, 0) + 1, len(q["gold_ladder"]) - 1)
+        if death_node and death_node.startswith("border:"):
+            _, _, origin_zone_s, _ = death_node.split(":")
+            hero.position = (int(origin_zone_s), "town")
+        elif death_node and death_node in M.NODE_ZONE:
+            hero.position = (M.NODE_ZONE[death_node], "town")
+        else:
+            hero.position = (1, "town")
+        hero.alive = True
+        return
+
     for i, slot in enumerate(hero.bag):
         if slot is not None:
             hero.locked[i] = True
@@ -1527,11 +1613,13 @@ def apply_death_post_processing(hero, quest_pool, death_node):
         q = quest_pool[loot]
         hero.decay_stage[loot] = min(hero.decay_stage.get(loot, 0) + 1, len(q["gold_ladder"]) - 1)
     hero.corpse_node = death_node
-    if death_node.startswith("border:"):
+    if death_node and death_node.startswith("border:"):
         _, _, origin_zone_s, _ = death_node.split(":")
         hero.position = (int(origin_zone_s), "town")
-    else:
+    elif death_node and death_node in M.NODE_ZONE:
         hero.position = (M.NODE_ZONE[death_node], "town")
+    else:
+        hero.position = (1, "town")
 
 
 def apply_competitive_death_post_processing(hero, quest_pool):

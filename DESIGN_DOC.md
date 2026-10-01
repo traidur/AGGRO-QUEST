@@ -588,6 +588,8 @@ whichever Town is closest** — clarified 2026-08-20 now that both Zones have To
 the Town in the same Zone as the death node, not necessarily "Zone 1's Town" the way it would
 have under the old single-Town map. Every Bag slot holding anything (loot or an unused
 consumable) **locks** — its contents stop counting toward quests and can't be added to — and
+**ALL currently equipped items break and flip face-down** (requiring Blacksmith repair in Town
+for Gold equal to Item Level; see Section VIII.3 for durability rules) — and
 **every quest currently in the active log takes an immediate 2-stage decay hit, with no
 exception for a quest that's already fully collected and ready to turn in** (versus 1 stage for
 a normal incomplete return), still capped at "nothing." Travel from the respawn Town back to
@@ -705,60 +707,128 @@ For every player that won a PvE combat pull, resolve rewards in this exact order
 - All unbeaten Mob Cards in occupied zones are swept to the discard pile. (They do not persist).
 - **Sticky Gathering:** Gathering Tokens are **not** swept. If no one claimed them, they remain on the board for the next Round.
 
-## VIII. Progression — NOT YET BUILT
+## VIII. Progression Architecture & Tier Transitions
 
-**Nothing past Level 2 is implemented or tested in the simulator** (`sim/macro_sim.py` has no
-Level 3-6, no Cull, no Final Boss check). Kept here as stated design intent, not current rules:
+### 1. The Even-Numbered Tier Gate Rhythm
+Progression across the 6 Zones is driven by the Quest Engine, moving through even-numbered gate zones:
+* **Zone 2 Gate (Level 1 → Level 2 Transition):**
+  - **Threshold:** Complete 3 Level 1 quests (6 XP). Zone 1 & 2 quest markets exhaust.
+  - **Zone 2 Trainer (Port Ironguard):** Grants mandatory Level 2 skill upgrade + Rank 2 Guild Seal + issues the **Primer Quest: [Vanguard Dispatch]**.
+  - **Arrival at Town 3/4:** Turning in the Dispatch awards +2 Gold travel stipend and unlocks the Level 2 Quest Market (Zones 3 & 4) via the Rank 2 Seal.
+* **Zone 4 Gate (Level 2 → Level 3 Transition):**
+  - **Threshold:** Complete Level 2 quests reaching Level 3 XP milestone (~12–14 total XP).
+  - **Zone 4 Trainer (The Vanguard Camp):** Grants mandatory Level 3 skill upgrade + issues the **Capstone Boss Quest: [The Citadel Commission]**.
+  - **The Landmark Encounter:** The hero confronts the Level 2 Boss at *The Gleaming Citadel* or *Sunward Throne*.
+  - **Arrival at Town 5:** Resolving the landmark combat (Win or Fail-Forward) immediately delivers the hero to Town 5, unlocking the Level 3 Quest Market.
+* **Zone 6 Gate (Level 3 → Endgame):** Final Boss confrontation.
 
-**Full-game pacing target, locked 2026-08-22:** a player should go from Level 1 to Level 6 and
-defeat the Final Boss in **~90 turns or less** (turns as defined in `OPEN_QUESTIONS.md`'s "What
-a turn is" — one pull, one Town visit, one Border crossing, etc., each exactly one turn,
-regardless of business done). This is a real constraint on whatever Level 3-6/Cull/Final Boss
-system eventually gets built, not just this section's existing prose — none of it should be
-designed or tuned without checking it against this number. Not yet validated against anything:
-the simulator currently only implements a two-tier Level 1/Level 2 stand-in
-(`LEVEL2_XP_THRESHOLD`), not the real 6-level system, so there is no current tooling that can
-measure whether any real design hits 90 turns — that tooling has to be built alongside Level
-3-6 itself, not assumed to already exist.
+### 2. Quest-Driven Gating (Open Map, No Chokepoints)
+- **Map Freedom:** The map graph remains completely open, multi-routed, and interconnected (multiple border crossings, loops, and flight paths). The landmark is a destination, not a physical bottleneck.
+- **Quest Enforcement:** Town 5’s Council strictly refuses to issue Level 3 contracts to unverified wanderers. The Level 3 Quest Market remains locked until the player turns in the completed *Citadel Commission*. Sequence-breaking is impossible.
+- **Modularity:** In casual or speedrun variants where boss fights are omitted, the Trainer simply issues a standard courier dispatch to Town 5 instead of the boss quest.
 
-**"Market Row," as a separate future system, is retired — it's stale as of the Class Trainer's
-build (2026-08-21), corrected 2026-08-22.** Market Row's own one-line definition ("spending Gold
-in Town adds tuned, tactical cards to a class's deck") is exactly what the Class Trainer already
-does, live in the simulator, today (`SKILL_COST`, `LEVEL2_PURCHASED_ORDER`, buy any number of
-upgrade cards in one Trainer-Zone visit — see Section VI/`MACRO_LOOP_GUIDE.md`). The Trainer just
-hasn't been generalized past Level 2 yet; there is no second, distinct "Market Row" mechanism
-left to build on top of it. Whenever Level 3-6 gets built, the same Trainer-purchase pattern is
-expected to repeat at each level, not a separate system.
+### 3. Boss Gates: Triumph vs. Fail-Forward Resolution
+Every player must initiate combat against the Gatekeeper when attempting the Capstone Quest (in solo, competitive, or co-op). Pacing never deadlocks, and all outcomes grant automatic express transit to Town 5 upon resolution.
 
-**Which purchased upgrade a hero gets 2nd/3rd/4th is randomized per hero, not fixed and not
-player-selected (locked 2026-08-23).** The mandatory upgrade stays free/automatic/earned, but
-beyond that, each hero draws from their own personally-shuffled order of the remaining upgrade
-cards — a human never picks which one, only whether to spend the Gold on whichever is offered.
-Deliberate, not an oversight: QUEST is a quick, one-shot, non-legacy game, and free selection
-among a known upgrade set converges over repeated sessions (every table eventually just buys
-whatever's mathematically strongest, in the same order, every time) — randomizing removes that
-convergence. Safe because the balance methodology already validated each purchased upgrade
-independently against the guaranteed-minimum kit, never against an order-dependent sequence —
-see `LEVELING_GUIDE.md`'s "Purchased upgrade order" entry for the full reasoning.
+Visiting Town automatically restores hero HP to full, and the Trainer purges the completed Capstone Quest from the log, rendering previous Town arrival HP and overland quest decay purely symbolic at this milestone. Instead, the real physical and economic differentiation between failure modes is governed by **Equipment Durability & Blacksmith Repair**:
 
-- **The strict 6-card limit overrides the original vision below, wherever they conflict.**
-  Combat's exact-solver architecture (Section II, "unique decks") depends on every class
-  holding exactly 6 unique cards, always — the 15-hand enumeration every diagnostic in this
-  project relies on doesn't exist at any other deck size. Any progression system, whenever it's
-  built, has to work as a **1-for-1 card swap** (upgrading a base card into a purchased one),
-  never additive growth. The paragraphs below describe the original, pre-condensed-combat
-  vision (a larger starter deck thinned down via Cull) and are kept for the historical intent,
-  not as a spec to build against — they need to be redesigned around the 1-for-1 constraint
-  before any of this actually gets built.
-- **Leveling (1-6):** turning in quests grants XP; leveling lets players **Cull** (permanently
-  destroy) basic starter cards, thinning the deck so Trainer-bought upgrades draw more reliably.
-- **Win condition — the Final Boss node:** a single, static, monstrous math check (co-op Party
-  Pull) players build toward and attempt whenever ready.
-- **Elite Spikes mixed into a zone's deck at known odds:** rather than a separately authored
-  "Elite content" pool, a zone's actual mob deck would be its own authored recipe combining
-  pools (e.g. an 18-card Standard deck with 2-3 Elite cards shuffled in) — with the exact
-  composition printed and public on the zone card, so contesting a node with Elites mixed in is
-  a calculable risk, not a blind draw. Decided in principle (`OPEN_QUESTIONS.md`), not built.
+| Outcome | Tabletop Narrative | Equipment State | Economic Impact | Rewards Claimed |
+| :--- | :--- | :---: | :---: | :--- |
+| **Triumph (Win)** | Citadel gate breached in victory | Refreshes to Ready | **+5 Gold** Bounty | • **The Level 3 Dungeon Key**<br>• **Boss Trophy** (+2 Bounty credits)<br>• **+5 Gold** Bounty |
+| **Survival Timeout (Fail & Survive)** | Repelled by boss; tactical retreat | Refreshes to Ready | **0 Gold** (No repair fee) | • **Zero bonus spoils** (No Key, No Trophy, No Gold)<br>• Level 3 overland quests still unlock |
+| **Death Failure (Crushed)** | Dragged from the rubble by scouts | **ALL Equipment Flipped (Broken)** | **−Gold repair fee at Town Forge** | • **Zero bonus spoils** (No Key, No Trophy, No Gold)<br>• Level 3 overland quests still unlock |
+
+#### Equipment Durability & Repair Mechanics (Locked Default):
+1. **Exhaustion (In the Field):** Using an equipment card's active trigger in combat rotates (taps) the card 90°. Visiting Town refreshes all exhausted equipment back to Ready (upright) for **free**.
+2. **Broken on Death (Flipped Face-Down):** If a hero dies (HP $\le 0$) during any encounter (overland pull, dungeon room, or boss gate), **ALL currently equipped items are broken and flipped face-down**.
+3. **The Blacksmith Forge:** Broken (face-down) equipment provides no stats or triggers. To restore a broken item upright, the hero must pay the Town Blacksmith a repair fee equal to the **item's level in Gold** (e.g. Level 1 item = 1 Gold, Level 2 item = 2 Gold). If a player has 0 Gold, equipment remains face-down until Gold is earned from overland combat (the 6-card hero deck still functions, preventing soft-locks).
+
+> [!IMPORTANT]
+> **Durability & Repair Balance Sweep (Documented for Future Empirical Testing):**
+> Two specific levers are documented here for future simulation and playtest calibration:
+> 1. **Break Scope:** Does death break **all** equipped items (current working rule), or should it only break the **single highest-level unbroken item** to soften the death penalty for gear-heavy heroes?
+> 2. **Repair Cost Formula:** Is the optimal gold fee equal to the item's printed level ($\text{Fee} = \text{Level}$), or half rounded up ($\lceil \text{Level} / 2 \rceil$), or a flat fee?
+> These levers will be formally evaluated in the macro-economy simulator once equipment progression and crafting curves are integrated into the full trip loop.
+
+### 4. Zone 4 Tier Gate Boss Trio (Locked Specifications)
+> [!NOTE]
+> **Flavor / Lore Note:** Boss names, titles, and lore descriptions below are **placeholders** and will receive a dedicated narrative and thematic polish pass. The mechanical stats, action patterns, HP thresholds, and phase rules are **locked**.
+
+When a Level 2 hero attempts the Capstone Quest (*The Citadel Commission*), they draw **1 of 3 Gatekeeper Bosses at random**. All three bosses share the same rigorous mathematical calibration: an average **~77%–78% win rate**, a tight class spread (**16%–22%** across all 9 classes), down-to-the-wire surviving HP (**~4.6 HP average**), and **Block restricted exclusively to Melee rounds** (0 Block on all Ranged rounds).
+
+#### Phase Rules & The Phase 1 Ruling:
+1. **6 Rounds Continuous:** Combat is split into two 3-round bouts (Phase 1 = Rounds 1–3, Phase 2 = Rounds 4–6). The hero starts at full Max HP. Surviving Hero HP carries directly into Phase 2; no food, resting, or consumables are permitted between phases.
+2. **Phase 1 Completion Requirement (The P1 Knockout Rule):**
+   - The hero **must reduce Phase 1 HP to $\le 0$ within 3 rounds** to advance to Phase 2.
+   - **If the hero fails to deal sufficient damage in Phase 1:** The hero **loses the entire encounter immediately on Round 3** (Damage Failure). The boss card does not flip, Phase 2 is not entered, and the hero suffers Fail-Forward express transit to Town 5 at 1 HP.
+   - *Phase 1 Mortality:* Phase 1 incoming attack output is calibrated strictly for attrition; Hero death rate in Phase 1 is **0.0% across all 9 classes**.
+   - *Phase 1 Damage Failure Frequency:* Across the roster, failing Phase 1 due to insufficient burst averages **~10%–12%** (ranging from 0%–4% for high-burst classes like Wizard/Necromancer, to 8%–9% for Warrior/Paladin/Cleric, up to 15%–20% on Rogue/Druid when drawing poor damage hands).
+3. **Phase 2 Transition & Resolution:**
+   - If Phase 1 is defeated, the player reshuffles their 6-card deck, draws a fresh 4-card hand, flips the boss card to its Phase 2 Unleashed form, and resolves Rounds 4–6.
+   - **Triumph:** Boss Phase 2 HP reduced to $\le 0$ by Round 6 and Hero HP $> 0$.
+   - **Survival Death:** Hero HP drops to $\le 0$ during Phase 2 (averages ~3%–6% roster-wide; 8%–14% on squishy casters).
+   - **Damage Timeout:** Boss Phase 2 HP $> 0$ after Round 6 (averages ~8%–14% roster-wide).
+
+#### Boss 1: High Inquisitor Malakor / The Sunward Archon *(Placeholder Flavor)*
+*Radiant prelate blending holy spells with consecrated blade clashing. Only raises his shield in melee.*
+* **Phase 1: The Radiant Bulwark [10 HP]**
+  * Round 1: Atk 3, Blk 0 (`ranged` — *Holy Ray*)
+  * Round 2: Atk 3, Blk 2 (`melee` — *Inquisitor's Guard & Strike*)
+  * Round 3: Atk 4, Blk 0 (`ranged` — *Solar Flare*)
+* **Phase 2: Unleashed Avatar of Light [10 HP]**
+  * Round 4: Atk 4, Blk 0 (`ranged` — *Pillar of Radiance*)
+  * Round 5: Atk 4, Blk 1 (`melee` — *Sunward Riposte*)
+  * Round 6: Atk 4, Blk 0 (`ranged` — *Dawn's Wrath*)
+* **Performance:** **77.1% Win Rate** | **17.9% Spread** (72.0%–89.9%) | **4.6 Avg End HP**
+
+#### Boss 2: Aethelgard the Sun-Forged / Citadel Colossus *(Placeholder Flavor)*
+*Ancient granite titan. Braces heavy chassis in melee; in Phase 2 its outer shell shatters into an unstable, superheated molten core.*
+* **Phase 1: Granite Sentinel [11 HP]**
+  * Round 1: Atk 2, Blk 1 (`melee` — *Heavy Stone Bracing*)
+  * Round 2: Atk 4, Blk 0 (`ranged` — *Prismatic Eye Beam*)
+  * Round 3: Atk 4, Blk 0 (`melee` — *Crushing Fist*)
+* **Phase 2: Superheated Molten Core [10 HP]**
+  * Round 4: Atk 4, Blk 0 (`ranged` — *Thermal Steam Vent*)
+  * Round 5: Atk 4, Blk 0 (`melee` — *Molten Hammer*)
+  * Round 6: Atk 5, Blk 0 (`ranged` — *Solar Meltdown Explosion*)
+* **Performance:** **77.9% Win Rate** | **22.7% Spread** (67.0%–89.6%) | **4.6 Avg End HP**
+
+#### Boss 3: Cheryl the Sun-Dethroned / Eclipse Sovereign *(Placeholder Flavor)*
+*Fallen solar monarch. Parries with dual eclipse rapiers in melee, dropping guard to unleash sweeping dark solar magic.*
+* **Phase 1: Dusk Rapier [10 HP]**
+  * Round 1: Atk 4, Blk 0 (`ranged` — *Eclipse Javelin*)
+  * Round 2: Atk 3, Blk 2 (`melee` — *Twin Rapier Parry*)
+  * Round 3: Atk 3, Blk 0 (`ranged` — *Corona Burst*)
+* **Phase 2: Twilight Ascendant [10 HP]**
+  * Round 4: Atk 4, Blk 1 (`melee` — *Shadowstep Lunge*)
+  * Round 5: Atk 4, Blk 0 (`ranged` — *Black Sun Nova*)
+  * Round 6: Atk 4, Blk 0 (`melee` — *Twilight Guillotine*)
+* **Performance:** **77.6% Win Rate** | **16.1% Spread** (73.8%–89.9%) | **4.6 Avg End HP**
+
+#### Locked Tier-Gate Boss Matchup Matrix (Level 2 + 2 Upgrades)
+
+| Class | Boss 1 (Inquisitor) | Boss 2 (Colossus) | Boss 3 (Eclipse) | Trio Avg Win% | Avg End HP | Primary Failure Mode |
+| :--- | :---: | :---: | :---: | :---: | :---: | :--- |
+| **Paladin** | 89.9% | 88.1% | 89.9% | **89.3%** | 6.4 HP | Damage Timeout (~10%) |
+| **Warrior** | 83.7% | 89.6% | 83.7% | **85.7%** | 6.6 HP | Damage Timeout (~14%) |
+| **Rogue** | 76.7% | 77.9% | 74.1% | **76.2%** | 5.4 HP | P1 Dmg Fail (~18%) |
+| **Ranger** | 74.7% | 78.1% | 74.7% | **75.8%** | 4.9 HP | P1 Dmg Fail (~15%) |
+| **Necromancer** | 75.6% | 80.9% | 73.8% | **76.8%** | 3.3 HP | P2 Death (~8%) |
+| **Wizard** | 72.1% | 80.1% | 75.7% | **76.0%** | 3.5 HP | P2 Death (~13%) |
+| **Druid** | 74.7% | 69.8% | 74.7% | **73.1%** | 4.4 HP | P1 Dmg Fail (~23%) |
+| **Cleric** | 72.0% | 67.0% | 77.5% | **72.2%** | 2.9 HP | P2 Dmg / Death (~18%) |
+| **Runecaster** | 74.1% | 69.3% | 74.4% | **72.6%** | 3.5 HP | P2 Dmg Timeout (~22%) |
+| **ROSTER AVERAGE**| **77.1%** | **77.9%** | **77.6%** | **77.5%** | **4.6 HP** | **P1 Dmg 11%, P2 Dmg 9%, P2 Death 5%** |
+
+### 5. Key-Gated Dungeons (Level 3+)
+- **Push-Your-Luck Gauntlet:** Dungeons are self-contained 3-room gauntlets (Room 1: Entry → Room 2: Depths → Room 3: Vault Boss) featuring cash-out decisions after each room. Wiping inside forfeits all unbanked dungeon spoils.
+- **Strict Scarcity via Keys:** Dungeons require physical 1×1 **Dungeon Key tokens** to enter, primarily earned by conquering the Tier Gatekeeper Boss (with rare overland quest-chain alternatives).
+- **Lateral Power, Not XP Bloat:** Dungeons do not award disproportionate XP. They grant **lateral capabilities** (Unique Legendary Relics, Tier 3 Crafting Materials, and dense Gold piles). This preserves **overland questing as the ~80% primary game loop** while keeping dungeons as high-stakes **~20% capstone expeditions**.
+
+### 6. Technical Pacing Target
+- **Full-Game Pacing Target (locked 2026-08-22):** Level 1 to Level 6 clear in **~90 turns or less**.
+- **Deck Limit (locked):** Strict 6-card limit. Progression is always **1-for-1 card swap** (upgrading a base card into a purchased/trainer card), never additive growth.
+- **Purchased Upgrade Randomization (locked 2026-08-23):** Beyond the free mandatory upgrade, remaining purchased upgrades draw from a randomized hero-specific order to prevent strategic convergence.
 
 ## IX. Component & Physical Implementation
 

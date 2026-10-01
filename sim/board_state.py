@@ -83,13 +83,11 @@ from dataclasses import dataclass, field
 
 import condensed_trip as T
 import leveling_validation as LV
+import spice_data as SD
 
 LEVEL2_TIER = "standard_l2"
 
-# Reserved deck-slot marker -- not a real mob name, no mechanic defined yet
-# (OPEN_QUESTIONS.md's "Deterministic Spice" entry is still Unresolved). Dealt like any other
-# card so the deck's real size/odds match the locked ratios, but nothing in this codebase
-# currently knows how to resolve declaring it.
+# Reserved deck-slot marker (legacy compatibility)
 SPICE = "__spice__"
 
 _ELITE_NAMES = list(LV.ELITE_MELEE.keys())
@@ -110,7 +108,15 @@ LEVEL_DECK_COMPOSITION = {
 
 
 def is_spice(card_name):
-    return card_name == SPICE
+    return card_name == SPICE or SD.is_spice(card_name)
+
+
+def is_spice_combat(card_name):
+    return SD.is_spice_combat(card_name)
+
+
+def is_spice_event(card_name):
+    return SD.is_spice_event(card_name)
 
 
 
@@ -154,9 +160,15 @@ class LevelDeck:
     discard_pile: list = field(default_factory=list)
 
     @classmethod
-    def new(cls, level, rng):
-        composition = LEVEL_DECK_COMPOSITION[level]
+    def new(cls, level, rng, spice_cards=None):
+        composition = dict(LEVEL_DECK_COMPOSITION[level])
+        spice_slots = composition.pop(SPICE, 0)
         cards = [name for name, count in composition.items() for _ in range(count)]
+        if spice_cards is not None:
+            cards.extend(spice_cards)
+        elif spice_slots > 0:
+            chosen = rng.sample(SD.SPICE_DECK, spice_slots)
+            cards.extend(chosen)
         rng.shuffle(cards)
         return cls(draw_pile=cards)
 
@@ -172,6 +184,15 @@ class LevelDeck:
 
     def discard(self, card_name):
         self.discard_pile.append(card_name)
+
+
+def setup_level_decks(rng):
+    """Draws 1 random Spice card for Level 1, 2 random Spice cards for Level 2 without replacement."""
+    spice_draw = rng.sample(SD.SPICE_DECK, 3)
+    return {
+        1: LevelDeck.new(1, rng, spice_cards=[spice_draw[0]]),
+        2: LevelDeck.new(2, rng, spice_cards=[spice_draw[1], spice_draw[2]]),
+    }
 
 
 @dataclass
@@ -333,9 +354,6 @@ def deal_zone(state, zone_id, level, node_names, rng):
     zone_board = state.zones[zone_id]
     for node_name in node_names:
         card = deck.draw(rng)
-        while is_spice(card):
-            deck.discard(card)
-            card = deck.draw(rng)
         zone_board.dealt[node_name] = card
         
         # If a Node does not currently have a Gathering Token, 1 fresh Gathering Token is dealt to it.

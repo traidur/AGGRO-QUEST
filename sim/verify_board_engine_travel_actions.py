@@ -45,8 +45,8 @@ def run_direct_checks(verbose=True):
     declares = [a for a in actions if a["type"] == "declare_node"]
     crossings = [a for a in actions if a["type"] == "cross_border"]
     flights = [a for a in actions if a["type"] == "flight_path"]
-    check("declare_node options are all real (non-Spice) mobs",
-          all(not B.is_spice(a["mob_name"]) for a in declares), declares)
+    check("declare_node options are valid dealt cards",
+          all(a["mob_name"] is not None for a in declares), declares)
     check("declare_node options match the actually-dealt board",
           set(a["node_name"] for a in declares) <= set(BE._nodes_in_zone(1)), declares)
     expected_borders = {name for name, connects in M.BORDER_NODES.items() if 1 in connects}
@@ -123,9 +123,9 @@ def run_direct_checks(verbose=True):
     actions9 = BE.get_travel_actions(hero9, board, rng)
     check("locked food doesn't offer use_food", not any(a["type"] == "use_food" for a in actions9), actions9)
 
-    # 8. Full-HP hero isn't offered use_food/use_potion even holding both.
+    # 8. Full-HP hero with bag room isn't offered use_food/use_potion even holding both.
     hero10 = HeroBoardState(class_name="warrior", hp=18.0, max_hp=18.0, position=(1, None),
-                             bag=["food", {"items": {"potion": 1}}], locked=[False, False], gold=0)
+                             bag=["food", {"items": {"potion": 1}}, None], locked=[False, False, False], gold=0)
     actions10 = BE.get_travel_actions(hero10, board, rng)
     check("full HP hero isn't offered use_food/use_potion",
           not any(a["type"] in ("use_food", "use_potion") for a in actions10), actions10)
@@ -215,7 +215,7 @@ def _play_full_chain_via_seam(class_name, strategy, rng, max_turns):
         safety += 1
         zone_or_border, node = hero.position
         if node == "town":
-            BE.enter_town(hero, class_name, strategy, rng)
+            BE.enter_town(hero, class_name, strategy, rng, board)
             while True:
                 actions = BE.get_town_actions(hero, purchase_queue)
                 buyable = next((a for a in actions if a["type"] == "buy"), None)

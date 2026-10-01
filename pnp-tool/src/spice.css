@@ -1,0 +1,482 @@
+:root {
+  --bg-color: #121212;
+  --panel-bg: rgba(30, 30, 30, 0.9);
+  --text-color: #E0E0E0;
+  
+  --p-card-w: 2.5in;
+  --p-card-h: 3.5in;
+  --l-card-w: 3.5in;
+  --l-card-h: 2.5in;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Barlow Condensed', sans-serif;
+  background: var(--bg-color);
+  color: var(--text-color);
+  min-height: 100vh;
+}
+
+/* UI Bar */
+.ui-bar {
+  background: var(--panel-bg);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid #333;
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+}
+
+.ui-left, .ui-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.filter-controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn {
+  background: #333; color: #fff; border: 1px solid #555; padding: 6px 12px;
+  border-radius: 4px; cursor: pointer; font-family: inherit; font-size: 14px;
+  font-weight: 600; transition: all 0.2s; text-transform: uppercase; letter-spacing: 0.5px;
+}
+.btn:hover { background: #444; }
+.btn.active { background: #2E7D32; border-color: #2E7D32; color: white; }
+.btn-primary { background: #E53935; color: white; border-color: #E53935; }
+.btn-primary:hover { background: #D32F2F; }
+
+/* Print Sheets Container */
+.sheet-container { 
+  padding: 40px; 
+  display: flex; 
+  flex-direction: column; 
+  align-items: center; 
+  gap: 40px; 
+}
+
+.sheet-section-title {
+  color: #fff;
+  font-family: 'Cinzel', serif;
+  font-size: 16pt;
+  letter-spacing: 1px;
+  text-align: center;
+  margin-top: 10px;
+}
+
+/* Portrait Sheet: 3x3 Grid (9 cards per 8.5x11 page) */
+.sheet-portrait {
+  box-sizing: border-box; 
+  width: 8.5in; 
+  height: 11in; 
+  background: white; 
+  position: relative;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.6); 
+  display: grid; 
+  grid-template-columns: repeat(3, var(--p-card-w));
+  grid-template-rows: repeat(3, var(--p-card-h)); 
+  padding: 0.25in 0.5in; 
+  gap: 0; 
+  overflow: hidden; 
+  flex-shrink: 0;
+}
+
+/* Landscape Sheet: 2x4 Grid (8 cards per 8.5x11 page) */
+.sheet-landscape {
+  box-sizing: border-box; 
+  width: 8.5in; 
+  height: 11in; 
+  background: white; 
+  position: relative;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.6); 
+  display: grid; 
+  grid-template-columns: repeat(2, var(--l-card-w));
+  grid-template-rows: repeat(4, var(--l-card-h)); 
+  padding: 0.5in 0.75in; 
+  gap: 0; 
+  overflow: hidden; 
+  flex-shrink: 0;
+}
+
+.card-empty-portrait { width: var(--p-card-w); height: var(--p-card-h); border: 0.5pt dashed #ddd; }
+.card-empty-landscape { width: var(--l-card-w); height: var(--l-card-h); border: 0.5pt dashed #ddd; }
+
+/* =========================================================================
+   1. PORTRAIT ADVENTURE EVENT CARDS (2.5in x 3.5in)
+   ========================================================================= */
+.spice-card-portrait {
+  width: var(--p-card-w);
+  height: var(--p-card-h);
+  border: 0.5pt dashed #aaa;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  background: #fbfbf9;
+  color: #1a1a1a;
+  overflow: hidden;
+  font-family: 'Barlow Condensed', sans-serif;
+}
+
+.p-header {
+  background: linear-gradient(135deg, #18331e 0%, #0d1e12 100%);
+  padding: 5pt 7pt 4pt 7pt;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border-bottom: 2pt solid #2c4c34;
+  position: relative;
+}
+.p-tier-badge {
+  background: rgba(0,0,0,0.4);
+  border: 0.5pt solid rgba(255,255,255,0.3);
+  border-radius: 3pt;
+  padding: 1pt 5pt;
+  font-size: 6pt;
+  font-weight: 700;
+  color: #c8e6c9;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 2pt;
+}
+.p-title {
+  font-family: 'Cinzel', serif;
+  font-weight: 700;
+  font-size: 10.5pt;
+  color: #fff;
+  text-shadow: 0 1pt 2pt rgba(0,0,0,0.8);
+  letter-spacing: 0.4px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.p-subtitle-bar {
+  background: #e8efe9;
+  border-bottom: 0.5pt solid #c2d4c5;
+  padding: 2pt 6pt;
+  font-size: 6.8pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: #20502c;
+  display: flex;
+  justify-content: space-between;
+}
+
+.p-art-zone {
+  height: 52pt;
+  background: radial-gradient(circle at center, #ffffff 0%, #f0f4f1 100%);
+  border-bottom: 0.5pt solid #dce4dd;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+.p-icon-vignette {
+  font-size: 32pt;
+  filter: drop-shadow(0 2pt 4pt rgba(0,0,0,0.25));
+}
+
+.p-body {
+  flex: 1;
+  padding: 5pt 7pt;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 4pt;
+}
+
+.p-flavor {
+  font-family: 'Crimson Pro', Georgia, serif;
+  font-style: italic;
+  font-size: 7.8pt;
+  line-height: 1.18;
+  color: #444;
+  border-left: 2pt solid #81c784;
+  padding-left: 5pt;
+  margin-top: 1pt;
+}
+
+.p-choices-container {
+  display: flex;
+  flex-direction: column;
+  gap: 4pt;
+}
+
+.p-choice-card {
+  background: #ffffff;
+  border: 1pt solid #cbd8cd;
+  border-radius: 3pt;
+  padding: 3.5pt 5pt;
+  box-shadow: 0 1pt 2pt rgba(0,0,0,0.05);
+}
+.p-choice-hdr {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5pt;
+}
+.p-choice-title {
+  font-family: 'Cinzel', serif;
+  font-size: 7.5pt;
+  font-weight: 700;
+  color: #1b5e20;
+}
+.p-choice-tag {
+  font-size: 6pt;
+  font-weight: 700;
+  color: #2e7d32;
+  background: #e8f5e9;
+  border: 0.5pt solid #a5d6a7;
+  border-radius: 2pt;
+  padding: 0.5pt 3pt;
+  text-transform: uppercase;
+}
+.p-choice-desc {
+  font-size: 7.2pt;
+  line-height: 1.18;
+  color: #263238;
+}
+
+.p-footer {
+  background: #edf3ee;
+  border-top: 0.5pt solid #d0ded2;
+  padding: 2pt 6pt;
+  display: flex;
+  justify-content: space-between;
+  font-size: 6pt;
+  color: #555;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* =========================================================================
+   2. LANDSCAPE COMBAT SPICE CARDS (3.5in x 2.5in) WITH 46PT SPINE
+   ========================================================================= */
+.spice-card-landscape {
+  width: var(--l-card-w);
+  height: var(--l-card-h);
+  border: 0.5pt dashed #aaa;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  background: #fff;
+  color: #1a1a1a;
+  overflow: hidden;
+  font-family: 'Barlow Condensed', sans-serif;
+}
+
+.l-spine {
+  position: absolute;
+  left: 0; 
+  top: 0; 
+  bottom: 0; 
+  width: 46pt;
+  background: #241414;
+  display: flex; 
+  align-items: center; 
+  justify-content: center;
+  color: #fff;
+  border-right: 1.5pt solid #522727;
+  box-shadow: inset -2pt 0 6pt rgba(0,0,0,0.6);
+  z-index: 5;
+  overflow: hidden;
+}
+.l-spine-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3pt;
+  white-space: nowrap;
+  transform: rotate(-90deg);
+  transform-origin: center center;
+  width: 102pt;
+}
+.l-spine-name {
+  font-family: 'Cinzel', serif; 
+  font-size: 7.6pt; 
+  font-weight: 700;
+  letter-spacing: 0.3px; 
+  text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
+  max-width: 112pt;
+}
+.l-spine-sub {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6pt;
+  white-space: nowrap;
+}
+.l-spine-role {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 8pt;
+  font-weight: 700;
+  color: #ffca28;
+  letter-spacing: 1px;
+}
+.l-spine-hp {
+  font-family: 'Cinzel', serif;
+  font-size: 8pt;
+  font-weight: 700;
+  color: #ff8a80;
+}
+
+.l-main {
+  margin-left: 46pt;
+  width: calc(100% - 46pt);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.l-header {
+  display: flex; 
+  align-items: center; 
+  height: 26pt;
+  padding: 0 32pt 0 8pt;
+  position: relative; 
+  flex-shrink: 0; 
+  border-bottom: 1.5pt solid #1a1a1a;
+  background: linear-gradient(135deg, #381b1b 0%, #1e0d0d 100%);
+}
+.l-title {
+  font-family: 'Cinzel', serif; 
+  font-weight: 700; 
+  font-size: 10pt;
+  color: #fff; 
+  text-shadow: 0 1pt 2pt rgba(0,0,0,0.8);
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 168pt;
+}
+
+.l-hp-badge {
+  position: absolute;
+  top: 1pt;
+  right: 5pt;
+  width: 24pt;
+  height: 24pt;
+  background: #fff;
+  border: 1.5pt solid #d32f2f;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1pt 3pt rgba(0,0,0,0.3);
+  z-index: 10;
+}
+.l-hp-badge-lbl { font-size: 5pt; font-weight: 700; color: #d32f2f; margin-bottom: -2pt; }
+.l-hp-badge-val { font-size: 11.5pt; font-weight: 700; font-family: 'Cinzel', serif; color: #1a1a1a; }
+
+.l-sub-hdr {
+  background: #faf0f0;
+  border-bottom: 0.5pt solid #f0c0c0;
+  padding: 2pt 34pt 2pt 8pt;
+  font-size: 7.2pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: #8d2e2e;
+  display: flex;
+  justify-content: space-between;
+}
+
+.l-body {
+  flex: 1;
+  padding: 4.5pt 8pt;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background: #fff;
+}
+
+.l-ability-box {
+  background: #fff3e0;
+  border-left: 2.5pt solid #e65100;
+  border-radius: 2pt;
+  padding: 2.5pt 5pt;
+  font-size: 6.8pt;
+  line-height: 1.18;
+  color: #bf360c;
+  margin-bottom: 2pt;
+}
+.l-ability-box strong {
+  font-family: 'Cinzel', serif;
+  color: #b71c1c;
+}
+
+.l-rounds {
+  display: flex;
+  gap: 4pt;
+  margin-top: 2pt;
+}
+.l-round-box {
+  flex: 1;
+  border: 1pt solid #bbb;
+  border-radius: 3pt;
+  padding: 2.5pt;
+  text-align: center;
+  background: #f9f9f9;
+}
+.l-round-num {
+  font-size: 6.5pt;
+  font-weight: 700;
+  color: #666;
+  text-transform: uppercase;
+}
+.l-round-stats {
+  display: flex;
+  justify-content: space-around;
+  margin-top: 2pt;
+}
+.l-stat-val {
+  font-size: 9pt;
+  font-weight: 700;
+}
+.l-dmg { color: #c62828; }
+.l-blk { color: #1565c0; }
+
+.l-reward-box {
+  margin-top: 4pt;
+  background: #fff8e1;
+  border: 1pt solid #ffe082;
+  border-radius: 3pt;
+  padding: 3pt 6pt;
+  font-size: 7.2pt;
+  color: #795548;
+}
+.l-reward-box strong {
+  color: #b78103;
+  font-family: 'Cinzel', serif;
+}
+
+@media print {
+  .ui-bar { display: none !important; }
+  .sheet-section-title { display: none !important; }
+  body { background: white !important; }
+  .sheet-container { padding: 0 !important; gap: 0 !important; }
+  .sheet-portrait, .sheet-landscape {
+    box-shadow: none !important;
+    page-break-after: always !important;
+    break-after: page !important;
+  }
+}
