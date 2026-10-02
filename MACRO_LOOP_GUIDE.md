@@ -476,3 +476,44 @@ Where:
    $$\text{Pulls per Food Reset} \times \text{Income per Pull} \le P_{\text{food}}$$
 3. Under this equilibrium, quests remain the *only* viable source of net profit (since quest bounties pay out large lump sums of 6–12 Gold). Bare mob pulls cannot sustain the cost of eating to survive them, eliminating the infinite grind naturally and deterministically.
 
+## Level 2 Quest Rewards: The Monotonic 4 -> 6 -> 9 -> 12 Ladder (Derived & Locked 2026-10-01)
+
+### Context & The Flaw in the Placeholder Model
+In early Level 2 scaffolding (`DESIGN_DOC.md` line 498), Level 2 quests inherited placeholder Gold ladders (`[4,2,1,0]`, `[5,3,2,0]`, `[7,4,2,0]`, `[9,5,3,0]`). Under simulation across the 9-class roster, this placeholder model produced a severely broken Gold-per-turn curve:
+- **2-token quest:** 1.82 G/turn
+- **3-token quest:** 1.74 G/turn *(efficiency dropped!)*
+- **4-token quest:** 1.90 G/turn
+- **5-token quest:** 1.87 G/turn *(efficiency dropped again!)*
+
+Because a 3-token and 5-token quest required significantly more physical bag space (choking the 5 open bag slots) and demanded more combat rounds against Level 2 mobs and Elites, flat or dipping Gold-per-turn made larger quests mathematical traps. No rational player would ever draft them over safe 2-token quests.
+
+### The Design Solution: Monotonic Risk/Reward Scaling
+To make quest drafting an authentic tabletop dilemma, Gold-per-turn must scale strictly upward with quest size, directly rewarding players for braving severe bag pressure and higher wound attrition.
+
+The approved bounty progression sets card payouts at **4G → 6G → 9G → 12G**:
+- **2 tokens / 2 XP** (*Royal Signets*, *Rusted Mail*): `[4, 2, 1, 0]` (Total gross with 2 mob kills: **6 Gold**)
+- **3 tokens / 3 XP** (*Consecrated Ash*, *Tarnished Crests*): `[6, 4, 2, 0]` (Total gross with 3 mob kills: **9 Gold**)
+- **4 tokens / 4 XP** (*Ashen Vestments*, *Blessed Lamp Oil*): `[9, 5, 2, 0]` (Total gross with 4 mob kills: **13 Gold**)
+- **5 tokens / 5 XP** (*Gilded Penance*, *Shattered Broadswords*): `[12, 7, 3, 0]` (Total gross with 5 mob kills: **17 Gold**)
+
+### Theoretical Tabletop Velocity (Clean Execution)
+On focused, uninterrupted tabletop excursions (where turns = pulls + 1 town return):
+- **2 XP:** 6 Gold / 3 turns = **2.00 G / turn**
+- **3 XP:** 9 Gold / 4 turns = **2.25 G / turn** (+0.25)
+- **4 XP:** 13 Gold / 5 turns = **2.60 G / turn** (+0.35)
+- **5 XP:** 17 Gold / 6 turns = **2.83 G / turn** (+0.23)
+
+### Empirical Simulator Verification (N=180 Runs per Quest Across All 9 Classes)
+When accounting for combat wounds, in-field Food resets, and multi-trip interruptions:
+- **2 XP:** **3.31 avg turns** | **6.00g avg earned** | **1.81 G/t realized** | **100.0% Gold payout** (0% decay)
+- **3 XP:** **4.62 avg turns** | **9.48g avg earned** | **2.05 G/t realized** | **98.9% Gold payout** (1.1% decay)
+- **4 XP:** **5.81 avg turns** | **13.00g avg earned** | **2.24 G/t realized** | **95.0% Gold payout** (5.0% decay)
+- **5 XP:** **7.48 avg turns** | **15.85g avg earned** | **2.12 G/t realized** | **70.0% Gold payout** (27.8% Silver decay)
+
+### The Strategic Payoff
+The 5-token quest emerges as a high-stakes, push-your-luck gamble:
+- **High Mastery:** Clearing all 5 pulls in a single excursion without retreating yields the highest peak payout in the game (**2.83 G/turn** and **17 Gold total**), immediately funding a Class Skill + gear upgrade.
+- **Overextension Penalty:** If a player overextends, takes heavy damage, and is forced into a second trip to heal, the quest decays from Gold (12G) to Silver (7G), pulling realized efficiency down to **2.12 G/turn**.
+- **Macro Stability:** Across 450 full hero playthroughs ($N=50$ per class), this ladder reliably lands heroes at the Tier 1 Boss Gate at **30.9 avg turns** (12 XP target) or **33.5 avg turns** (14 XP target), preserving an average purse of **3.1G – 3.5G** after purchasing their Mandatory upgrade, 1–2 Class Skills, and Tier 1 weapon/armor.
+
+

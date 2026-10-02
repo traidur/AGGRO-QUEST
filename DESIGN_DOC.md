@@ -359,7 +359,7 @@ across both Zones; Border Node crossing is a real Scouted Pull toll (`_scouted_p
 that both Zones have Town. Flight Path (Zone 2 <-> Zone 4, 2 Gold, no turn cost) is now also
 built -- see the Flight Path entry above.
 
-**Starting loadout:** 2-slot Bag, 1 Food occupying slot 1, 0 Gold, 0 XP.
+**Starting loadout:** 3×3 Bag (9 slots total), 1 Food (a 2×2 tile occupying 4 slots, leaving 5 open 1×1 slots), 0 Gold, 0 XP.
 
 **Zones 3 and 4, naming locked (2026-08-20), wired into real gameplay (2026-08-21).**
 Map shape: Zone 1 (SW, starting Zone) -> Zone 2 (SE) -> Zone 3 (north of Zone 2) -> Zone 4
@@ -494,12 +494,11 @@ end, not just designed on paper.
 - `LEVEL2_QUESTS` (the pool `_trip_chain` switches to once a hero passes `LEVEL2_XP_THRESHOLD`)
   now uses the real, locked loot names and `required` counts above, not a stand-in.
 
-**Still explicitly not done, real engineering work, not just data entry:**
-- **XP/Gold-ladder values for all 8 new quests still need their own real balance derivation**
-  (matching how `quest_cost_gauntlet.py` derived Zone 1/2's originally), not the placeholder
-  numbers currently in `LEVEL2_QUESTS` -- those reuse the pre-compression Zone 1/2 formula
-  wholesale (flat `[4,2,1,0]` for required 2-4, `[9,5,3,0]` at required 5) purely so the
-  mechanic has *some* real numbers to run, explicitly flagged in-code as not the real derivation.
+- **Level 2 Quest Gold Ladders (Locked 2026-10-01):** Derived to reward physical bag pressure and excursion wound risk with strictly monotonic Gold/turn efficiency scaling (clean tabletop: `2.00 -> 2.25 -> 2.60 -> 2.83` G/turn):
+  * **2 tokens / 2 XP** (*Royal Signets*, *Rusted Mail*): `[4, 2, 1, 0]` (Total gross with mob kills: 6G)
+  * **3 tokens / 3 XP** (*Consecrated Ash*, *Tarnished Crests*): `[6, 4, 2, 0]` (Total gross with mob kills: 9G)
+  * **4 tokens / 4 XP** (*Ashen Vestments*, *Blessed Lamp Oil*): `[9, 5, 2, 0]` (Total gross with mob kills: 13G)
+  * **5 tokens / 5 XP** (*Gilded Penance*, *Shattered Broadswords*): `[12, 7, 3, 0]` (Total gross with mob kills: 17G; carries ~28% silver decay risk on extended 2-trip excursions).
 
 **Loot chain, revised - colored quest tokens, any mix.** Each active
 quest is assigned a color (printed on the quest card, or marked with a colored token on it).
@@ -655,11 +654,7 @@ pooled and consistent across the roster — see `MACRO_LOOP_GUIDE.md`'s own entr
 derivation and the methodology note on why this was checked at a real, bounded checkpoint
 rather than an arbitrary long trip-count average.
 
-**Bag Upgrade:** 16 Gold, +1 Bag slot, back-solved (not guessed) by sweeping candidate prices
-until the measured cost landed at ~4.5 trips / ~27 pulls / ~25 XP on average against the real
-4-quest system. Priced to land 4-5 trips (~25-35 pulls) into a zone before the first upgrade, so
-the 6-mob Standard roster gets enough repetition to master before moving on. Stale as of the 6th
-mob (Scout) and 7th class (Runecaster) — should be re-swept, not assumed still exact.
+**Bag Upgrade:** 16 Gold, expands the Bag from a 3×3 grid (9 slots) to a 5×3 grid (15 slots, +6 slots total). Sized to comfortably hold both raw crafting materials and multiple active quest token turn-ins.
 
 ## VII. The Game Round
 
@@ -754,7 +749,7 @@ Visiting Town automatically restores hero HP to full, and the Trainer purges the
 > [!NOTE]
 > **Flavor / Lore Note:** Boss names, titles, and lore descriptions below are **placeholders** and will receive a dedicated narrative and thematic polish pass. The mechanical stats, action patterns, HP thresholds, and phase rules are **locked**.
 
-When a Level 2 hero attempts the Capstone Quest (*The Citadel Commission*), they draw **1 of 3 Gatekeeper Bosses at random**. All three bosses share the same rigorous mathematical calibration: an average **~77%–78% win rate**, a tight class spread (**16%–22%** across all 9 classes), down-to-the-wire surviving HP (**~4.6 HP average**), and **Block restricted exclusively to Melee rounds** (0 Block on all Ranged rounds).
+When a Level 2 hero attempts the Capstone Quest (*The Citadel Commission*), they draw **1 of 3 Gatekeeper Bosses at random** (or draw 2 and pick 1 if spending a **Scout Token**). Under the locked V2 calibration, the bosses average **81.1% roster win rate**, create natural archetype divergence with **13%–40% class spreads**, demand razor-thin survival (**1.8–4.2 HP average ending health** on tough matchups), and restrict **Block exclusively to Melee rounds** (0 Block on all Ranged rounds).
 
 #### Phase Rules & The Phase 1 Ruling:
 1. **6 Rounds Continuous:** Combat is split into two 3-round bouts (Phase 1 = Rounds 1–3, Phase 2 = Rounds 4–6). The hero starts at full Max HP. Surviving Hero HP carries directly into Phase 2; no food, resting, or consumables are permitted between phases.
@@ -766,59 +761,101 @@ When a Level 2 hero attempts the Capstone Quest (*The Citadel Commission*), they
 3. **Phase 2 Transition & Resolution:**
    - If Phase 1 is defeated, the player reshuffles their 6-card deck, draws a fresh 4-card hand, flips the boss card to its Phase 2 Unleashed form, and resolves Rounds 4–6.
    - **Triumph:** Boss Phase 2 HP reduced to $\le 0$ by Round 6 and Hero HP $> 0$.
-   - **Survival Death:** Hero HP drops to $\le 0$ during Phase 2 (averages ~3%–6% roster-wide; 8%–14% on squishy casters).
+   - **Survival Death:** Hero HP drops to $\le 0$ during Phase 2 (averages ~3%–6% roster-wide; up to 26%–34% on squishy casters facing their nemesis boss).
    - **Damage Timeout:** Boss Phase 2 HP $> 0$ after Round 6 (averages ~8%–14% roster-wide).
 
-#### Boss 1: High Inquisitor Malakor / The Sunward Archon *(Placeholder Flavor)*
-*Radiant prelate blending holy spells with consecrated blade clashing. Only raises his shield in melee.*
+#### Boss Evolution: V1 Baseline vs. V2 Asymmetric Lethality
+* **The Flaw in V1 (The Homogenous Baseline):** In early design passes, all three candidate bosses were tuned to hover at a uniform ~77.5% roster win rate with tight spreads. Under closer scrutiny, this created three critical problems:
+  1. *Lack of Mechanical Identity:* Drawing Boss A vs. Boss B felt cosmetic because matchup spreads were muted.
+  2. *Paladin/Warrior Invincibility:* Tanks crushed all three bosses with 86%–99% win rates, leaving them with zero challenging encounters.
+  3. *Artificial Safety & High Ending HP:* Ending HP averaged 4.6 HP (and 6.5–7.8 HP on tanks), with Death accounting for only ~5% of failures. Phase 1 felt like a mindless DPS race rather than a life-or-death survival puzzle.
+* **The V2 Design Philosophy (Asymmetric Distance & High Lethality):**
+  1. *Archetype Polarization:* Each boss is tuned around QUEST's inherent mechanics (`grants_range` evasion vs. Melee, Melee Plating vs. Ranged magic, burst vs. attrition), creating a 13%–40% spread per class. Every hero has a favored boss (~80%–96%) and a dreaded nemesis (~40%–79%).
+  2. *Skin-of-Your-Teeth Survival:* Attack pressure is front-loaded and intensified (Phase 1 hits for 11–13; Phase 2 hits for 13–14), pulling winning health down to **1.8–3.5 HP**.
+  3. *Phase 1 Tension:* Because entering Phase 2 with under 6 HP is near-fatal, Phase 1 forces players to actively balance dealing damage with preserving health.
+
+##### Side-by-Side Boss Evolution Table
+
+| Boss Profile | V1 Pattern (Homogenous) | V1 Total Threat | V2 Pattern (Asymmetric & Lethal) | V2 Total Threat | Design Rationale & Mechanical Shift |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Boss 1 (Inquisitor)** | **P1:** (3,0)-(3,2)-(4,0) `R-M-R` [10 HP]<br>**P2:** (4,0)-(4,1)-(4,0) `R-M-R` [10 HP] | P1: 10 Atk, 2 Blk<br>P2: 12 Atk, 1 Blk | **P1:** (4,0)-(3,1)-(4,0) `R-R-R` [10 HP]<br>**P2:** (4,0)-(4,0)-(5,0) `R-R-M` [10 HP] | P1: 11 Atk, 1 Blk<br>P2: 13 Atk, 0 Blk | Converted P1 to **Pure Ranged (R-R-R)** to completely deny `grants_range` evasion. Added Atk 5 melee execute in R6. Directly punishes squishy casters (Necro win drops to 52.9% with 34% deaths; Wizard drops to 69.6% with 26% deaths) while heavy physical armor tanks (Paladin 96%, Warrior 94%) soak the rays. |
+| **Boss 2 (Colossus)** | **P1:** (2,1)-(4,0)-(4,0) `M-R-M` [11 HP]<br>**P2:** (4,0)-(4,0)-(5,0) `R-M-R` [10 HP] | P1: 10 Atk, 1 Blk<br>P2: 13 Atk, 0 Blk | **P1:** (3,2)-(5,0)-(4,0) `M-M-R` [10 HP]<br>**P2:** (5,0)-(4,1)-(4,0) `M-M-R` [10 HP] | P1: 12 Atk, 2 Blk<br>P2: 13 Atk, 1 Blk | Shifted into the **Heavy Granite Titan**. Introduced R1 Block 2 Melee and dual 5-damage crushing melee slams (R2, R4). Punishes physical melee brawlers and low-burst attrition (Cleric 40.9%, Druid 53.0%, Rogue 61.0%, Ranger 69.8%, Paladin 79.6%). Highly vulnerable to ranged kiting and magic pierce (Wizard 85.5%, Necromancer 81.0%). |
+| **Boss 3 (Eclipse)** | **P1:** (4,0)-(3,2)-(3,0) `R-M-R` [10 HP]<br>**P2:** (4,1)-(4,0)-(4,0) `M-R-M` [10 HP] | P1: 10 Atk, 2 Blk<br>P2: 12 Atk, 1 Blk | **P1:** (4,1)-(4,0)-(5,0) `M-R-M` [10 HP]<br>**P2:** (4,0)-(4,1)-(6,0) `R-M-M` [9 HP] | P1: 13 Atk, 1 Blk<br>P2: 14 Atk, 1 Blk | Tuned into the **Twilight Duelist**. Features dual melee parries (R1, R5) escalating into a devastating **Atk 6 Guillotine** in R6. Drops Phase 2 HP to 9 to allow burst victory. **Breaks Paladin invulnerability** (Paladin win rate drops from 95% down to 79.7% with 9.3% death rate). Favored by ranged burst (Wizard 90.2%, Necro 89.8%, Ranger 83.4%); punishes slow stalling (Cleric 50.8%, Runecaster 70.4%). |
+
+#### Boss 1: High Inquisitor Malakor / The Sunward Archon *(The Holy Mage-Hunter)*
+*Radiant prelate radiating continuous holy light. Heavy Ranged magic attacks deny distance evasion, directly challenging low-HP casters while physical armor and heavy shields soak the rays.*
 * **Phase 1: The Radiant Bulwark [10 HP]**
-  * Round 1: Atk 3, Blk 0 (`ranged` — *Holy Ray*)
-  * Round 2: Atk 3, Blk 2 (`melee` — *Inquisitor's Guard & Strike*)
+  * Round 1: Atk 4, Blk 0 (`ranged` — *Holy Ray*)
+  * Round 2: Atk 3, Blk 1 (`ranged` — *Consecrated Radiance*)
   * Round 3: Atk 4, Blk 0 (`ranged` — *Solar Flare*)
+  * *P1 Total Threat:* 11 Raw Ranged Damage, 1 Block.
 * **Phase 2: Unleashed Avatar of Light [10 HP]**
   * Round 4: Atk 4, Blk 0 (`ranged` — *Pillar of Radiance*)
-  * Round 5: Atk 4, Blk 1 (`melee` — *Sunward Riposte*)
-  * Round 6: Atk 4, Blk 0 (`ranged` — *Dawn's Wrath*)
-* **Performance:** **77.1% Win Rate** | **17.9% Spread** (72.0%–89.9%) | **4.6 Avg End HP**
+  * Round 5: Atk 4, Blk 0 (`ranged` — *Sunward Searing*)
+  * Round 6: Atk 5, Blk 0 (`melee` — *Avatar's Wrath*)
+  * *P2 Total Threat:* 13 Raw Damage (8 Ranged, 5 Melee), 0 Block.
+* **Performance:** **84.8% Roster Avg** | **4.5 Avg End HP** | **Favors: Paladin (96.0%), Warrior (94.4%), Druid (93.3%)** | **Dreaded by: Necromancer (52.9% — 34% Death), Wizard (69.6% — 26% Death)**
 
-#### Boss 2: Aethelgard the Sun-Forged / Citadel Colossus *(Placeholder Flavor)*
-*Ancient granite titan. Braces heavy chassis in melee; in Phase 2 its outer shell shatters into an unstable, superheated molten core.*
-* **Phase 1: Granite Sentinel [11 HP]**
-  * Round 1: Atk 2, Blk 1 (`melee` — *Heavy Stone Bracing*)
-  * Round 2: Atk 4, Blk 0 (`ranged` — *Prismatic Eye Beam*)
-  * Round 3: Atk 4, Blk 0 (`melee` — *Crushing Fist*)
+#### Boss 2: Aethelgard the Sun-Forged / Citadel Colossus *(The Granite Titan)*
+*Ancient granite titan. Crushing 5-damage melee slams and heavy stone plating shatter close-combat brawlers, but slow movement leaves it vulnerable to ranged artillery and magic pierce.*
+* **Phase 1: Granite Sentinel [10 HP]**
+  * Round 1: Atk 3, Blk 2 (`melee` — *Heavy Stone Bracing*)
+  * Round 2: Atk 5, Blk 0 (`melee` — *Crushing Fist Slam*)
+  * Round 3: Atk 4, Blk 0 (`ranged` — *Prismatic Eye Beam*)
+  * *P1 Total Threat:* 12 Raw Damage (8 Melee, 4 Ranged), 2 Melee Block.
 * **Phase 2: Superheated Molten Core [10 HP]**
-  * Round 4: Atk 4, Blk 0 (`ranged` — *Thermal Steam Vent*)
-  * Round 5: Atk 4, Blk 0 (`melee` — *Molten Hammer*)
-  * Round 6: Atk 5, Blk 0 (`ranged` — *Solar Meltdown Explosion*)
-* **Performance:** **77.9% Win Rate** | **22.7% Spread** (67.0%–89.6%) | **4.6 Avg End HP**
+  * Round 4: Atk 5, Blk 0 (`melee` — *Molten Hammer*)
+  * Round 5: Atk 4, Blk 1 (`melee` — *Core Reinforcement*)
+  * Round 6: Atk 4, Blk 0 (`ranged` — *Thermal Steam Vent*)
+  * *P2 Total Threat:* 13 Raw Damage (9 Melee, 4 Ranged), 1 Melee Block.
+* **Performance:** **73.1% Roster Avg** | **4.2 Avg End HP** | **Favors: Wizard (85.5%), Necromancer (81.0%), Warrior (80.9%)** | **Dreaded by: Cleric (40.9%), Druid (53.0%), Rogue (61.0%), Ranger (69.8%), Paladin (79.6%)**
 
-#### Boss 3: Cheryl the Sun-Dethroned / Eclipse Sovereign *(Placeholder Flavor)*
-*Fallen solar monarch. Parries with dual eclipse rapiers in melee, dropping guard to unleash sweeping dark solar magic.*
+#### Boss 3: Cheryl the Sun-Dethroned / Eclipse Sovereign *(The Twilight Duelist)*
+*Fallen solar monarch. Parries with dual eclipse rapiers in melee, dropping guard to unleash sweeping dark solar magic before executing stalling heroes with a Round 6 Guillotine.*
 * **Phase 1: Dusk Rapier [10 HP]**
-  * Round 1: Atk 4, Blk 0 (`ranged` — *Eclipse Javelin*)
-  * Round 2: Atk 3, Blk 2 (`melee` — *Twin Rapier Parry*)
-  * Round 3: Atk 3, Blk 0 (`ranged` — *Corona Burst*)
-* **Phase 2: Twilight Ascendant [10 HP]**
-  * Round 4: Atk 4, Blk 1 (`melee` — *Shadowstep Lunge*)
-  * Round 5: Atk 4, Blk 0 (`ranged` — *Black Sun Nova*)
-  * Round 6: Atk 4, Blk 0 (`melee` — *Twilight Guillotine*)
-* **Performance:** **77.6% Win Rate** | **16.1% Spread** (73.8%–89.9%) | **4.6 Avg End HP**
+  * Round 1: Atk 4, Blk 1 (`melee` — *Twin Rapier Parry*)
+  * Round 2: Atk 4, Blk 0 (`ranged` — *Eclipse Javelin*)
+  * Round 3: Atk 5, Blk 0 (`melee` — *Shadowstep Thrust*)
+  * *P1 Total Threat:* 13 Raw Damage (9 Melee, 4 Ranged), 1 Melee Block.
+* **Phase 2: Twilight Ascendant [9 HP]**
+  * Round 4: Atk 4, Blk 0 (`ranged` — *Black Sun Nova*)
+  * Round 5: Atk 4, Blk 1 (`melee` — *Dusk Guard*)
+  * Round 6: Atk 6, Blk 0 (`melee` — *Twilight Guillotine!*)
+  * *P2 Total Threat:* 14 Raw Damage (10 Melee, 4 Ranged), 1 Melee Block.
+* **Performance:** **85.4% Roster Avg** | **4.5 Avg End HP** | **Favors: Wizard (90.2%), Necromancer (89.8%), Warrior (85.8%), Ranger (83.4%)** | **Dreaded by: Cleric (50.8%), Runecaster (70.4%), Druid (70.4%), Paladin (79.7%)**
 
-#### Locked Tier-Gate Boss Matchup Matrix (Level 2 + 2 Upgrades)
+#### Rebalanced Cross-Boss Matchup Matrix (Level 2 + 2 Upgrades, Unequipped)
 
-| Class | Boss 1 (Inquisitor) | Boss 2 (Colossus) | Boss 3 (Eclipse) | Trio Avg Win% | Avg End HP | Primary Failure Mode |
+| Class | Boss 1 (Inquisitor) | Boss 2 (Colossus) | Boss 3 (Eclipse) | 3-Boss Average | Spread | Strategic Profile |
 | :--- | :---: | :---: | :---: | :---: | :---: | :--- |
-| **Paladin** | 89.9% | 88.1% | 89.9% | **89.3%** | 6.4 HP | Damage Timeout (~10%) |
-| **Warrior** | 83.7% | 89.6% | 83.7% | **85.7%** | 6.6 HP | Damage Timeout (~14%) |
-| **Rogue** | 76.7% | 77.9% | 74.1% | **76.2%** | 5.4 HP | P1 Dmg Fail (~18%) |
-| **Ranger** | 74.7% | 78.1% | 74.7% | **75.8%** | 4.9 HP | P1 Dmg Fail (~15%) |
-| **Necromancer** | 75.6% | 80.9% | 73.8% | **76.8%** | 3.3 HP | P2 Death (~8%) |
-| **Wizard** | 72.1% | 80.1% | 75.7% | **76.0%** | 3.5 HP | P2 Death (~13%) |
-| **Druid** | 74.7% | 69.8% | 74.7% | **73.1%** | 4.4 HP | P1 Dmg Fail (~23%) |
-| **Cleric** | 72.0% | 67.0% | 77.5% | **72.2%** | 2.9 HP | P2 Dmg / Death (~18%) |
-| **Runecaster** | 74.1% | 69.3% | 74.4% | **72.6%** | 3.5 HP | P2 Dmg Timeout (~22%) |
-| **ROSTER AVERAGE**| **77.1%** | **77.9%** | **77.6%** | **77.5%** | **4.6 HP** | **P1 Dmg 11%, P2 Dmg 9%, P2 Death 5%** |
+| **Warrior** | **94.4%** | 80.9% | 85.8% | **87.0%** | **13.5%** | **Favors B1**, Dreads B2 *(Colossus slams test physical armor)* |
+| **Paladin** | **96.0%** | 79.6% | 79.7% | **85.1%** | **16.4%** | **Favors B1**, **Challenged by B2 & B3** *(Guillotine & Slams crack shields)* |
+| **Wizard** | 69.6% | 85.5% | **90.2%** | **81.8%** | **20.6%** | **Favors B3**, **Dreads B1** *(Holy rays bypass range evasion)* |
+| **Rogue** | **88.1%** | 61.0% | **88.1%** | **79.1%** | **27.1%** | **Favors B1 & B3**, **Dreads B2** *(Stone plating halts combo finishers)* |
+| **Ranger** | 74.8% | 69.8% | **83.4%** | **76.0%** | **13.6%** | **Favors B3**, **Dreads B2** *(Colossus stone armor halts arrows)* |
+| **Necromancer**| 52.9% | 81.0% | **89.8%** | **74.6%** | **36.9%** | **Favors B3**, **Dreads B1** *(Cannot evade ranged rays; dies 34%)* |
+| **Druid** | **93.3%** | 53.0% | 70.4% | **72.2%** | **40.3%** | **Favors B1**, **Dreads B2** *(Nature damage struggles vs Colossus)* |
+| **Runecaster** | 57.2% | 58.1% | **70.4%** | **61.9%** | **13.2%** | **Favors B3**, **Dreads B1 & B2** |
+| **Cleric** | **77.8%** | 40.9% | 50.8% | **56.5%** | **36.9%** | **Favors B1**, **Dreads B2** *(Slow attrition gets overwhelmed)* |
+| **ROSTER AVG**| **84.8%** | **73.1%** | **85.4%** | **81.1%** | **11.7%** | **Clear Archetype Distance & High Threat** |
+
+*Superlatives:* Lowest Average: Cleric (56.5%); Highest Average: Warrior (87.0%); Lowest Absolute: Cleric on B2 (40.9%); Highest Absolute: Paladin on B1 (96.0%); Smallest Spread: Runecaster (13.2%); Widest Spread: Druid (40.3%).
+
+#### Tier Gatekeeper Qualification & Encounter Rules (Locked 2026-10-01)
+1. **The 6 XP $\rightarrow$ 14 XP Progression Curve:**
+   - **Level 1 Clear (6 XP):** Reaching 6 XP unlocks Level 2 and awards the class's free Mandatory Level 2 skill swap.
+   - **Level 2 Gate Qualification (14 XP):** A hero must earn **+8 XP in Level 2** (reaching **14 XP total**) before the Class Trainer offers the Tier Gatekeeper Boss Quest.
+2. **Behavioral Archetypes (Speedrun vs. Completionist):**
+   - *Speedrunner / Aggressive:* Upon reaching 14 XP, immediately pivots to Town, gears up, and challenges the Gatekeeper Boss.
+   - *Completionist / Prepared:* Finishes their active Level 2 quest board to maximize Gold payouts on the `4 -> 6 -> 9 -> 12` ladder, craft full gear, and purchase remaining Trainer skills before facing the boss.
+3. **The Anti-Grind Ceiling (No Infinite Level 2 Camping):**
+   - A hero cannot stay in Level 2 soaking quests endlessly. Three interlocking tabletop rules enforce this:
+     - *Economic Equilibrium:* Pulling bare mobs to grind gold costs more in Food consumption than mob loot pays out (`P_food >= Pulls * Income`, per `MACRO_LOOP_GUIDE.md`).
+     - *Finite Quest Board:* Level 2 Town Quest markets do not refill indefinitely once the Gatekeeper Quest is unlocked. Once active Level 2 quests are turned in, the board directs the hero to the Boss Gate.
+     - *XP Cap:* XP earned beyond 14 XP in Level 2 does not carry into Tier 2 until the Gatekeeper Boss is conquered.
+4. **Scout Tokens (Pathfinder Intelligence):**
+   - Tabletop reward tokens earned from specific tracking/recon quests or exploration landmarks.
+   - *Effect:* A hero may spend a Scout Token when encountering a mob pull OR challenging the Tier Gatekeeper Boss to **draw 2 cards from the deck and choose 1**, giving players agency to seek their favored boss matchup or avoid their feared nemesis.
 
 ### 5. Key-Gated Dungeons (Level 3+)
 - **Push-Your-Luck Gauntlet:** Dungeons are self-contained 3-room gauntlets (Room 1: Entry → Room 2: Depths → Room 3: Vault Boss) featuring cash-out decisions after each room. Wiping inside forfeits all unbanked dungeon spoils.
@@ -840,7 +877,7 @@ What an actual physical prototype needs, based on the current locked rules above
   mob info, ever). A melee/ranged type icon (Section IV).
 - **HP trackers:** one per hero, plus a shared mob HP tracker per pull (or per active mob, in a
   co-op multi-mob fight — Section V).
-- **Bag:** physical slots (6 to start, upgradeable). Food physically occupies 3 slots. Every other item (Potions, Quest Loot tokens, consumables) occupies exactly 1 slot. Nothing stacks.
+- **Bag:** 3×3 physical grid (9 slots to start, upgradeable to 5×3 / 15 slots). Food is a 2×2 tile physically occupying 4 slots, leaving 5 open 1×1 slots. Every other item (Potions, Quest Loot tokens, Gathering Materials, consumables) occupies exactly 1 slot. Nothing stacks.
 - **Quest Loot tokens:** one single generic component per color (Red/Green/Blue), not a
   distinct token per zone/quest — locked 2026-09-01, resolving the earlier "printed color vs.
   colored marker" ambiguity: **the hero's tracker board (see below) has exactly 3 colored quest

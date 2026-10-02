@@ -658,7 +658,7 @@ def discard_bag_item(idx):
         return redirect(url_for("index"))
     hero = _S["board"].heroes[_S["active_hero_idx"]] if _S["mode"] == "solo" else _S["board"].heroes[_S["cmp_declare_order"][0] if _S.get("cmp_declare_order") else 0]
     if 0 <= idx < len(hero.bag) and not hero.locked[idx]:
-        if hero.bag[idx] == "food":
+        if hero.bag[idx] in ("food", "food_filler"):
             M._remove_food(hero.bag, idx)
         else:
             hero.bag[idx] = None

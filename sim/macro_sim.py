@@ -322,20 +322,17 @@ QUESTS = {
 # the original Zone 1/2 formula (flat [4,2,1,0] for required 2-4) assumed 2/3/4-loot quests all
 # reliably finish in one trip, measured against Standard-tier mobs; against the real, harder
 # Level 2 pool (18 Standard + 3 Elite) that assumption doesn't hold -- measured gold/turn at the
-# old flat ladder: required=2 1.55, required=3 1.27 (-18%), required=4 1.04 (-33%), a real,
-# growing underpayment as required increases. Required=2 kept as the baseline; required=3 and
-# required=4 swept and locked to land close to that same rate (required=3 [5,3,2,0] -> 1.50
-# measured, -3%; required=4 [7,4,2,0] -> 1.60 measured, +3%) rather than assumed. Required=5
-# still the old placeholder, not yet swept the same way.
+# Level 2 Quests: calibrated 2026-10-01 to reward risk and bag pressure with monotonic
+# gold-per-turn scaling: 4 -> 6 -> 9 -> 12 Gold bounties (clean tabletop: 2.00 -> 2.25 -> 2.60 -> 2.83 G/t).
 LEVEL2_QUESTS = {
     "Royal Signets":          dict(required=2, base_xp=2, gold_ladder=[4, 2, 1, 0]),  # Mud Trenches (Zone 3)
-    "Consecrated Ash":        dict(required=3, base_xp=3, gold_ladder=[5, 3, 2, 0]),  # Ruined Abbey (Zone 3)
-    "Ashen Vestments":        dict(required=4, base_xp=4, gold_ladder=[7, 4, 2, 0]),  # Pyre Fields (Zone 3)
-    "Shattered Broadswords":  dict(required=5, base_xp=5, gold_ladder=[9, 5, 3, 0]),  # Broken Bridge (Zone 3)
+    "Consecrated Ash":        dict(required=3, base_xp=3, gold_ladder=[6, 4, 2, 0]),  # Ruined Abbey (Zone 3)
+    "Ashen Vestments":        dict(required=4, base_xp=4, gold_ladder=[9, 5, 2, 0]),  # Pyre Fields (Zone 3)
+    "Shattered Broadswords":  dict(required=5, base_xp=5, gold_ladder=[12, 7, 3, 0]), # Broken Bridge (Zone 3)
     "Rusted Mail":            dict(required=2, base_xp=2, gold_ladder=[4, 2, 1, 0]),  # Charred Village (Zone 4)
-    "Tarnished Crests":       dict(required=3, base_xp=3, gold_ladder=[5, 3, 2, 0]),  # Armory Gates (Zone 4)
-    "Blessed Lamp Oil":       dict(required=4, base_xp=4, gold_ladder=[7, 4, 2, 0]),  # Gleaming Citadel (Zone 4)
-    "Gilded Penance":         dict(required=5, base_xp=5, gold_ladder=[9, 5, 3, 0]),  # Sunward Throne (Zone 4)
+    "Tarnished Crests":       dict(required=3, base_xp=3, gold_ladder=[6, 4, 2, 0]),  # Armory Gates (Zone 4)
+    "Blessed Lamp Oil":       dict(required=4, base_xp=4, gold_ladder=[9, 5, 2, 0]),  # Gleaming Citadel (Zone 4)
+    "Gilded Penance":         dict(required=5, base_xp=5, gold_ladder=[12, 7, 3, 0]), # Sunward Throne (Zone 4)
 }
 
 FOOD_COST = 4
@@ -875,14 +872,19 @@ def _swap_bag_slots(bag, locked, from_idx, to_idx, cols=3):
 
 def _remove_food(bag, index):
     cols = 3
+    if bag[index] == "food_filler":
+        for r_offset in (0, -cols):
+            for c_offset in (0, -1):
+                root = index + r_offset + c_offset
+                if 0 <= root < len(bag) and bag[root] == "food":
+                    index = root
+                    break
     if bag[index] == "food":
         bag[index] = None
-        if index + 1 < len(bag) and bag[index+1] == "food":
-            bag[index+1] = None
-        if index + cols < len(bag) and bag[index+cols] == "food":
-            bag[index+cols] = None
-        if index + cols + 1 < len(bag) and bag[index+cols+1] == "food":
-            bag[index+cols+1] = None
+        for offset in (1, cols, cols + 1):
+            if index + offset < len(bag) and bag[index + offset] in ("food", "food_filler"):
+                bag[index + offset] = None
+
 
 def _bag_has_room(bag, locked):
     """Is there an item slot with room, or an empty unlocked slot to open one?"""

@@ -278,3 +278,132 @@ if __name__ == "__main__":
         [(4, 0, "ranged"), (3, 2, "melee"), (3, 0, "ranged")], 10,
         [(4, 1, "melee"), (4, 0, "ranged"), (4, 0, "melee")], 10,
     )
+
+
+# ---------------------------------------------------------------------------
+# Carryover variant: test whether Phase 1's "didn't finish it off" result should
+# carry the boss's REMAINING HP into Phase 2 (one continuous fight) instead of
+# ending the whole encounter immediately. simulate()'s public return signature
+# (win, hero_hp, rounds) doesn't expose the boss's remaining HP on a loss, so this
+# re-steps the already-chosen best line through each class's own resolve_round
+# (read-only reuse, no class file changes) purely to recover that number.
+# ---------------------------------------------------------------------------
+from combat_round import RoundState
+
+
+def _leftover_mob_hp(mod, class_name, hand, pattern, mob_hp, starting_hp):
+    """Only meaningful when best_line_for_hand's own result was a loss (win=False) --
+    re-derives the boss's HP remaining at the end of that same chosen line."""
+    if class_name == "warrior":
+        seq_cards, stance_seq, hp_left, rounds = mod.best_line_for_hand(
+            hand, pattern, mob_hp, starting_hp=starting_hp)
+    else:
+        seq_cards, hp_left, rounds = mod.best_line_for_hand(
+            hand, pattern, mob_hp, starting_hp=starting_hp)
+        stance_seq = [None, None, None]
+
+    state = RoundState()
+    hp, remaining, max_hp = starting_hp, mob_hp, starting_hp
+    for rnd in range(3):
+        outcome = mod.resolve_round(state, seq_cards[rnd], stance_seq[rnd], rnd, pattern,
+                                     mob_hp, remaining, hp, max_hp)
+        if outcome is None:
+            break
+        hp, remaining, max_hp, state = (outcome.new_hp, outcome.new_mob_hp_remaining,
+                                         outcome.new_hero_max_hp, outcome.new_state)
+        if hp <= 0 or remaining <= 0:
+            break
+    return max(remaining, 0), hp
+
+
+def eval_boss_carryover(p1_pattern, p1_hp, p2_pattern, p2_hp, classes=None):
+    """Same structure as eval_boss, but a Phase 1 loss (not dead by round 3) no longer ends
+    the encounter -- the boss's leftover HP from Phase 1 is ADDED to Phase 2's own printed
+    HP, and the fight continues into Phase 2's pattern with that larger combined pool. Hero
+    HP still carries across unconditionally, same as before. A hero death in Phase 1 still
+    ends the attempt immediately (dead is dead, carryover only applies to a boss that's
+    still alive but not yet finished)."""
+    classes = classes or CLASSES
+    results = {}
+    for class_name in classes:
+        mod = M.CARD_SOURCE[class_name]
+        start_hp = getattr(mod, M.HP_ATTR[class_name])
+        mand = M.LEVEL2_MANDATORY[class_name]
+        purch = M.LEVEL2_PURCHASED_ORDER[class_name]
+
+        c_pat1 = format_pattern(p1_pattern, class_name)
+        c_pat2 = format_pattern(p2_pattern, class_name)
+
+        total_runs = 0
+        wins = 0
+        p1_death = 0
+        p2_death = 0
+        p2_dmg_fail = 0
+        win_ending_hps = []
+
+        combos = list(itertools.combinations(range(3), 2))
+        for combo in combos:
+            swaps = {}
+            _, old_name, new_name, new_card = mand
+            swaps[old_name] = (new_name, new_card)
+            for idx in combo:
+                old_name, new_name, new_card = purch[idx]
+                swaps[old_name] = (new_name, new_card)
+
+            with LV.leveled_kit(mod, swaps):
+                hands = mod.ALL_HANDS
+                for h1 in hands:
+                    win1, hp1, r1 = simulate_phase(mod, class_name, h1, c_pat1, p1_hp, start_hp)
+                    if hp1 <= 0:
+                        for _ in hands:
+                            total_runs += 1
+                            p1_death += 1
+                        continue
+
+                    if win1:
+                        p2_effective_hp = p2_hp
+                    else:
+                        leftover, _ = _leftover_mob_hp(mod, class_name, h1, c_pat1, p1_hp, start_hp)
+                        p2_effective_hp = p2_hp + leftover
+
+                    for h2 in hands:
+                        total_runs += 1
+                        win2, hp2, r2 = simulate_phase(mod, class_name, h2, c_pat2, p2_effective_hp, hp1)
+                        if win2:
+                            wins += 1
+                            win_ending_hps.append(hp2)
+                        else:
+                            if hp2 <= 0:
+                                p2_death += 1
+                            else:
+                                p2_dmg_fail += 1
+
+        win_rate = wins / total_runs
+        avg_end_hp = sum(win_ending_hps) / len(win_ending_hps) if win_ending_hps else 0.0
+        results[class_name] = {
+            "win_rate": win_rate,
+            "avg_end_hp": avg_end_hp,
+            "start_hp": start_hp,
+            "p1_death": p1_death / total_runs,
+            "p2_death": p2_death / total_runs,
+            "total_death": (p1_death + p2_death) / total_runs,
+            "total_dmg_fail": p2_dmg_fail / total_runs,
+        }
+    return results
+
+
+def report_carryover(label, p1_pattern, p1_hp, p2_pattern, p2_hp):
+    res = eval_boss_carryover(p1_pattern, p1_hp, p2_pattern, p2_hp)
+    rates = [r["win_rate"] for r in res.values()]
+    avg_win = sum(rates) / len(rates)
+    spread = max(rates) - min(rates)
+    print(f"=== {label} (CARRYOVER) ===")
+    print(f"OVERALL AVG WIN RATE: {avg_win*100:.1f}%   SPREAD: {spread*100:.1f}pp "
+          f"(max {max(rates)*100:.1f}% / min {min(rates)*100:.1f}%)")
+    print(f"{'Class':12} {'Win%':7} {'EndHP':7} {'Start':6} {'Death%':8} {'DmgFail%':9}")
+    print("-" * 55)
+    for c, r in sorted(res.items(), key=lambda kv: -kv[1]['win_rate']):
+        print(f"{c:12} {r['win_rate']*100:6.1f}% {r['avg_end_hp']:6.1f}  {r['start_hp']:5}  "
+              f"{r['total_death']*100:7.1f}% {r['total_dmg_fail']*100:8.1f}%")
+    print()
+    return avg_win, spread, res

@@ -133,6 +133,11 @@ def resolve_node_pull(hero, class_name, node_name, mob_name, quest_pool, rng,
     has_stance = M.HAS_STANCE[class_name]
     tier, loot_name = M.NODES[node_name]
 
+    mob_base = mob_name.replace("_loot", "")
+    if SD.is_spice_event(mob_base):
+        return _pull_and_resolve(hero, class_name, mod, mob_name, loot_name, rng, suppress_loot,
+                                  decide_fn=decide_fn, hand=hand)
+
     # Old code's `with LV.leveled_kit(...): result = run_one_trip(...)` scope covers the
     # ENTIRE trip -- risk-gate checks and hand draws read the leveled CARDS/DECK/ALL_HANDS
     # too, not just the final combat_engine call -- so this wraps everything from here down,
@@ -1737,6 +1742,30 @@ def run_solo_trip(hero, class_name, quest_pool, fallback_target_zones, board, rn
         mob_name = zone_board.dealt[node_name]
         outcome = resolve_node_pull(hero, class_name, node_name, mob_name, quest_pool, rng,
                                      risk_tolerance, risk_tolerance_base, risk_only_as_last_resort)
+        if outcome.get("outcome") == "win" and zone_id in board.zones:
+            gathering_item = board.zones[zone_id].gathering_tokens.get(node_name)
+            if gathering_item:
+                if M._bag_has_room(hero.bag, hero.locked):
+                    M._add_item(hero.bag, hero.locked, gathering_item)
+                    board.zones[zone_id].gathering_tokens.pop(node_name)
+                    outcome["gathering_item"] = gathering_item
+                else:
+                    hero.pending_loot.append(gathering_item)
+                    board.zones[zone_id].gathering_tokens.pop(node_name)
+                    outcome["gathering_item_pending"] = gathering_item
+
+            if outcome.get("drops_loot") and hasattr(board, "loot_decks"):
+                num_draws = 2 if outcome.get("drops_double_loot") else 1
+                deck = board.loot_decks.get(level)
+                if deck:
+                    for _ in range(num_draws):
+                        card = deck.draw(rng)
+                        if card:
+                            if M._bag_has_room(hero.bag, hero.locked):
+                                M._add_item(hero.bag, hero.locked, card)
+                            else:
+                                hero.pending_loot.append(card)
+
         B.discard_zone(board, zone_id, level)  # end-of-turn cleanup regardless of outcome
         if outcome["outcome"] == "died":
             return {"alive": False, "recovered": recovered, "death_node": node_name}
