@@ -654,7 +654,16 @@ pooled and consistent across the roster — see `MACRO_LOOP_GUIDE.md`'s own entr
 derivation and the methodology note on why this was checked at a real, bounded checkpoint
 rather than an arbitrary long trip-count average.
 
-**Bag Upgrade:** 16 Gold, expands the Bag from a 3×3 grid (9 slots) to a 5×3 grid (15 slots, +6 slots total). Sized to comfortably hold both raw crafting materials and multiple active quest token turn-ins.
+**Bag Upgrade:** 12 Gold (repriced 16 → 12), expands the Bag from a 3×3 grid (9 slots) to a 5×3 grid (15 slots, +6 slots total). Sized to comfortably hold both raw crafting materials and multiple active quest token turn-ins.
+
+**The Town Armory (Ready-Made Equipment Market) — Locked 2026-10-06:**
+Major Town hubs (Town 2 and Town 4) feature a rotating Armory selling pre-forged, ready-made equipment for pure Gold (no gathering materials required), acting as bad-luck protection and a targeted gold sink.
+- **Market Size:** Displays exactly `Heroes + 1` cards (2 cards in solo play, 3 for 2-player, up to 5 cards for 4 players), ensuring there is always at least one more item than players at the table.
+- **Tier Decks & Pricing:**
+  - *Town 2 (Grade 1 Equipment Deck):* Weapons flat **6 Gold**, Armor flat **7 Gold**.
+  - *Town 4 (Grade 2 Equipment Deck):* Weapons flat **10 Gold**, Armor flat **12 Gold**.
+- **Visiting Flow & Free Refresh:** When heroes visit Town in Phase 3 / Phase 5, shopping resolves in Priority Order. On their turn, the active hero may choose to keep the current display or **refresh the market for free** (sweep to discard, deal a fresh `Heroes + 1` cards from the deck). Each visiting hero gets this choice on their turn, guaranteeing every player an opportunity for a full, tailored market. When an item is bought, its slot immediately refills from the deck. Each hero is limited to one refresh decision per visit.
+- **Selling Gathering Materials:** Any Gathering Token (Ore, Herb, Skin across all tiers) may be sold back to Town for flat **1 Gold each** to prevent dead bag slots.
 
 ## VII. The Game Round
 
@@ -877,7 +886,7 @@ What an actual physical prototype needs, based on the current locked rules above
   mob info, ever). A melee/ranged type icon (Section IV).
 - **HP trackers:** one per hero, plus a shared mob HP tracker per pull (or per active mob, in a
   co-op multi-mob fight — Section V).
-- **Bag:** 3×3 physical grid (9 slots to start, upgradeable to 5×3 / 15 slots). Food is a 2×2 tile physically occupying 4 slots, leaving 5 open 1×1 slots. Every other item (Potions, Quest Loot tokens, Gathering Materials, consumables) occupies exactly 1 slot. Nothing stacks.
+- **Bag:** 3×3 physical grid (9 slots to start, upgradeable to 5×3 / 15 slots). Food is a 2×2 tile physically occupying 4 slots, leaving 5 open 1×1 slots. Every other item (Potions, Quest Loot tokens, Gathering Materials, consumables, Packed Gear tokens) occupies exactly 1 slot. Nothing stacks.
 - **Quest Loot tokens:** one single generic component per color (Red/Green/Blue), not a
   distinct token per zone/quest — locked 2026-09-01, resolving the earlier "printed color vs.
   colored marker" ambiguity: **the hero's tracker board (see below) has exactly 3 colored quest
@@ -886,12 +895,16 @@ What an actual physical prototype needs, based on the current locked rules above
   active on that hero's board; a completed pull's loot token is just whichever color the
   satisfied quest's card currently sits in.
 - **Hero tracker board:** one per player — HP dial, whatever else is personal to that hero (see
-  `OPEN_QUESTIONS.md`'s "Per-class matchup info" entry), and **3 colored quest slots** (Red/
-  Green/Blue), giving `ACTIVE_QUEST_COUNT = 3` a physical home at the table instead of being
-  purely a simulator invariant. **Slot assignment, locked 2026-09-01:** free choice — when a
-  hero picks up a new active quest, they place its card into any currently-empty slot. No fixed
-  assignment order. A slot empties (and its color becomes available again) when that quest is
-  turned in or dropped.
+  `OPEN_QUESTIONS.md`'s "Per-class matchup info" entry), **3 colored quest slots** (Red/Green/Blue),
+  and **3 Equipment Slots (1 Weapon, 1 Armor, 1 Trinket) — locked 2026-10-06**. Equipped cards sit
+  face-up in their slots and tap 90° when activated during combat, untapping automatically upon
+  returning to Town. Adjacent to the 3×3 Bag grid is a **Tucked Backpack margin**: unequipped spare
+  gear cards tuck under the edge of the board with their title banner visible, each consuming 1 Bag
+  slot via a 1×1 "Packed Gear" punchboard token. Equipment swapping between equipped slots and the
+  tucked backpack is strictly a Town-only action (no mid-trip field swapping).
+  **Quest slot assignment, locked 2026-09-01:** free choice — when a hero picks up a new active quest,
+  they place its card into any currently-empty slot. No fixed assignment order. A slot empties (and its
+  color becomes available again) when that quest is turned in or dropped.
 - **Gold and XP counters.**
 - **Aggro reference (co-op only):** each card's printed Aggro value (0-4) is enough on its own —
   no extra token system needed beyond what's already printed on the card.

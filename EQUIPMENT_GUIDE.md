@@ -7,8 +7,8 @@ design decisions get made and their reasoning kept, not invented fresh each sess
 
 **Status: core mechanic locked (2026-09-05), redemption mechanic's shape locked (2026-09-05),
 ingredient menu and material list built and wired into real gameplay (`board_engine.py`'s
-`craft_equipment` Town action) — see "Post-Audit Design Locks" below for the current numbers.
-Gold/material pricing is a first-pass balance-sweep result (2026-09-08), not yet fully locked.**
+`craft_equipment` Town action), recipe costs, 1G token sell-back, and physical Hero Board /
+tucked backpack bag rules locked (2026-10-06).**
 
 ## Origin and constraint this system must satisfy
 
@@ -67,9 +67,11 @@ pull** — it cannot span rounds or carry into a later pull.
   not repairing or replacing). Keeps the acquisition economy simpler — a hero's equipment
   collection only ever grows, it's never a maintenance sink.
 
-**Not yet decided:** whether a hero can hold spare/unequipped items in the Bag (and if so, does
-swapping equipment cost a turn/action), and how equipping something for the first time works
-mechanically (found as loot mid-trip vs. only equippable in Town).
+**Locked 2026-10-06 (Physical Components & Bag Rules):**
+- **Equipped Slots:** The Hero Tracker Board features 3 dedicated equipment slots (1 Weapon, 1 Armor, 1 Trinket) completely separate from the 3×3 Bag grid.
+- **Physical Durability:** Single-use per excursion. When an equipped card's rider is used during combat, the player taps the card 90° (or flips it face-down) in its slot. All equipped items untap automatically upon returning to Town.
+- **Carrying Spare Gear (The Tucked Backpack):** A hero can carry unequipped spare gear in the wilderness. The physical Equipment Card tucks under the Backpack margin of the Hero Board (showing its top banner), and the player places a 1×1 "Packed Gear" punchboard token into a square in their 3×3 Bag grid to account for the consumed inventory space.
+- **Field Rule (Town-Only Swapping):** Equipment cannot be swapped in the field or mid-combat. Swapping between equipped slots and the tucked backpack is strictly a Town action. Spares found as loot in the field take 1 Bag slot until brought to Town.
 
 ## The Base + Ingredient structure (kept from the original draft)
 
@@ -200,39 +202,44 @@ Crafting is now settled as a Town-only action (see above), so the remaining open
   2-Hander, Wand, Staff, Cloth/Leather/Mail/Plate) are flavor/slot placeholders only until this
   pass happens.
 
-## Ready-made equipment via a Town market — direction locked 2026-09-08, not yet built
+## Ready-made equipment via a Town market (Locked 2026-10-06)
 
-Confirmed with the user as a design direction (thought exercise, not yet implemented): in
-addition to crafting, a Town market should sell **ready-made equipment** — the exact same
-Base+Ingredient recipes already locked above, reskinned with unique flavor names/art (e.g. a
-named "Ironclad Cutter" that's mechanically identical to a crafted "Honed 1-Hander"), purchasable
-for Gold alone with no Gathering Tokens required. Zero new balance risk since the underlying
-mechanic never changes — only the acquisition path does.
+In addition to crafting, major Town markets feature a **Town Armory** selling pre-forged, ready-made equipment for **pure Gold (no materials required)**. This provides bad-luck protection against dry gathering runs and acts as a targeted Gold sink for completionist heroes. Ready-made items are mechanically identical to crafted Base+Ingredient items, bearing unique flavor names and artwork.
 
-Two constraints locked alongside the idea, both still needing real numbers/implementation:
+### 1. Market Size: "Heroes + 1" Cards
+The Armory display scales dynamically with the tabletop player count:
+- **Solo (1 Hero):** 2 cards on display
+- **2 Players:** 3 cards on display
+- **3 Players:** 4 cards on display
+- **4 Players:** 5 cards on display
+There is always at least one more item than there are players at the table, preventing the final player from being forced into a take-it-or-leave-it single choice.
 
-1. **The Gold price must be a genuine premium over the crafted recipe's own Gold cost**, large
-   enough to cover the materials it's letting the player skip — otherwise crafting becomes
-   pointless (why gather Crag-Iron if the finished item costs about the same either way?).
-   Needs an actual "what's a Gathering Token worth in Gold" conversion before pricing anything,
-   not a guess.
-2. **The market should rotate, not display everything at once** — reuse the existing rotating
-   Town-quest-market pattern (`board.town_markets`, refreshed per Zone) rather than inventing a
-   second, always-fully-stocked shop. A static list of 20-30 reskinned items available every
-   visit would just be a long shopping list, not real scarcity or choice.
+### 2. Tier Deck Placement & Pricing
+- **Town 2 (Zone 2 Hub):** Armory draws exclusively from the **Grade 1 Equipment Deck**.
+  - **Weapons:** Flat **6 Gold**
+  - **Armor:** Flat **7 Gold**
+- **Town 4 (Zone 4 Hub):** Armory draws exclusively from the **Grade 2 Equipment Deck**.
+  - **Weapons:** Flat **10 Gold**
+  - **Armor:** Flat **12 Gold**
 
-Class-gating stays intact for ready-made items too — a Warrior still shouldn't see a Wand-based
-item in the market, same restriction crafting already enforces.
+*Economic Balance:* Sized against the crafted baseline (`1-3G + 2 materials`). At 6–7G (Grade 1), buying ready-made costs roughly one full 3-token quest payout (6G), making crafting significantly cheaper while keeping gear reachable. At 10–12G (Grade 2), ready-made gear rivals an 8G Class Skill or 12G Bag Upgrade, requiring a full 5-token quest payout.
 
-## Selling unwanted Gathering Tokens for Gold — 1 Gold baseline (NEEDS PLAYTESTING, NOT LOCKED)
+### 3. Visiting Flow & Free Refresh Rule
+When one or more heroes visit Town during Phase 5 (Town & Recovery), shopping resolves in **Priority Order**:
+1. **Free Refresh Choice (Once per visit):** On their turn, the active hero may choose to keep the current Armory display OR **refresh the market for free** (sweep all current face-up cards to the discard pile and deal a brand-new set of `Heroes + 1` cards from the deck).
+2. **Purchase & Immediate Refill:** The hero may purchase any class-compatible item they can afford. When an item is bought, the empty slot immediately refills from the deck.
+3. **Guaranteed Full Market for Subsequent Heroes:** When the next hero in priority takes their turn, they receive the **exact same choice**: they may shop the existing/refilled market OR refresh the market for free. Every visiting player is guaranteed at least one opportunity at a full, fresh market tailored to their visit.
+4. **Anti-Spam Boundary:** Each player gets exactly one refresh decision per Town visit (cannot repeatedly flush the deck in a loop).
+
+Class-gating stays intact: a hero can only purchase equipment their class is permitted to equip (e.g. Warriors cannot buy Wands or Cloth).
+
+## Selling unwanted Gathering Tokens for Gold — 1 Gold baseline (Locked 2026-10-06)
 
 Confirmed rule: a hero can sell any Gathering Token (Ore, Herb, Skin across all Tiers) back to Town
 for **1 Gold each** (`apply_town_action` `sell` action) to prevent unwanted tokens from becoming
-permanently dead Bag space.
-
-**Note:** 1 Gold is the current working baseline implemented as of 2026-09-25, but this price
-explicitly **needs more playtesting and is NOT locked**. It may be tuned once we have more empirical
-data on token accumulation and gold economy pacing across full campaigns.
+permanently dead Bag space. Locked 2026-10-06 following full-campaign simulator verification
+(`_campaign_boss_sim.py`): at 1 Gold each, gathering tokens reward opportunistic routing without
+disrupting the Food reset equilibrium (Food = 4G) or creating bare-mob infinite farming loops.
 
 ## Post-Audit Design Locks (2026-09-08)
 
@@ -280,15 +287,8 @@ To prevent recipe bloat, equipment is compressed into Grades (Tier 1 = Levels 1 
 - **Crafting Deck:** Fully printed item cards (e.g., "Honed Crag-Iron Blade") with material costs printed on them. Players browse the deck in Town. The Tier-gating keeps this deck small (~34 cards per Tier).
 - **Treasure Deck:** Unique, named loot drops (e.g., "The Ashbringer") with NO material costs printed on them, only a Gold value. Drawn from Elites or bought from a rotating Gold shop in Town.
 
-### 5. Pricing — preliminary, sourced from a real sweep, not yet fully locked (2026-09-08)
-A full Gold price table now exists in `sim/equipment_data.py` (every Grade 1/2 ingredient plus
-every Base), derived from the balance sweep in `EQUIPMENT_SWEEP_RESULTS.md`: Gold is set roughly
-proportional to each ingredient's measured cross-class average win-rate uplift (a rough "1 Gold
-per ~2.2 percentage points" conversion, floored at 1), not assigned by feel. This is a working
-first pass, not a final locked price — open to revision once more of the economy around it
-(Gathering Token sell-back price, the ready-made-market premium) is itself locked. Crafting
-itself is real and reachable in gameplay today (`board_engine.py`'s `craft_equipment` action),
-not just designed on paper.
+### 5. Pricing & Recipe Costs (Locked 2026-10-06)
+The full Gold and material price table in `sim/equipment_data.py` (Base material + Ingredient material + Ingredient Gold fee) is officially locked following full-campaign simulation (`_campaign_boss_sim.py`, 360 runs). The combination of material requirements and Gold fees reliably enables heroes to craft both a Weapon and Armor by turn ~34 with an average purse of 2.7g at the Tier Gate, preventing both gold poverty and infinite hoarding while hitting target boss win rates. Crafting is real and active in gameplay today (`board_engine.py`'s `craft_equipment` action).
 
 ### 6. Pure-Tier Recipes & Minimum-Tier Material Substitution (Locked 2026-09-28)
 Following playtesting in Zone 2, the Lead Designer locked the material substitution and tier-gating rules:
