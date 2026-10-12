@@ -459,8 +459,8 @@ the full derivation and verification) -- same total damage/Block/HP as the Level
 just resequenced or redistributed across rounds 1-2, picked for the combination that kept the
 9-class roster closest together rather than the combination with the least total movement. This
 mechanical heritage (which flavor name is really which common mob, and what changed) is kept
-here for design reference only -- PnP cards and the sim's own display never show the common
-name or the remix, only the finished flavor name:
+here for design reference only -- PnP cards print the finished flavor name and the mob's role
+(updated 2026-10-12; they used to show the flavor name only), but never the remix itself:
 
 | Mob (mechanical name) | Tier | Faction | Level 2 name | Remix vs. Level 1 |
 |---|---|---|---|---|
@@ -637,14 +637,68 @@ deliberate choice to flatten everything uniformly:
 | Plundered Chest | 2 | 2 | 4 / 2 / 1 / 0 |
 | Buried Treasure | 2 | 2 | 4 / 2 / 1 / 0 |
 
-A hero draws exactly 3 of these 8 at random as a starter batch and does **not** get a
-replacement as each is turned in — "Players hold exactly 3 Quests at all times" (above) only
-holds during this starter batch's own first quest-giving; the log shrinks toward 0 as quests
-complete, unlike the old always-refilled system. Completing all 3 always nets exactly 6 XP
-(3 x 2), which is deliberately identical to the Level 2 XP threshold (see below) — reaching 6
-XP *is* reaching Level 2, by construction. Once exhausted, Zone 1/2 stops offering quests
+A hero holds exactly 3 Level 1 quests as a starter batch — **2 of the loot quests above and 1
+kill quest**, chosen in the **Level 1 Quest Draft** below (revised 2026-10-12; this used to be 3 of
+these 8 drawn at random) — and does **not** get a replacement as each is turned in — "Players hold
+exactly 3 Quests at all times" (above) only holds during this starter batch's own first
+quest-giving; the log shrinks toward 0 as quests complete, unlike the old always-refilled system.
+Completing all 3 always nets exactly 6 XP (3 x 2, every Level 1 kill quest is also 2 XP), which is
+deliberately identical to the Level 2 XP threshold (see below) — reaching 6 XP *is* reaching
+Level 2, by construction. Once exhausted, Zone 1/2 stops offering quests
 permanently for that hero; Level 2 quests (Zone 3/4, still a placeholder pool pending real
 balance — see the Zone 3/4 section) take over from that point on, with normal replenishment.
+
+**Level 1 Quest Draft (locked 2026-10-12).** Replaces the random starter draw. Each hero ends the
+draft with exactly 3 quests: **2 loot quests and 1 kill quest**. The draft runs once, before Round 1.
+1. **Laying out.** Deal **2P+1 loot cards** (capped at the 8 that exist) and **P+1 kill cards**
+   face-up, where P is the number of heroes. Solo is the P=1 row: 3 loot cards and 2 kill cards.
+   Cards not laid out are out of play for that game.
+2. **Order.** Reverse priority: the hero with the *lowest* Turn-1 priority drafts first and the
+   highest drafts last. (Priority rotates each turn, so this is a one-time fairness convention, not
+   a standing handicap.) Picks go in rounds: first loot, second loot, then kill.
+3. **Unique cards.** A drafted card leaves the table; no two heroes hold the same quest. The loot
+   pool is the 8 Level 1 quests (one per Zone 1/2 node), so at 4 players all 8 are taken and the last
+   loot pick is forced — accepted.
+4. **Free choice.** Any loot card may be taken, including both from the same Zone.
+5. The hero's 3 quests are worth 6 XP in total, the Level 2 threshold.
+
+**Kill Quests (locked 2026-10-12).** A kill quest asks you to defeat mobs instead of carrying loot.
+1. **Card.** Type icon, requirement (a count and a filter, at most 2 clauses), XP, and a Gold
+   ladder. It has no color and no loot tokens and uses no Bag space; it occupies one of the 3 quest
+   slots, and that slot's color simply goes unused (slot colors exist only to tell loot tokens apart).
+2. **Filters.**
+   - **Role:** a mob role printed on the card (Grunt, Bruiser, Enforcer, Raider, Ambusher, Scout).
+   - **Faction** (Level 2): Sunsworn or Undead, matching the faction mark on the mob card.
+   - **Elite** (Level 2): any Elite.
+   - **Favored / Struggles:** a mob on the hero's Favored or Struggles list (see Class Guide below).
+3. **What counts as a kill.** Any outright win against a roster mob: a Quest Node pull (including a
+   Blind Pull), a Scouted Pull at a Border crossing, or a Scroll of Vanquishing. A flee, a Smoke
+   Bomb, a PvP duel and a Spice encounter do not count.
+4. **Advancing quests.** One kill advances every active quest it qualifies for. On a single
+   two-clause card, one kill fills only one clause (the player's choice if it fits both).
+5. **Progress.** Recorded on the card (printed boxes plus a marker) and kept between trips. If the
+   quest is still incomplete when a trip ends it decays one Gold tier, exactly as loot quests do.
+   Dying never erases progress, and a death still applies the 2-stage decay.
+6. **Completing.** When every clause is filled the quest is complete; turn it in at Town like any
+   other quest.
+7. **XP and Gold.** At Level 1 every kill quest is **2 XP** with the **4/2/1/0** ladder, so
+   difficulty is tuned through the count, the filter and the target's danger. At Level 2 and later
+   XP and Gold follow the quest's measured cost (pending).
+8. **Level 1 kill pool.** About 9 cards: one per standard role (the role is named on the card) plus
+   *Kill 2 Favored*, *Kill 1 Favored + 1 Struggles* and *Kill 1 Struggles*. The kill count on each
+   card is pending measurement (`OPEN_QUESTIONS.md`).
+
+**Class Guide: Favored and Struggles (locked 2026-10-12).** Each class's Class Guide (on its hero
+tracker board and in the web Class Guide) lists, per level, **Favored** — the class's 2 best mobs —
+and **Struggles** — its 2 worst. Entries are shown by **flavor name**, since a level's mob can be a
+different stat block than the same role at the other level. Elites are not ranked. A Favored or
+Struggles kill quest counts a kill of any mob on the matching list for the *level of the mob
+killed*. Lists are generated from the solver and never hand-typed. Per class and mob, each of the 15
+possible hands plays its best line at full HP; the hand's cost is max HP minus HP left, and **a lost
+hand counts as 100%**; cost% is the average over the 15 hands. Favored is the 2 lowest cost%,
+Struggles the 2 highest. Near-ties (within 1.5 points of the cutoff) are broken by worst-hand cost
+first, then by spreading mobs evenly across the nine classes, then roster order. Full derivation and
+audit findings: `CLASS_BALANCE_GUIDE.md`, "Favored and Struggles derivation".
 
 **+1 Gold per won pull, on top of quest loot if applicable (locked 2026-08-21).** Applies to
 any pull that wins outright — a quest-node pull, a corpse-recovery pull, or a Border Node toll
@@ -905,6 +959,14 @@ What an actual physical prototype needs, based on the current locked rules above
   **Quest slot assignment, locked 2026-09-01:** free choice — when a hero picks up a new active quest,
   they place its card into any currently-empty slot. No fixed assignment order. A slot empties (and its
   color becomes available again) when that quest is turned in or dropped.
+- **Kill quest cards (2026-10-12):** type icon, requirement (count + filter, max 2 clauses), XP, Gold
+  ladder, and printed progress boxes tracked with a marker. No color, no token; the card takes one of
+  the 3 quest slots and the slot's color goes unused. About 9 Level 1 kill cards (one per standard
+  role, plus 3 Favored/Struggles cards).
+- **Faction mark (2026-10-12, not yet designed or printed):** every Level 2 mob card needs a
+  Sunsworn/Undead mark so faction kill quests can be checked at a glance.
+- **Class Guide:** the hero tracker board prints each class's Favored and Struggles lists for
+  Level 1 and Level 2, by flavor name (Section VI, "Class Guide: Favored and Struggles").
 - **Gold and XP counters.**
 - **Aggro reference (co-op only):** each card's printed Aggro value (0-4) is enough on its own —
   no extra token system needed beyond what's already printed on the card.
@@ -994,8 +1056,9 @@ entries where a sub-item is still explicitly marked open:
 - **Mixed `mob_type` loot/reward scaling for a multi-mob kill** — not addressed at all.
 - **Boss tier is entirely undesigned** — the pooled engine (Section V) has no live use case
   until this exists.
-- **Player-chosen quest pool** — `active_quests` is currently randomly sampled by the sim, not
-  actually chosen by the player from a curated set.
+- **Player-chosen quest pool** — resolved for Level 1 by the Quest Draft (Section VI,
+  2026-10-12); the sim's `active_quests` is still randomly sampled until the draft is built into
+  it. Level 2+ quests are already chosen from the Town Quest Markets.
 - **Node-difficulty as a second quest-variation axis** — blocked on Spike-tier mobs, which are
   still empty/deferred.
 - **Potion pricing** — never tuned against the current quest economy above.

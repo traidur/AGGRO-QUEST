@@ -1711,3 +1711,40 @@ dealing a Standard mob to a Level 2 hero, falling back to the base `MOBS` entry 
 deliberately not touching the already-verified `MOBS`/`_RAW_MOBS` shapes directly, the same
 reasoning that kept this exploration to temporary monkey-patches in throwaway `_`-prefixed
 scripts rather than live edits until the combination was actually chosen.
+
+## Favored and Struggles derivation, locked 2026-10-12
+
+`DESIGN_DOC.md` Section VI ("Class Guide: Favored and Struggles") defines the rule; this is how the
+lists are derived and what the audit found. All of it runs through
+`sim/class_mob_matchup_chart.py`, which is the single source for the hero tracker boards
+(`pnp-tool/export_tracker_boards.py`) and the web Class Guide (`sim/playtest_board_web.py`).
+
+**Method.** Per class and mob, for each of the 15 possible hands, the class's best line is played at
+full HP against the mob's printed pattern. A hand's cost is max HP minus HP left, and **a lost hand
+counts as 100%**. cost% is the mean over the 15 hands; the *tail* is the worst of the 15. Level 1 is
+the base kit against the 6 standard mobs; Level 2 is the fully upgraded kit against the same 6 with
+the remixed `LEVEL2_STANDARD` stat blocks for Grunt, Enforcer and Ambusher. Elites are not ranked.
+Favored is the 2 lowest cost%; Struggles the 2 highest.
+
+**Tie ladder** (mobs within 1.5 points of the cutoff mob's cost are candidates; clearly better or
+worse mobs are locked in): (1) tail risk — Favored prefers the lower worst-hand cost, Struggles the
+higher, counted only when the gap exceeds 5 points; (2) diversity — the combination that spreads
+mobs most evenly across the nine classes (smallest sum of squared per-mob list counts), found by
+exhaustive search so it does not depend on class order; (3) roster order.
+
+**Audit findings (2026-10-12).**
+- The Level 2 chart used the Level 1 stat blocks for Grunt, Enforcer and Ambusher, never
+  `LEVEL2_STANDARD`; this changed three classes' Level 2 lists once fixed.
+- The old chart scored a lost hand only by the HP it lost, understating mobs a class sometimes loses
+  to (up to about 6.7 points per lost hand out of 15). Counting a lost hand as 100% moved three
+  Level 1 lists (Wizard Struggles, Cleric Favored, Ranger Favored). Level 2 non-Elites have no
+  lost hands.
+- The old chart ranked Elites at Level 2, so Berserker and Warlord filled every Struggles list;
+  that told a player nothing, so Elites are excluded and have their own quest filter.
+- Even so the lists stay concentrated: at Level 1 Grunt is Favored for 8 of 9 classes and Enforcer is
+  Struggles for 8 of 9 (Ambusher 7); at Level 2 Grunt 7 of 9 and Enforcer 9 of 9. Grunt really is
+  everyone's easiest mob and Enforcer everyone's hardest. A relative definition (rank each class
+  against the other classes) is parked in `OPEN_QUESTIONS.md` as the thing to try if the absolute
+  one causes problems.
+- Docstring drift in the chart module: it said Druid and Necromancer fall back to Level 1 numbers at
+  Level 2, but their Level 2 kits exist and produce different numbers.

@@ -347,14 +347,77 @@ Not evaluated: whether any of this changes the recommended board content itself,
 needs an explicit printed callout anywhere, or whether it's fine left as emergent strategy
 for players to discover at the table without the game commenting on it directly.
 
+**Update 2026-10-12:** these lists are now also what Favored/Struggles kill quests key on
+(`DESIGN_DOC.md` Section VI, "Class Guide: Favored and Struggles"), and "Comfortable" was renamed
+"Favored". Rankings now count a lost hand as 100% cost, leave Elites out, use the remixed Level 2 mob
+stats (the old chart used Level 1 stat blocks for Grunt/Enforcer/Ambusher at Level 2), and break
+near-ties with a tail-risk-then-diversity ladder (`CLASS_BALANCE_GUIDE.md`, "Favored and Struggles
+derivation"); entries are shown by flavor name. The blind-refill wrinkle above is now live: a Favored
+quest points players at the mobs everyone wants, a Blind Pull still counts as a kill but the mob is
+random, and a Struggles quest is a first, partial answer to the "reward bump" idea above (the quest
+pays for eating the worse matchup). Not evaluated whether that is enough.
+
+### Kill quests and the Level 1 Quest Draft — tuning and open items (raised 2026-10-12)
+
+Rules are locked in `DESIGN_DOC.md` Section VI. Still open, mostly measurement:
+- **Level 1 kill counts.** The count on each of the ~9 kill cards (6 roles + 3 matchup cards) must
+  land at parity with a 2-loot quest, with XP (2) and the 4/2/1/0 ladder pinned. Drafters take the
+  cheapest card, so the *spread* between cards matters more than the average.
+- **Kill quests' structural advantage.** They use no Bag slots and lose no progress on death, which
+  loot quests do not enjoy; with rewards pinned, the requirement has to carry that cost. Measure the
+  *marginal* cost of a kill quest riding along with loot pulls, not only its standalone cost.
+- **Zone dominance in the free-choice loot draft.** If one Zone's quests are consistently taken first,
+  fall back to a forced mix of 1 Zone 1 + 1 Zone 2 loot quest.
+- **Elite share.** Elites are 3 of 21 dealt cards at Level 2 (about 1 in 7); "any Elite" quests are
+  both a hunt and a danger.
+- **Level 2 kill quests.** How they enter the Level 2 Quest Market (24-card deck, 3 copies of 8),
+  and their XP and Gold (XP is the free dial after Level 1).
+- **Bots.** Hunting: a greedy bot and a position-aware bot (standing on a Border Node deals 8 nodes
+  across 2 Zones before the hero commits). Draft: random picks vs cheapest-card picks. Trust a result
+  only if it holds at both ends. Watch dead turns for hunters (there is deliberately no pass action).
+- **Faction mark** on Level 2 mob cards (component to-do).
+- **Parked quest types.** *Gather/delivery quests* — risk: they pay for tokens that arrive free with
+  normal pulls; revisit as "any N of a category", "one of each", or vendor-trash delivery. *Border
+  quests* — risk: double-dipping with border kills.
+- **Relative Favored/Struggles (alternative, not adopted).** The locked definition is absolute
+  (lowest/highest cost%). It makes Grunt Favored for 8 of 9 classes and Enforcer Struggles for 8 of 9
+  at Level 1 (Level 2: 7 and 9), so matchup kill cards overlap the role cards for most heroes. If
+  testing shows problems in the sim or at the table, try ranking relative to the other classes
+  instead: the mobs where this class does best or worst compared with everyone else. Catch:
+  "Favored" would then mean "my edge", not "easy for me".
+
 ## Resolved
+
+### Level 1 Quest Draft and Kill Quests (Resolved 2026-10-12)
+
+Raised as "what if quests weren't all go-to-a-node-and-pull" and settled in design discussion; the
+rules live in `DESIGN_DOC.md` Section VI (Level 1 Quest Draft, Kill Quests, Class Guide). Reasoning
+worth keeping:
+- **Why a draft with a fixed 2 loot + 1 kill hand.** A random 3-of-8 hand from a mixed pool would put
+  0 to 3 kill quests in a hand, and kill quests can stack (one kill advances several), so a hand's
+  cost would swing widely. A fixed hand bounds the stacking and keeps the 6 XP gate intact. It also
+  resolves "Player-chosen quest pool" for Level 1.
+- **Why reverse priority, unique cards, "picks + 1" display.** Priority rotates each turn, so there
+  is no standing priority edge to offset; reverse order is just a one-time fairness convention. Unique
+  cards make the draft a real competition. "Picks + 1" mirrors the Armory's Heroes + 1 market.
+- **Free Zone choice.** Each Level 1 loot quest is tied to one node (4 in Zone 1, 4 in Zone 2), so
+  the draft makes route shape part of the choice; dominance is a measurement question (above).
+- **One kill advances every qualifying quest.** That is the efficiency puzzle, and why one card's
+  clauses are capped at two and a kill fills one clause per card.
+- **Colors.** Slot colors exist only to tell loot tokens apart, so kill cards have none.
+- **No pass action.** The Deal is the round clock for every occupied Zone; waiting a round just
+  costs the round. A pass would only help hunters in a multiplayer game, so it was not added.
+- **Level 1 pins.** Kill quests are 2 XP and 4/2/1/0 at Level 1, so difficulty is tuned through
+  count, filter and target danger. From Level 2 on, XP is the free dial.
+- **Favored/Struggles definition.** Absolute (lowest/highest cost%), lost hand = 100%, non-Elites only;
+  ties resolved by tail risk, then diversity. The relative alternative is parked above.
 
 ### Town Quest Markets & Visible Breadcrumbing (Resolved 2026-08-27)
 
 Raised and resolved together to address a UX guidance gap. Level 1 quests do not replenish, and when a hero hits 6 XP, their log empties. Previously, the hero had to know out-of-band to travel to Zone 3 or 4 to get Level 2 quests.
 
 **The mechanic:** The Level 2 Quest Deck consists of 3 copies of each of the 8 unique quests (24 cards total). Town 3 and Town 4 each feature a physical "Quest Market" on their board space -- 3 face-up quests dealt from the deck at the start of the game.
-- **Unique Dealing (No Duplicates):** A single player's active log, and a single Town's market, can never contain duplicates. When dealing initial Level 1 quests to a player, or refilling a Level 2 Town Market, you "draw until unique." If a duplicate of a quest already in that specific log/market is drawn, it is immediately placed in the discard pile and a new card is drawn.
+- **Unique Dealing (No Duplicates):** A single player's active log, and a single Town's market, can never contain duplicates. When refilling a Level 2 Town Market (Level 1 starter quests are drafted instead -- see "Level 1 Quest Draft and Kill Quests" below), you "draw until unique." If a duplicate of a quest already in that specific log/market is drawn, it is immediately placed in the discard pile and a new card is drawn.
 - **The UX Breadcrumb:** These face-up cards are visible to Level 1 players from Turn 1. When their log empties, they see physical cards sitting in Zone 3/4 waiting to be claimed, pulling them naturally to the next tier.
 - **Strategic Routing:** Because quests vary in length and reward, a player can look at the markets and choose to travel to the Town that best fits their strategy.
 - **Player Contention:** Because the deck has 3 copies of each quest, two different players can draw the exact same quest (or two different Towns can display it). This naturally drives players to the exact same nodes, forcing physical competition. If two heroes arrive at the same Town to claim the same face-up quest, the Priority Token breaks the tie. The first player takes it; the second player takes what's left or draws blind.
