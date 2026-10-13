@@ -245,6 +245,9 @@ class HeroBoardState:
     # LEVELING_GUIDE.md's "Purchased upgrade order" entry): a personally-shuffled deck of
     # upgrade cards, revealed one at a time, not player-selected and not identical across every
     # hero of the same class. Empty for a class with no Level 2 slate at all.
+    kill_progress: dict = field(default_factory=dict)  # kill-quest card name -> kills banked
+    # per clause (kill_quests.py, DESIGN_DOC.md Section VI "Kill Quests"). Lives on the card,
+    # not in the Bag: no token, no slot. Empty unless kill-quest mode is on.
 
 
 @dataclass

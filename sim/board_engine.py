@@ -43,6 +43,12 @@ import macro_sim as M
 import equipment_data as EQ
 import spice_data as SD
 from board_state import HeroBoardState
+import kill_quests as KQ
+
+# Level 1 starter-quest hook (kill_quests.enable installs it): called as
+# hook(hero, class_name, rng) -> [quest names] in place of the random 3-of-8 draw in
+# _town_automatic_setup. None (the default) leaves the original draw untouched.
+STARTER_QUEST_HOOK = None
 
 # tier string (macro_sim's own ZONE_TIER values) -> level deck key (board_state.LevelDeck's
 # own numbering, 1 or 2). Two independently-declared vocabularies for the same underlying
@@ -91,10 +97,22 @@ def choose_node_to_declare(hero, zone_board, quest_pool):
     """Which dealt Node in this Zone to pull at this turn -- prioritizes incomplete quest
     nodes first, then high-value Spice cards, then any legal node."""
     incomplete = [loot for loot in hero.active_quests
-                  if M._accessible_count(hero.bag, hero.locked, loot) < quest_pool[loot]["required"]]
+                  if not KQ.is_kill(quest_pool[loot])
+                  and M._accessible_count(hero.bag, hero.locked, loot) < quest_pool[loot]["required"]]
+    quest_nodes = []
     for loot in incomplete:
         node_name = next((n for n, (tier, l) in M.NODES.items() if l == loot and n in zone_board.dealt), None)
         if node_name is not None and zone_board.dealt[node_name] is not None and zone_board.dealt[node_name] != B.SPICE:
+            quest_nodes.append(node_name)
+    if quest_nodes:
+        # Kill-quest mode only (advances() is always False otherwise): among the loot-quest
+        # nodes on offer, prefer one whose dealt mob ALSO advances an open kill quest.
+        for node_name in quest_nodes:
+            if KQ.advances(hero, quest_pool, hero.class_name, zone_board.dealt[node_name]):
+                return node_name
+        return quest_nodes[0]
+    for node_name, card in zone_board.dealt.items():
+        if card is not None and card != B.SPICE and KQ.advances(hero, quest_pool, hero.class_name, card):
             return node_name
     for node_name, card in zone_board.dealt.items():
         if card is not None and card != B.SPICE and (SD.is_spice_combat(card) or SD.is_spice_event(card)):
@@ -300,12 +318,17 @@ def _pull_and_resolve(hero, class_name, mod, mob_name, loot_name, rng, suppress_
         # every other pull, not a separate rule for recovery" (run_one_trip's own comment,
         # verbatim). Only the quest LOOT is suppressed.
         hero.gold += 1
+        KQ.record_kill(hero, mob_base)
         if suppress_loot:
             return {"outcome": "win", "mob_name": mob_base}
             
         drops_loot = "_loot" in mob_name or mob_base in LV.ELITE_MELEE
         drops_double_loot = mob_base in LV.ELITE_MELEE
-        if not M._add_loot(hero.bag, hero.locked, loot_name):
+        # Quest Token only "if the Node matches your active quest" (DESIGN_DOC Section VII, Phase 5).
+        # Fixed 2026-10-12: the engine used to hand it out on every Node win, so a hero could
+        # pre-collect tokens for quests not yet taken. Extra tokens for an already-full quest are
+        # never claimed (a turn-in uses them up and they cost a Bag slot).
+        if KQ.wants_token(hero, loot_name) and not M._add_loot(hero.bag, hero.locked, loot_name):
             return {"outcome": "no_room", "mob_name": mob_base, "drops_loot": drops_loot, "drops_double_loot": drops_double_loot}
         return {"outcome": "win", "mob_name": mob_base, "drops_loot": drops_loot, "drops_double_loot": drops_double_loot}
     return {"outcome": "flee", "mob_name": mob_base}
@@ -357,7 +380,8 @@ def commit_scroll_vanquish(hero, node_name, mob_name):
     _tier, loot_name = M.NODES[node_name]
     hero.turns += 1
     hero.gold += 1
-    if not M._add_loot(hero.bag, hero.locked, loot_name):
+    KQ.record_kill(hero, mob_name)
+    if KQ.wants_token(hero, loot_name) and not M._add_loot(hero.bag, hero.locked, loot_name):
         return {"outcome": "no_room", "mob_name": mob_name}
     return {"outcome": "win", "mob_name": mob_name}
 
@@ -433,12 +457,15 @@ def _town_automatic_setup(hero, class_name, strategy, rng, board, restock=True, 
         turned_in = []
         for loot in hero.active_quests:
             q = pool[loot]
-            collected = M._accessible_count(hero.bag, hero.locked, loot)
+            collected = KQ.progress(hero, loot, q) if KQ.is_kill(q) else M._accessible_count(hero.bag, hero.locked, loot)
             if collected >= q["required"]:
                 hero.gold += q["gold_ladder"][min(hero.decay_stage[loot], len(q["gold_ladder"]) - 1)]
                 hero.xp += q["base_xp"]
                 hero.decay_stage[loot] = 0
-                M._remove_loot(hero.bag, hero.locked, loot, collected)
+                if KQ.is_kill(q):
+                    KQ.reset(hero, loot)
+                else:
+                    M._remove_loot(hero.bag, hero.locked, loot, collected)
                 turned_in.append(loot)
             else:
                 hero.decay_stage[loot] = min(hero.decay_stage[loot] + 1, len(q["gold_ladder"]) - 1)
@@ -485,6 +512,8 @@ def _town_automatic_setup(hero, class_name, strategy, rng, board, restock=True, 
                     hero.active_quests.append(board.town_markets[zone_id].pop(0))
                 board.draw_unique_quest(board.town_markets[zone_id], 3 - len(board.town_markets[zone_id]), rng)
                 hero.acquired.add("started_l2_quests")
+        elif STARTER_QUEST_HOOK is not None:
+            hero.active_quests = STARTER_QUEST_HOOK(hero, class_name, rng)
         else:
             hero.active_quests = rng.sample(list(pool.keys()), min(M.ACTIVE_QUEST_COUNT, len(pool)))
 
@@ -541,7 +570,10 @@ def resolve_town_turn(hero, class_name, strategy, purchase_queue, purchase_polic
     if zone_id in M.TRAINER_ZONES:
         trainer_setup = _trainer_automatic_setup(hero, class_name)
         mandatory_turn = trainer_setup["mandatory_turn"]
-        trainer_queue = [item for item in purchase_queue if item["kind"] == "skill"]
+        # Purchased upgrades are Level 2+ cards: no buying before the 6 XP threshold (found
+        # 2026-10-12 -- a Level 1 hero at the Zone 2 Trainer was buying skill_0 for 8 Gold).
+        trainer_queue = ([item for item in purchase_queue if item["kind"] == "skill"]
+                         if hero.xp >= M.LEVEL2_XP_THRESHOLD else [])
         hero.gold, purchase_trainer_turn = M._walk_purchase_queue(
             trainer_queue, hero.acquired, hero.bag, hero.locked, zone_id, hero.gold, purchase_policy,
             skill_purchase_order=hero.skill_purchase_order or None)
@@ -645,6 +677,8 @@ def get_town_actions(hero, purchase_queue, board=None):
             continue
         if item["requires_trainer"] != at_trainer:
             continue
+        if item["kind"] == "skill" and hero.xp < M.LEVEL2_XP_THRESHOLD:
+            continue   # purchased upgrades are Level 2+ (see resolve_town_turn)
         if item["requires_l2_started"] and "started_l2_quests" not in hero.acquired:
             continue
         if available_skill_indices is not None and item["kind"] == "skill":
@@ -1346,6 +1380,7 @@ def resolve_border_crossing(hero, class_name, border_name, target_zone, mob_name
         hero.position = (border_name, None)
         if win:
             hero.gold += 1
+            KQ.record_kill(hero, mob_name)
         return {"outcome": "win" if win else "flee", "mob_name": mob_name}
 
 
@@ -1384,11 +1419,13 @@ def decide_travel(hero, class_name, quest_pool, fallback_target_zones, risk_tole
         node_name = None
     else:
         incomplete = [loot for loot in hero.active_quests
-                      if M._accessible_count(hero.bag, hero.locked, loot) < quest_pool[loot]["required"]]
-        if not incomplete:
+                      if not KQ.is_kill(quest_pool[loot])
+                      and M._accessible_count(hero.bag, hero.locked, loot) < quest_pool[loot]["required"]]
+        kill_open = KQ.incomplete_kill_cards(hero, quest_pool)
+        if not incomplete and not kill_open:
             return {"action": "end_trip"}
 
-        if not M._bag_has_room(hero.bag, hero.locked):
+        if incomplete and not M._bag_has_room(hero.bag, hero.locked):
             food_index = next((i for i, s in enumerate(hero.bag) if not hero.locked[i] and s == "food"), None)
             if food_index is not None:
                 hero.hp = hero.max_hp
@@ -1403,10 +1440,17 @@ def decide_travel(hero, class_name, quest_pool, fallback_target_zones, risk_tole
                 M._remove_item(hero.bag, hero.locked, "potion", 1)
                 hero.consumables_used["potion"] += 1
 
-        same_zone_first = sorted(incomplete, key=lambda loot: M._hop_distance(
-            zone_id, M.NODE_ZONE[next(n for n, (t, l) in M.NODES.items() if l == loot)]))
-        node_name = next(n for n, (tier, loot) in M.NODES.items() if loot == same_zone_first[0])
-        target_zone = M.NODE_ZONE[node_name]
+        if incomplete:
+            same_zone_first = sorted(incomplete, key=lambda loot: M._hop_distance(
+                zone_id, M.NODE_ZONE[next(n for n, (t, l) in M.NODES.items() if l == loot)]))
+            node_name = next(n for n, (tier, loot) in M.NODES.items() if loot == same_zone_first[0])
+            target_zone = M.NODE_ZONE[node_name]
+        else:
+            # Kill quests only: no Node to route toward. Hunt where the hero already stands (the
+            # "stay" policy; the "border" policy is _hunt_turn's) or in the nearest quest Zone.
+            node_name = "__hunt__"
+            target_zone = (zone_id if isinstance(zone_id, int) and zone_id in fallback_target_zones
+                           else min(fallback_target_zones, key=lambda z: M._hop_distance(zone_id, z)))
 
     can_fly = (isinstance(zone_id, int) and zone_id in M.FLIGHT_PATH_ZONES
                and target_zone in M.FLIGHT_PATH_ZONES and zone_id != target_zone
@@ -1650,6 +1694,113 @@ def apply_competitive_death_post_processing(hero, quest_pool):
     hero.position = (zone_id, "town")
 
 
+def _apply_node_win_drops(hero, board, zone_id, level, node_name, outcome, rng):
+    """Gathering Token + mob-drop loot after a won Node pull -- factored out of run_solo_trip
+    verbatim (2026-10-12) so the Border-sitting hunt turn (_hunt_turn) shares it instead of
+    carrying a second copy. Mutates hero/board/outcome in place."""
+    if outcome.get("outcome") == "win" and zone_id in board.zones:
+        gathering_item = board.zones[zone_id].gathering_tokens.get(node_name)
+        if gathering_item:
+            if M._bag_has_room(hero.bag, hero.locked):
+                M._add_item(hero.bag, hero.locked, gathering_item)
+                board.zones[zone_id].gathering_tokens.pop(node_name)
+                outcome["gathering_item"] = gathering_item
+            else:
+                hero.pending_loot.append(gathering_item)
+                board.zones[zone_id].gathering_tokens.pop(node_name)
+                outcome["gathering_item_pending"] = gathering_item
+
+        if outcome.get("drops_loot") and hasattr(board, "loot_decks"):
+            num_draws = 2 if outcome.get("drops_double_loot") else 1
+            deck = board.loot_decks.get(level)
+            if deck:
+                for _ in range(num_draws):
+                    card = deck.draw(rng)
+                    if card:
+                        if M._bag_has_room(hero.bag, hero.locked):
+                            M._add_item(hero.bag, hero.locked, card)
+                        else:
+                            hero.pending_loot.append(card)
+
+
+def _hunt_turn(hero, class_name, quest_pool, valid_zones, board, rng,
+               risk_tolerance, risk_tolerance_base, risk_only_as_last_resort):
+    """One round of the Border-sitting kill hunt (kill_quests.HUNT_POLICY == "border"; only ever
+    called while kill quests are the hero's ONLY open quests -- kill_quests.hunting).
+
+    Standing on a Border Node deals BOTH connected Zones (DESIGN_DOC Section VII, Phase 1), so
+    the bot sees 8 cards instead of 4. If any dealt mob advances an open kill quest, the hero
+    walks (free) to that Node and fights the cheapest such mob. If none does: a hero standing in
+    a Zone pays the Border toll to the other Zone (a turn -- but the toll pull is itself a kill
+    chance, picking a kill-advancing candidate over the safer one, and it parks the hero back on
+    the Border for next round); a hero already on the Border takes the cheapest pullable Node
+    anyway (+1 Gold, mob drops) and lands in that Zone.
+
+    Returns None to keep hunting, or {"death_node": <node/marker or None>} when the trip is over
+    (death, a declined pull, a full Bag, or nothing declarable)."""
+    pos = hero.position[0]
+    zones = [pos] if isinstance(pos, int) else sorted(M.BORDER_NODES[pos])
+    zones = [z for z in zones if z in valid_zones]
+    levels = {z: TIER_TO_LEVEL[M.ZONE_TIER[z]] for z in zones}
+    for z in zones:
+        B.deal_zone(board, z, levels[z], _nodes_in_zone(z), rng)
+    offers = [(z, n, board.zones[z].dealt[n]) for z in zones for n in legal_node_declares(board.zones[z])]
+    pullable = [o for o in offers if KQ._role(o[2]) is not None]
+
+    def discard_all():
+        for z in zones:
+            B.discard_zone(board, z, levels[z])
+
+    pick = None
+    matching = [o for o in pullable if KQ.advances(hero, quest_pool, class_name, o[2])]
+    if matching:
+        best = _best_scouted_candidate(class_name, [o[2] for o in matching])
+        pick = next(o for o in matching if o[2] == best)
+    elif isinstance(pos, int) and len(valid_zones) > 1:
+        other = next(z for z in sorted(valid_zones) if z != pos)
+        border_name, next_zone = M._next_border_toward(pos, other)
+        discard_all()
+        # Same affordability gate decide_travel applies before committing to a toll.
+        mod = M.CARD_SOURCE[class_name]
+        has_consumable = risk_only_as_last_resort and any(
+            not hero.locked[i] and (hero.bag[i] == "food" or M._is_potion_slot(hero.bag[i]))
+            for i in range(len(hero.bag)))
+        with LV.leveled_kit(mod, _level2_swaps_for(class_name, hero.acquired)):
+            best_mob = M._best_case_mob(class_name, M.ZONE_TIER[next_zone])
+            exceeds = M._pull_exceeds_risk(mod, M.HAS_STANCE[class_name], best_mob, class_name,
+                                            hero.hp, risk_tolerance_base)
+        if exceeds and not has_consumable:
+            return {"death_node": None}
+        level_deck = board.level_decks[TIER_TO_LEVEL[M.ZONE_TIER[next_zone]]]
+        scouted = _draw_scouted_candidates(level_deck, rng)
+        mob_name = (KQ.choose_scouted(hero, quest_pool, class_name, scouted)
+                    or _best_scouted_candidate(class_name, scouted))
+        outcome = resolve_border_crossing(hero, class_name, border_name, next_zone, mob_name, rng,
+                                           risk_tolerance_base, risk_only_as_last_resort)
+        if outcome["outcome"] == "died":
+            return {"death_node": outcome["death_marker"]}
+        return None
+    elif pullable:
+        best = _best_scouted_candidate(class_name, [o[2] for o in pullable])
+        pick = next(o for o in pullable if o[2] == best)
+
+    if pick is None:
+        discard_all()
+        return {"death_node": None}  # nothing declarable
+
+    z, node_name, mob_name = pick
+    hero.position = (z, None)
+    outcome = resolve_node_pull(hero, class_name, node_name, mob_name, quest_pool, rng,
+                                 risk_tolerance, risk_tolerance_base, risk_only_as_last_resort)
+    _apply_node_win_drops(hero, board, z, levels[z], node_name, outcome, rng)
+    discard_all()
+    if outcome["outcome"] == "died":
+        return {"death_node": node_name}
+    if outcome["outcome"] in ("declined", "no_room"):
+        return {"death_node": None}
+    return None
+
+
 def run_solo_trip(hero, class_name, quest_pool, fallback_target_zones, board, rng,
                    risk_tolerance, risk_tolerance_base, risk_only_as_last_resort):
     """One full field trip -- matches run_one_trip's own scope -- driven by decide_travel plus
@@ -1708,6 +1859,12 @@ def run_solo_trip(hero, class_name, quest_pool, fallback_target_zones, board, rn
         hero.alive = True
 
     while True:
+        if KQ.HUNT_POLICY == "border" and KQ.hunting(hero, quest_pool):
+            ended = _hunt_turn(hero, class_name, quest_pool, fallback_target_zones, board, rng,
+                                risk_tolerance, risk_tolerance_base, risk_only_as_last_resort)
+            if ended is not None:
+                return {"alive": hero.alive, "recovered": recovered, "death_node": ended["death_node"]}
+            continue
         action = decide_travel(hero, class_name, quest_pool, fallback_target_zones,
                                 risk_tolerance_base, risk_only_as_last_resort)
         if action["action"] == "end_trip":
@@ -1716,7 +1873,9 @@ def run_solo_trip(hero, class_name, quest_pool, fallback_target_zones, board, rn
         if action["action"] == "cross_border":
             tier = M.ZONE_TIER[action["target_zone"]]
             level_deck = board.level_decks[TIER_TO_LEVEL[tier]]
-            mob_name = scouted_pull_from_deck(class_name, level_deck, rng)
+            scouted = _draw_scouted_candidates(level_deck, rng)
+            mob_name = (KQ.choose_scouted(hero, quest_pool, class_name, scouted)
+                        or _best_scouted_candidate(class_name, scouted))
             outcome = resolve_border_crossing(hero, class_name, action["border_name"], action["target_zone"],
                                                mob_name, rng, risk_tolerance_base, risk_only_as_last_resort)
             if outcome["outcome"] == "died":
@@ -1742,30 +1901,7 @@ def run_solo_trip(hero, class_name, quest_pool, fallback_target_zones, board, rn
         mob_name = zone_board.dealt[node_name]
         outcome = resolve_node_pull(hero, class_name, node_name, mob_name, quest_pool, rng,
                                      risk_tolerance, risk_tolerance_base, risk_only_as_last_resort)
-        if outcome.get("outcome") == "win" and zone_id in board.zones:
-            gathering_item = board.zones[zone_id].gathering_tokens.get(node_name)
-            if gathering_item:
-                if M._bag_has_room(hero.bag, hero.locked):
-                    M._add_item(hero.bag, hero.locked, gathering_item)
-                    board.zones[zone_id].gathering_tokens.pop(node_name)
-                    outcome["gathering_item"] = gathering_item
-                else:
-                    hero.pending_loot.append(gathering_item)
-                    board.zones[zone_id].gathering_tokens.pop(node_name)
-                    outcome["gathering_item_pending"] = gathering_item
-
-            if outcome.get("drops_loot") and hasattr(board, "loot_decks"):
-                num_draws = 2 if outcome.get("drops_double_loot") else 1
-                deck = board.loot_decks.get(level)
-                if deck:
-                    for _ in range(num_draws):
-                        card = deck.draw(rng)
-                        if card:
-                            if M._bag_has_room(hero.bag, hero.locked):
-                                M._add_item(hero.bag, hero.locked, card)
-                            else:
-                                hero.pending_loot.append(card)
-
+        _apply_node_win_drops(hero, board, zone_id, level, node_name, outcome, rng)
         B.discard_zone(board, zone_id, level)  # end-of-turn cleanup regardless of outcome
         if outcome["outcome"] == "died":
             return {"alive": False, "recovered": recovered, "death_node": node_name}
@@ -1868,6 +2004,10 @@ def run_solo_chain(class_name, strategy, rng, max_turns, risk_tolerance=M.RISK_T
 
         if not trip_result["alive"]:
             apply_death_post_processing(hero, quest_pool, trip_result["death_node"])
+        elif KQ.ENABLED and isinstance(hero.position[0], str):
+            # Kill hunting can end a trip parked on a Border Node; Town business is keyed by
+            # Zone, so walk into the lower connected Zone first (free movement).
+            hero.position = (min(M.BORDER_NODES[hero.position[0]]), None)
 
         town_result = resolve_town_turn(hero, class_name, strategy, purchase_queue, purchase_policy, rng, board)
         yield (trip_result["alive"], town_result["gold_after_turnin"], hero.xp,
@@ -1921,6 +2061,8 @@ def _trainer_has_business(hero, class_name, purchase_queue):
         return True
     if purchase_queue is None:
         return False
+    if hero.xp < M.LEVEL2_XP_THRESHOLD:
+        return False   # purchased upgrades are Level 2+ (see resolve_town_turn)
     skills_acquired_so_far = sum(1 for tag in hero.acquired if tag.startswith("skill_"))
     for item in purchase_queue:
         if item["kind"] != "skill" or item["tag"] in hero.acquired:
