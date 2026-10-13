@@ -37,10 +37,14 @@ const ROLE_ICONS = {
   'warlord': '👑'
 };
 
-function formatRole(name) {
-  const key = (name || '').replace(/_L\d+$/i, '').toLowerCase();
+// A Class Guide entry is {mob: role, name: flavor name, cost: cost%}. The icon follows the role;
+// the printed text is the flavor name, since a level's mob can be a different stat block than the
+// same role at the other level.
+function formatMob(entry) {
+  const key = (entry.mob || '').replace(/_L\d+$/i, '').toLowerCase();
   const icon = ROLE_ICONS[key] || '';
-  return icon ? `${icon} ${name}` : name;
+  const text = `${entry.name} (${entry.cost}%)`;
+  return icon ? `${icon} ${text}` : text;
 }
 
 function matchupBlockHtml(label, m) {
@@ -48,10 +52,10 @@ function matchupBlockHtml(label, m) {
     <div class="matchup-block">
       <div class="matchup-label">${label}</div>
       <div class="matchup-row matchup-best">
-        <strong>Comfortable:</strong> ${formatRole(m.best_1)} (${m.best_1_cost}%), ${formatRole(m.best_2)} (${m.best_2_cost}%)
+        <strong>Favored:</strong> ${m.favored.map(formatMob).join(', ')}
       </div>
       <div class="matchup-row matchup-worst">
-        <strong>Struggles:</strong> ${formatRole(m.worst_1)} (${m.worst_1_cost}%), ${formatRole(m.worst_2)} (${m.worst_2_cost}%)
+        <strong>Struggles:</strong> ${m.struggles.map(formatMob).join(', ')}
       </div>
     </div>
   `;
