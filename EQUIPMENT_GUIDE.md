@@ -63,13 +63,12 @@ pull** — it cannot span rounds or carry into a later pull.
   mechanic upgrade sitting on a class's best card forever. This directly changes the risk
   profile of several ingredients originally flagged as dangerous (see below) — a rare, one-shot
   event is a fundamentally smaller thing to get wrong than a repeatable one.
-- Gear can never be lost or destroyed (explicit design call, WoW-style: gear needs "recharging,"
-  not repairing or replacing). Keeps the acquisition economy simpler — a hero's equipment
-  collection only ever grows, it's never a maintenance sink.
+- Gear can never be permanently lost or destroyed (explicit design call, WoW-style: gear is never deleted from your collection, but can require maintenance).
+- **Death & Blacksmith Repair (Locked 2026-10-06, DESIGN_DOC.md Section VIII.3):** While normal excursion usage merely taps/exhausts gear (untapping for free in Town), a **Hero Death (HP <= 0)** breaks **ALL currently equipped items** (flipping them face-down). Broken gear provides no stats or triggers until repaired at the Town Blacksmith Forge for a fee equal to the **item's level in Gold** (Level 1 item = 1 Gold, Level 2 item = 2 Gold).
 
 **Locked 2026-10-06 (Physical Components & Bag Rules):**
 - **Equipped Slots:** The Hero Tracker Board features 3 dedicated equipment slots (1 Weapon, 1 Armor, 1 Trinket) completely separate from the 3×3 Bag grid.
-- **Physical Durability:** Single-use per excursion. When an equipped card's rider is used during combat, the player taps the card 90° (or flips it face-down) in its slot. All equipped items untap automatically upon returning to Town.
+- **Physical Durability:** Single-use per excursion. When an equipped card's rider is used during combat, the player taps the card 90° in its slot. All equipped items untap automatically upon returning to Town (unless broken by death).
 - **Carrying Spare Gear (The Tucked Backpack):** A hero can carry unequipped spare gear in the wilderness. The physical Equipment Card tucks under the Backpack margin of the Hero Board (showing its top banner), and the player places a 1×1 "Packed Gear" punchboard token into a square in their 3×3 Bag grid to account for the consumed inventory space.
 - **Field Rule (Town-Only Swapping):** Equipment cannot be swapped in the field or mid-combat. Swapping between equipped slots and the tucked backpack is strictly a Town action. Spares found as loot in the field take 1 Bag slot until brought to Town.
 
@@ -287,8 +286,15 @@ To prevent recipe bloat, equipment is compressed into Grades (Tier 1 = Levels 1 
 - **Crafting Deck:** Fully printed item cards (e.g., "Honed Crag-Iron Blade") with material costs printed on them. Players browse the deck in Town. The Tier-gating keeps this deck small (~34 cards per Tier).
 - **Treasure Deck:** Unique, named loot drops (e.g., "The Ashbringer") with NO material costs printed on them, only a Gold value. Drawn from Elites or bought from a rotating Gold shop in Town.
 
-### 5. Pricing & Recipe Costs (Locked 2026-10-06)
-The full Gold and material price table in `sim/equipment_data.py` (Base material + Ingredient material + Ingredient Gold fee) is officially locked following full-campaign simulation (`_campaign_boss_sim.py`, 360 runs). The combination of material requirements and Gold fees reliably enables heroes to craft both a Weapon and Armor by turn ~34 with an average purse of 2.7g at the Tier Gate, preventing both gold poverty and infinite hoarding while hitting target boss win rates. Crafting is real and active in gameplay today (`board_engine.py`'s `craft_equipment` action).
+### 5. Pricing & Recipe Costs (Locked 2026-10-06, Re-Verified with Durability 2026-10-10)
+The full Gold and material price table in `sim/equipment_data.py` (Base material + Ingredient material + Ingredient Gold fee) is officially locked. 
+
+**Durability & Repair Balance (Verified 2026-10-10, `_campaign_boss_sim.py`, 360 runs across 9 classes):**
+Following the addition of the **Equipment Breakage on Death** rule and **Town Blacksmith Gold Repair Policy** (1G Grade 1, 2G Grade 2), macro-campaign sweeps confirmed:
+- **Purse Health:** Speedrunner purse at the Zone 4 Boss Gate averaged **2.5 Gold** (with heroes spending an average of **1.64 Gold** on forge repairs over the run), preserving the target ~2.7g purse equilibrium without creating gold poverty.
+- **Pacing:** Campaign duration remained stable at **34.3 average turns** to the Boss Gate.
+- **Soft-Lock Elimination:** Heroes arrived at the Boss Gate with fully functional gear in **98.9% of campaigns** (only 1.1% broken gear frequency), proving the AI repair policy successfully restores broken equipment before boss combat.
+- **Boss Performance with Active Gear:** Full-gear heroes achieved **89.8% Blind Draw Win Rate** and **93.8% Scout Token Win Rate** (Scout uplift: +4.0% Win Rate, -1.7% Deaths). Under Completionist mode, full L2 progression yielded **41.9 Gold**, **97.8% dual-gear loadouts**, and **98.1% Scout Win Rate**.
 
 ### 6. Pure-Tier Recipes & Minimum-Tier Material Substitution (Locked 2026-09-28)
 Following playtesting in Zone 2, the Lead Designer locked the material substitution and tier-gating rules:

@@ -42,6 +42,8 @@ import leveling_validation as LV
 import macro_sim as M
 import equipment_data as EQ
 import spice_data as SD
+import boss_data as BD
+import combat_engine as CE
 from board_state import HeroBoardState
 import kill_quests as KQ
 
@@ -276,8 +278,9 @@ def _pull_and_resolve(hero, class_name, mod, mob_name, loot_name, rng, suppress_
     pattern, mob_hp = M._pattern_hp_for_mob(class_name, mob_base)
     if hand is None:
         hand = rng.choice(mod.ALL_HANDS)
+    active_equipment = {k: v for k, v in hero.equipment.items() if k not in hero.equipment_broken}
     win, final_hp, final_rounds = M._engine_pull(class_name, mob_base, hand, pattern, mob_hp, hero.hp,
-                                                  decide_fn=decide_fn, equipment=hero.equipment, equipment_used=hero.equipment_used)
+                                                  decide_fn=decide_fn, equipment=active_equipment, equipment_used=hero.equipment_used)
     hero.hp = final_hp
     # One turn -- OPEN_QUESTIONS.md's "What a turn is" (locked): "Quest node: one pull is
     # one turn." A "declined" pull (returned above, before reaching here, resolve_node_pull
@@ -397,6 +400,136 @@ def commit_smoke_bomb_flee(hero):
     return {"outcome": "flee"}
 
 
+def finalize_boss_combat(hero, boss_id, outcome, state1=None, state2=None):
+    """
+    Finalizes the Capstone Tier Gate Boss combat (DESIGN_DOC.md Section VIII.3/VIII.4):
+    - Sets express transit to Town 5 (hero.position = (5, "town")).
+    - Marks 'completed_citadel_commission' in hero.acquired.
+    - Clears 'citadel_commission_active' from hero.acquired.
+    - Removes 'The Citadel Commission' from hero.active_quests if present.
+    - If Triumph: awards +5 Gold, +2 bounty credits, level3_dungeon_key, boss_trophy;
+      refreshes tapped equipment at Town.
+    - If Death (P1 or P2): breaks all currently equipped gear (hero.equipment_broken.update(hero.equipment.keys())),
+      hero dragged to Town 5 by scouts at 1 HP.
+    - If Timeout (P2) or Damage Fail (P1): hero retreats to Town 5 (1 HP for P1 damage fail, current HP for P2 timeout),
+      refreshes tapped equipment, 0 spoils.
+    """
+    hero.acquired.discard("citadel_commission_active")
+    hero.acquired.add("completed_citadel_commission")
+    if BD.CAPSTONE_QUEST_NAME in hero.active_quests:
+        hero.active_quests.remove(BD.CAPSTONE_QUEST_NAME)
+
+    hero.position = (5, "town")
+
+    res = {
+        "outcome": outcome,
+        "boss_id": boss_id,
+        "hero_hp": hero.hp,
+        "turns": hero.turns,
+        "state1": state1,
+        "state2": state2,
+    }
+
+    if outcome == "triumph":
+        hero.gold += BD.TRIUMPH_GOLD
+        hero.bounty_credits += BD.TRIUMPH_BOUNTY_CREDITS
+        hero.acquired.add(BD.TRIUMPH_KEY)
+        hero.acquired.add(BD.TRIUMPH_TROPHY)
+        hero.equipment_used.clear()
+        res["gold_gained"] = BD.TRIUMPH_GOLD
+        res["bounty_credits_gained"] = BD.TRIUMPH_BOUNTY_CREDITS
+        res["tokens_gained"] = BD.TRIUMPH_BOUNTY_CREDITS
+        res["key"] = BD.TRIUMPH_KEY
+        res["trophy"] = BD.TRIUMPH_TROPHY
+    elif outcome in ("death_p1", "death_p2"):
+        hero.alive = True
+        hero.hp = 1.0
+        if hero.equipment:
+            hero.equipment_broken.update(hero.equipment.keys())
+    elif outcome in ("damage_fail_p1", "timeout_p2"):
+        if outcome == "damage_fail_p1":
+            hero.hp = 1.0
+        hero.equipment_used.clear()
+
+    return res
+
+
+def resolve_boss_combat(hero, class_name, boss_id, rng,
+                        decide_fn_p1=None, hand_p1=None,
+                        decide_fn_p2=None, hand_p2=None):
+    """
+    Executes the continuous 2-phase 6-round Tier Gate Boss encounter against boss_id.
+    - Phase 1 (Rounds 1-3): Hero starts at Max HP. Must deal lethal damage to Phase 1 HP
+      within 3 rounds. If boss HP > 0 after round 3: Damage Timeout (damage_fail_p1),
+      boss does not flip, express transit to Town 5 at 1 HP.
+    - Phase 2 (Rounds 4-6): Hero HP carries directly from P1 (no resting/food). Equipment
+      used in P1 remains used. Hero draws a fresh 4-card hand from their 6-card deck.
+    - Triumph: Boss P2 HP <= 0 and Hero HP > 0 (+5 Gold, Key, Trophy, express transit to Town 5).
+    - Timeout P2: Boss P2 HP > 0 after round 6 and Hero HP > 0 (express transit to Town 5, 0 spoils).
+    - Death (P1 or P2): Hero HP <= 0 (all equipment breaks, scouts drag hero to Town 5, 0 spoils).
+    """
+    mod = M.CARD_SOURCE[class_name]
+    hero.hp = hero.max_hp
+    active_equipment = {k: v for k, v in hero.equipment.items() if k not in hero.equipment_broken}
+    hero.turns += 1
+
+    with LV.leveled_kit(mod, _level2_swaps_for(class_name, hero.acquired)):
+        # --- Phase 1 ---
+        if hand_p1 is None:
+            hand_p1 = rng.choice(mod.ALL_HANDS)
+        p1_pattern, p1_hp = BD.get_phase_pattern_hp(boss_id, 1, class_name)
+        p1_mob = f"{boss_id}_p1"
+        state1 = CE.new_pull_with_hp(
+            class_name=class_name, mob_name=p1_mob, hand=hand_p1,
+            pattern=p1_pattern, mob_hp=p1_hp, starting_hp=hero.hp,
+            equipment=active_equipment, equipment_used=hero.equipment_used,
+            max_rounds=3
+        )
+        decide1 = decide_fn_p1 if decide_fn_p1 is not None else CE.QuestIntelligence().decide_combat
+        while state1.outcome is None:
+            actions1 = CE.get_legal_actions(state1)
+            act1 = decide1(state1, actions1)
+            state1 = CE.apply_action(state1, act1)
+
+        hero.hp = state1.hero_hp
+
+        if state1.outcome == "loss" or hero.hp <= 0:
+            return finalize_boss_combat(hero, boss_id, "death_p1", state1=state1)
+
+        p1_win = (state1.outcome == "win" or state1.mob_hp_remaining <= 0)
+        if not p1_win:
+            return finalize_boss_combat(hero, boss_id, "damage_fail_p1", state1=state1)
+
+        # --- Phase 2 ---
+        if hand_p2 is None:
+            hand_p2 = rng.choice(mod.ALL_HANDS)
+        p2_pattern, p2_hp = BD.get_phase_pattern_hp(boss_id, 2, class_name)
+        p2_mob = f"{boss_id}_p2"
+        state2 = CE.new_pull_with_hp(
+            class_name=class_name, mob_name=p2_mob, hand=hand_p2,
+            pattern=p2_pattern, mob_hp=p2_hp, starting_hp=hero.hp,
+            equipment=active_equipment, eq_state=state1.eq_state,
+            equipment_used=hero.equipment_used,
+            max_rounds=3
+        )
+        decide2 = decide_fn_p2 if decide_fn_p2 is not None else CE.QuestIntelligence().decide_combat
+        while state2.outcome is None:
+            actions2 = CE.get_legal_actions(state2)
+            act2 = decide2(state2, actions2)
+            state2 = CE.apply_action(state2, act2)
+
+        hero.hp = state2.hero_hp
+
+        if state2.outcome == "loss" or hero.hp <= 0:
+            return finalize_boss_combat(hero, boss_id, "death_p2", state1=state1, state2=state2)
+
+        p2_win = (state2.outcome == "win" or state2.mob_hp_remaining <= 0)
+        if p2_win:
+            return finalize_boss_combat(hero, boss_id, "triumph", state1=state1, state2=state2)
+        else:
+            return finalize_boss_combat(hero, boss_id, "timeout_p2", state1=state1, state2=state2)
+
+
 def _trainer_automatic_setup(hero, class_name):
     """The free, automatic part of a Trainer visit -- the mandatory upgrade grant. Split out
     2026-08-24 from _town_automatic_setup once the Class Trainer became its own turn-costing
@@ -420,6 +553,12 @@ def _trainer_automatic_setup(hero, class_name):
             and "mandatory" not in hero.acquired):
         hero.acquired.add("mandatory")
         mandatory_turn = True
+
+    zone_id = hero.position[0] if isinstance(hero.position, tuple) else hero.position
+    if (zone_id in BD.CAPSTONE_ZONES and hero.xp >= BD.CAPSTONE_XP_THRESHOLD
+            and "completed_citadel_commission" not in hero.acquired
+            and "citadel_commission_active" not in hero.acquired):
+        hero.acquired.add("citadel_commission_active")
     return {"mandatory_turn": mandatory_turn}
 
 
@@ -483,7 +622,7 @@ def _town_automatic_setup(hero, class_name, strategy, rng, board, restock=True, 
             # _trip_chain -- see that function's own comment for the full finding). No market
             # here means no refill opens at THIS turn-in; deliberately not deciding whether a
             # non-market Town should refill from somewhere else instead.
-            market = board.town_markets.get(zone_id) if refill_quests else None
+            market = board.town_markets.get(zone_id) if (refill_quests and hero.xp < 14) else None
             if market is not None:
                 while len(newly_active) < len(turned_in) and market:
                     newly_active.append(market.pop(0))
@@ -506,7 +645,7 @@ def _town_automatic_setup(hero, class_name, strategy, rng, board, restock=True, 
         board.draw_unique_quest(board.town_markets[zone_id], 3 - len(board.town_markets[zone_id]), rng)
     if not hero.active_quests and zone_id in valid_quest_zones:
         if pool is M.LEVEL2_QUESTS:
-            if refill_quests:
+            if refill_quests and hero.xp < 14:
                 hero.active_quests = []
                 while len(hero.active_quests) < M.ACTIVE_QUEST_COUNT and board.town_markets[zone_id]:
                     hero.active_quests.append(board.town_markets[zone_id].pop(0))
@@ -554,6 +693,17 @@ def resolve_town_turn(hero, class_name, strategy, purchase_queue, purchase_polic
     quests" separately from "then spent Y at the shop"), not used internally."""
     zone_id, _node = hero.position
     setup = _town_automatic_setup(hero, class_name, strategy, rng, board)
+
+    # AI Blacksmith repair policy: repair broken equipment if affordable before shopping
+    if hero.equipment_broken:
+        for slot in sorted(list(hero.equipment_broken)):
+            item = hero.equipment.get(slot)
+            if item:
+                item_level = item.get("grade", 1) if isinstance(item, dict) else 1
+                if hero.gold >= item_level:
+                    hero.gold -= item_level
+                    hero.repair_gold_spent = getattr(hero, "repair_gold_spent", 0) + item_level
+                    hero.equipment_broken.discard(slot)
 
     town_queue = [item for item in purchase_queue if item["kind"] != "skill"]
     hero.gold, _ = M._walk_purchase_queue(
@@ -697,7 +847,7 @@ def get_town_actions(hero, purchase_queue, board=None):
 
     if not at_trainer:
         if board and zone_id in (3, 4) and len(hero.active_quests) < M.ACTIVE_QUEST_COUNT:
-            if hero.xp >= M.LEVEL2_XP_THRESHOLD:
+            if M.LEVEL2_XP_THRESHOLD <= hero.xp < 14:
                 for quest in board.town_markets.get(zone_id, []):
                     actions.append({"type": "take_quest", "quest_name": quest})
 
@@ -753,6 +903,20 @@ def get_town_actions(hero, purchase_queue, board=None):
                     "consume_items": consume_items,
                 })
 
+        if hero.equipment_broken:
+            for slot in sorted(hero.equipment_broken):
+                item = hero.equipment.get(slot)
+                if item:
+                    item_level = item.get("grade", 1) if isinstance(item, dict) else 1
+                    item_name = item.get("name", slot.replace("_", " ").title()) if isinstance(item, dict) else str(item)
+                    if hero.gold >= item_level:
+                        actions.append({
+                            "type": "repair_equipment",
+                            "slot": slot,
+                            "item_name": item_name,
+                            "cost": item_level,
+                        })
+
     actions.append({"type": "leave_trainer" if at_trainer else "leave_town"})
     return actions
 
@@ -800,6 +964,15 @@ def apply_town_action(hero, action, purchase_queue, board=None, rng=None):
         # already-used item in the same slot -- without this, the new item would be
         # incorrectly pre-locked by the old item's Durability status.
         hero.equipment_used.discard(recipe["slot"])
+        hero.equipment_broken.discard(recipe["slot"])
+        return True
+
+    if action["type"] == "repair_equipment":
+        slot = action["slot"]
+        cost = action["cost"]
+        hero.gold -= cost
+        hero.repair_gold_spent = getattr(hero, "repair_gold_spent", 0) + cost
+        hero.equipment_broken.discard(slot)
         return True
 
     if action["type"] in ("leave_town", "leave_trainer"):
@@ -813,6 +986,8 @@ def apply_town_action(hero, action, purchase_queue, board=None, rng=None):
         return False
 
     if action["type"] == "take_quest":
+        if hero.xp >= 14:
+            return False
         zone_id, _node = hero.position
         quest = action["quest_name"]
         if board and quest in board.town_markets.get(zone_id, []):
@@ -914,27 +1089,38 @@ def get_travel_actions(hero, board, rng):
 
     if isinstance(zone_or_border, int):
         zone_id = zone_or_border
-        level = TIER_TO_LEVEL[M.ZONE_TIER[zone_id]]
-        if zone_id not in board.zones or not board.zones[zone_id].dealt:
-            B.deal_zone(board, zone_id, level, _nodes_in_zone(zone_id), rng)
-        zone_board = board.zones[zone_id]
-        for node_name in legal_node_declares(zone_board):
-            mob_name = zone_board.dealt[node_name]
-            actions.append({"type": "declare_node", "node_name": node_name, "mob_name": mob_name})
-            if has_scroll and mob_name in B._STANDARD_MOBS:
-                actions.append({"type": "use_scroll", "node_name": node_name, "mob_name": mob_name})
-            if has_smoke_bomb:
-                actions.append({"type": "use_smoke_bomb", "node_name": node_name, "mob_name": mob_name})
-        for border_name, connects in M.BORDER_NODES.items():
-            if zone_id in connects:
-                target_zone = next(iter(connects - {zone_id}))
-                actions.append({"type": "cross_border", "border_name": border_name, "target_zone": target_zone})
+        if zone_id == 5:
+            # Town 5 / Zone 5 is the terminal milestone hub for Tier 2.
+            # Tier 3 overland nodes are not yet in the map graph.
+            actions.append({"type": "return_to_town"})
+            actions.append({"type": "enter_zone", "target_zone": 4})
+        else:
+            level = TIER_TO_LEVEL[M.ZONE_TIER[zone_id]]
+            if zone_id not in board.zones or not board.zones[zone_id].dealt:
+                B.deal_zone(board, zone_id, level, _nodes_in_zone(zone_id), rng)
+            zone_board = board.zones[zone_id]
+            for node_name in legal_node_declares(zone_board):
+                mob_name = zone_board.dealt[node_name]
+                actions.append({"type": "declare_node", "node_name": node_name, "mob_name": mob_name})
+                if has_scroll and mob_name in B._STANDARD_MOBS:
+                    actions.append({"type": "use_scroll", "node_name": node_name, "mob_name": mob_name})
                 if has_smoke_bomb:
-                    actions.append({"type": "use_smoke_bomb", "border_name": border_name,
-                                     "target_zone": target_zone})
-        if zone_id in M.FLIGHT_PATH_ZONES and hero.gold >= M.FLIGHT_PATH_COST:
-            target_zone = next(iter(M.FLIGHT_PATH_ZONES - {zone_id}))
-            actions.append({"type": "flight_path", "target_zone": target_zone, "cost": M.FLIGHT_PATH_COST})
+                    actions.append({"type": "use_smoke_bomb", "node_name": node_name, "mob_name": mob_name})
+            for border_name, connects in M.BORDER_NODES.items():
+                if zone_id in connects:
+                    target_zone = next(iter(connects - {zone_id}))
+                    actions.append({"type": "cross_border", "border_name": border_name, "target_zone": target_zone})
+                    if has_smoke_bomb:
+                        actions.append({"type": "use_smoke_bomb", "border_name": border_name,
+                                         "target_zone": target_zone})
+            if zone_id in M.FLIGHT_PATH_ZONES and hero.gold >= M.FLIGHT_PATH_COST:
+                target_zone = next(iter(M.FLIGHT_PATH_ZONES - {zone_id}))
+                actions.append({"type": "flight_path", "target_zone": target_zone, "cost": M.FLIGHT_PATH_COST})
+            if zone_id in BD.CAPSTONE_ZONES and "citadel_commission_active" in hero.acquired and "completed_citadel_commission" not in hero.acquired:
+                for landmark_node in BD.CAPSTONE_LANDMARK_NODES:
+                    actions.append({"type": "challenge_boss", "landmark_node": landmark_node, "use_scout_token": False})
+                    if hero.scout_tokens > 0:
+                        actions.append({"type": "challenge_boss", "landmark_node": landmark_node, "use_scout_token": True})
     else:
         border_name = zone_or_border
         for target_zone in M.BORDER_NODES[border_name]:
@@ -1126,6 +1312,50 @@ def apply_travel_action(hero, action, class_name, board, rng,
         zone_or_border, _node = hero.position
         hero.position = (zone_or_border, "trainer")
         return {"outcome": "moved"}
+
+    if action["type"] == "challenge_boss":
+        zone_id = hero.position[0] if isinstance(hero.position, tuple) else 4
+        level = TIER_TO_LEVEL[M.ZONE_TIER[zone_id]]
+        if action.get("boss_id"):
+            boss_id = action["boss_id"]
+            res = resolve_boss_combat(hero, class_name, boss_id, rng,
+                                       decide_fn_p1=decide_fn, hand_p1=hand)
+            if not defer_zone_discard and zone_id in board.zones:
+                B.discard_zone(board, zone_id, level)
+            return res
+
+        use_scout = action.get("use_scout_token", False) and hero.scout_tokens > 0
+        if use_scout:
+            hero.scout_tokens -= 1
+            _, candidates = BD.draw_bosses(rng, scout_token=True)
+            if action.get("reveal_only", False) or action.get("interactive", False):
+                return {
+                    "outcome": "boss_reveal",
+                    "candidates": candidates,
+                    "landmark_node": action.get("landmark_node"),
+                    "use_scout_token": True,
+                }
+            boss_id = BD.best_boss_for_class(class_name, candidates)
+            res = resolve_boss_combat(hero, class_name, boss_id, rng,
+                                       decide_fn_p1=decide_fn, hand_p1=hand)
+            if not defer_zone_discard and zone_id in board.zones:
+                B.discard_zone(board, zone_id, level)
+            return res
+        else:
+            _, candidates = BD.draw_bosses(rng, scout_token=False)
+            if action.get("reveal_only", False):
+                return {
+                    "outcome": "boss_reveal",
+                    "candidates": candidates,
+                    "landmark_node": action.get("landmark_node"),
+                    "use_scout_token": False,
+                }
+            boss_id = candidates[0]
+            res = resolve_boss_combat(hero, class_name, boss_id, rng,
+                                       decide_fn_p1=decide_fn, hand_p1=hand)
+            if not defer_zone_discard and zone_id in board.zones:
+                B.discard_zone(board, zone_id, level)
+            return res
 
     # return_to_town -- free, matches Golden Rule 1 ("travel itself is free"). If currently on
     # a Border Node, "returning to Town" means walking into whichever connected Zone is
@@ -1363,8 +1593,9 @@ def resolve_border_crossing(hero, class_name, border_name, target_zone, mob_name
 
         if hand is None:
             hand = rng.choice(mod.ALL_HANDS)
+        active_equipment = {k: v for k, v in hero.equipment.items() if k not in hero.equipment_broken}
         win, final_hp, final_rounds = M._engine_pull(class_name, mob_name, hand, pattern, mob_hp, hero.hp,
-                                                       decide_fn=decide_fn, equipment=hero.equipment, equipment_used=hero.equipment_used)
+                                                       decide_fn=decide_fn, equipment=active_equipment, equipment_used=hero.equipment_used)
         hero.hp = final_hp
         # One turn -- "Border Node: one turn, same as any other node -- the Scouted Pull toll
         # pull is the action taken there" (OPEN_QUESTIONS.md, locked). Unlike resolve_node_pull,
@@ -1662,6 +1893,8 @@ def apply_death_post_processing(hero, quest_pool, death_node):
         q = quest_pool[loot]
         hero.decay_stage[loot] = min(hero.decay_stage.get(loot, 0) + 1, len(q["gold_ladder"]) - 1)
     hero.corpse_node = death_node
+    if hero.equipment:
+        hero.equipment_broken.update(hero.equipment.keys())
     if death_node and death_node.startswith("border:"):
         _, _, origin_zone_s, _ = death_node.split(":")
         hero.position = (int(origin_zone_s), "town")

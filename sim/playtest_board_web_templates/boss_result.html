@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>QUEST — Boss Encounter Outcome: {{ outcome|upper }}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Crimson+Pro:ital,wght@0,400;0,600;1,400&family=Barlow+Condensed:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='cards.css') }}">
+    <style>
+        .result-container { max-width: 850px; margin: 0 auto; padding: 24px; text-align: center; }
+        .outcome-banner {
+            border-radius: 8px; padding: 24px; margin-bottom: 24px;
+            box-shadow: 0 0 24px rgba(0,0,0,0.6);
+        }
+        .banner-triumph {
+            background: linear-gradient(135deg, #1b3a1b 0%, #0a1f0a 100%);
+            border: 2px solid #4caf50; box-shadow: 0 0 24px rgba(76, 175, 80, 0.4);
+        }
+        .banner-fail {
+            background: linear-gradient(135deg, #3e2723 0%, #1b110e 100%);
+            border: 2px solid #ff9800; box-shadow: 0 0 24px rgba(255, 152, 0, 0.4);
+        }
+        .banner-death {
+            background: linear-gradient(135deg, #371414 0%, #150606 100%);
+            border: 2px solid #f44336; box-shadow: 0 0 24px rgba(244, 67, 54, 0.4);
+        }
+        .spoils-box {
+            background: #23201d; border: 2px solid var(--accent-gold); border-radius: 8px;
+            padding: 20px; margin-bottom: 24px; text-align: left;
+        }
+        .spoil-item { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; font-size: 16px; }
+        .log-table { width: 100%; border-collapse: collapse; margin: 16px 0 24px 0; background: #1a1a1a; border-radius: 6px; }
+        .log-table th, .log-table td { padding: 8px; border-bottom: 1px solid #333; text-align: center; font-size: 13px; }
+        .log-table th { background: #26211c; color: var(--accent-gold); font-family: 'Cinzel', serif; }
+    </style>
+</head>
+<body>
+    {% include "_hero_sidebar.html" %}
+    <div class="main-content result-container">
+
+        {% if outcome == 'triumph' %}
+        <div class="outcome-banner banner-triumph">
+            <h1 style="font-family: 'Cinzel', serif; color: #a5d6a7; margin: 0 0 8px 0; font-size: 32px;">
+                🏆 GATE BREACHED IN VICTORY!
+            </h1>
+            <div style="font-size: 18px; color: #e8f5e9; font-family: 'Cinzel', serif;">
+                The Citadel Commission Complete — Gatekeeper Defeated
+            </div>
+            <p style="color: #c8e6c9; margin: 10px 0 0 0; font-size: 15px;">
+                You crushed both phases of the Gatekeeper! The vanguard breaches the gate, and express transit delivers you triumphant to Town 5.
+            </p>
+        </div>
+
+        <div class="spoils-box">
+            <h3 style="font-family: 'Cinzel', serif; color: #ffd700; margin-top: 0;">Claimed Spoils & Bounty:</h3>
+            <div class="spoil-item"><span>💰</span> <strong>+5 Gold Bounty</strong> added to purse.</div>
+            <div class="spoil-item"><span>🎖️</span> <strong>+2 Bounty Credits</strong> awarded to your record.</div>
+            <div class="spoil-item"><span>🗝️</span> <strong>The Level 3 Dungeon Key</strong> acquired (unlocks Zone 5 endgame dungeons).</div>
+            <div class="spoil-item"><span>🏆</span> <strong>Boss Trophy</strong> claimed.</div>
+            <div class="spoil-item"><span>🏰</span> <strong>Gate Breached</strong> — Tier 2 Capstone Conquered! Express transit to Town 5.</div>
+        </div>
+
+        {% elif outcome == 'damage_fail_p1' %}
+        <div class="outcome-banner banner-fail">
+            <h1 style="font-family: 'Cinzel', serif; color: #ffb74d; margin: 0 0 8px 0; font-size: 28px;">
+                🛡️ PHASE 1 BURST FAILURE
+            </h1>
+            <div style="font-size: 16px; color: #ffe0b2; font-family: 'Cinzel', serif;">
+                Insufficient Burst: Boss Not Breached in 3 Rounds
+            </div>
+            <p style="color: #ffe0b2; margin: 10px 0 0 0; font-size: 14px;">
+                Per the P1 Knockout Rule, the boss did not flip to its Unleashed form. Your hero suffered tactical retreat express transit to Town 5 at 1 HP. Zero bonus spoils claimed.
+            </p>
+        </div>
+
+        {% elif outcome == 'timeout_p2' %}
+        <div class="outcome-banner banner-fail">
+            <h1 style="font-family: 'Cinzel', serif; color: #ffb74d; margin: 0 0 8px 0; font-size: 28px;">
+                ⏳ PHASE 2 TIMEOUT — TACTICAL RETREAT
+            </h1>
+            <div style="font-size: 16px; color: #ffe0b2; font-family: 'Cinzel', serif;">
+                Survived 6 Rounds — Unleashed Core Retained HP
+            </div>
+            <p style="color: #ffe0b2; margin: 10px 0 0 0; font-size: 14px;">
+                You breached Phase 1 and survived all 6 continuous rounds, but could not finish off the unleashed core. Express transit delivers you to Town 5. Zero bonus spoils are earned.
+            </p>
+        </div>
+
+        {% else %}
+        <div class="outcome-banner banner-death">
+            <h1 style="font-family: 'Cinzel', serif; color: #ef5350; margin: 0 0 8px 0; font-size: 28px;">
+                💀 CRUSHED BY GATEKEEPER
+            </h1>
+            <div style="font-size: 16px; color: #ffcdd2; font-family: 'Cinzel', serif;">
+                Hero HP Reduced to 0 — Dragged to Town by Scouts
+            </div>
+            <p style="color: #ffcdd2; margin: 10px 0 0 0; font-size: 14px;">
+                You were overwhelmed! Vanguard scouts dragged your broken body to Town 5.
+            </p>
+            <div style="background: rgba(0,0,0,0.5); padding: 10px; border-radius: 4px; margin-top: 12px; color: #ff8a80; font-weight: bold;">
+                ⚠️ ALL currently equipped gear was broken in the crushing defeat! Visit the Town Blacksmith Forge to repair it.
+            </div>
+        </div>
+        {% endif %}
+
+        {% if log_rows %}
+        <h3>Combat Round Log</h3>
+        <table class="log-table">
+            <thead>
+                <tr>
+                    <th>Round</th>
+                    <th>Hero Card</th>
+                    <th>Damage Dealt</th>
+                    <th>Boss ATK/BLK</th>
+                    <th>Damage Taken</th>
+                    <th>Hero HP</th>
+                    <th>Boss HP</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in log_rows %}
+                <tr>
+                    <td>Rnd {{ row.round_num }}</td>
+                    <td><strong>{{ row.card }}</strong></td>
+                    <td style="color: #81c784;">⚔️ {{ row.dmg_dealt }}</td>
+                    <td>{{ row.mob_atk }} / {{ row.mob_blk }}</td>
+                    <td style="color: #e57373;">💔 {{ row.dmg_taken }}</td>
+                    <td>{{ row.hp_after|round(1) }}</td>
+                    <td>{{ row.mob_hp_after|round(1) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+
+        <form method="GET" action="/town">
+            <button class="action-btn" type="submit" style="font-size: 18px; padding: 14px 28px; background: #2e7d32; border-color: #81c784; font-weight: bold;">
+                Enter Town 5 ➔
+            </button>
+        </form>
+    </div>
+</body>
+</html>

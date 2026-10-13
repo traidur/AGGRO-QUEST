@@ -24,6 +24,12 @@
 
     {% if board and hero.position[0] in [3, 4] and hero.position[1] != 'trainer' %}
         <h3 style="margin-top: 0; color: #fff;">{{ town_names.get(hero.position[0], 'Town') }} Quest Market</h3>
+        {% if hero.xp >= 14 %}
+            <div style="background: rgba(180, 100, 20, 0.2); border: 1px solid #d4a359; border-radius: 6px; padding: 12px 16px; margin-bottom: 20px; color: #f5ebd9; font-family: 'Cinzel', serif;">
+                <strong style="color: #ffd700;">📜 Bounty Board Closed (14+ XP Reached):</strong>
+                The Guild issues no further standard bounties to veterans qualified for the High Citadel. Complete your remaining open quests and report to the Class Trainer in Zone 4.
+            </div>
+        {% else %}
         <div class="market-section" style="display: flex; gap: 16px; margin-bottom: 24px; min-height: 220px; align-items: center;">
             <!-- Visual Quest Deck -->
             <div class="quest-deck" style="width: 140px; height: 200px; background: repeating-linear-gradient(45deg, #4a2e15, #4a2e15 10px, #3e2612 10px, #3e2612 20px); border: 2px solid #2a1508; border-radius: 8px; box-shadow: 4px 4px 0 rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; position: relative;">
@@ -43,6 +49,7 @@
                 <div style="color: #999; font-style: italic; margin-left: 20px;">Market is empty.</div>
             {% endif %}
         </div>
+        {% endif %}
     {% endif %}
 
     <br>
@@ -63,6 +70,7 @@
             {% elif a.type == 'buy_consumable' %}Buy {{ a.item_name }} — {{ a.cost }}g
             {% elif a.type == 'sell' %}Sell {{ a.item_name|replace('_', ' ')|title }} — +{{ a.gain }}g
             {% elif a.type == 'craft_equipment' %}Craft {{ a.recipe.name }} ({{ a.recipe.slot|title }} - {{ a.recipe.rider }}) — {{ a.recipe.cost_gold }}g + {{ (a.consume_items or a.recipe.cost_items)|join(', ') }}
+            {% elif a.type == 'repair_equipment' %}🔨 Blacksmith: Repair {{ a.item_name }} ({{ a.slot|replace('_', ' ')|title }}) — {{ a.cost }}g
             {% elif a.type == 'use_charm' %}Use Preserving Charm on {{ a.loot }} (reset decay)
             {% else %}{{ a }}
             {% endif %}

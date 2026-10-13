@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>QUEST — Pathfinder Scout Report</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Crimson+Pro:ital,wght@0,400;0,600;1,400&family=Barlow+Condensed:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='cards.css') }}">
+    <style>
+        .scout-container { max-width: 900px; margin: 0 auto; padding: 20px; }
+        .boss-card-choice {
+            background: #1c1815; border: 2px solid #5a3c22; border-radius: 8px;
+            padding: 24px; flex: 1; display: flex; flex-direction: column; justify-content: space-between;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.6); transition: transform 0.2s, border-color 0.2s;
+        }
+        .boss-card-choice:hover { transform: translateY(-4px); border-color: var(--accent-gold); }
+        .boss-title { font-family: 'Cinzel', serif; font-size: 24px; color: var(--accent-gold); margin: 0; }
+        .boss-sub { font-size: 15px; color: #bbb; margin-bottom: 12px; font-style: italic; }
+        .boss-archetype { font-size: 14px; color: #ff8a80; font-weight: bold; margin-bottom: 12px; }
+        .boss-flavor { font-size: 14px; color: #ccc; line-height: 1.4; margin-bottom: 16px; flex-grow: 1; }
+        .boss-stats { background: #26211c; border-radius: 6px; padding: 12px; margin-bottom: 16px; }
+        .round-row { display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 4px; }
+    </style>
+</head>
+<body>
+    {% include "_hero_sidebar.html" %}
+    <div class="main-content scout-container">
+        <h2 style="font-family: 'Cinzel', serif; color: var(--accent-gold); text-align: center; margin-bottom: 6px;">
+            🦅 Pathfinder Intelligence Report
+        </h2>
+        <p style="text-align: center; color: #aaa; margin-bottom: 30px;">
+            You spent 1 Scout Token. Your pathfinders scouted the vanguard defenses and identified two Gatekeeper Bosses. Choose which one to confront:
+        </p>
+
+        <div style="display: flex; gap: 24px;">
+            {% for candidate in candidates %}
+            {% set b = bosses[candidate] %}
+            <div class="boss-card-choice">
+                <div>
+                    <h3 class="boss-title">{{ b.title }}</h3>
+                    <div class="boss-sub">{{ b.subtitle }}</div>
+                    <div class="boss-archetype">{{ b.archetype }}</div>
+                    <div class="boss-flavor">{{ b.flavor }}</div>
+
+                    <div class="boss-stats">
+                        <strong style="color: #ffd700; font-family: 'Cinzel', serif; font-size: 14px;">PHASE 1: {{ b.p1.name }} (10 HP)</strong>
+                        <div style="margin-top: 8px;">
+                            {% for i in range(3) %}
+                            <div class="round-row">
+                                <span>Round {{ i + 1 }}: {{ b.p1.abilities[i] }}</span>
+                                <span style="font-weight: bold; color: {% if b.p1.types[i] == 'ranged' %}#69ccf0{% else %}#ff7043{% endif %};">
+                                    {{ '🏹' if b.p1.types[i] == 'ranged' else '⚔️' }} {{ b.p1.pattern[i][0] }} ATK / 🛡️ {{ b.p1.pattern[i][1] }} BLK
+                                </span>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+
+                <form method="POST" action="/boss/scout_pick/choose" style="margin-top: 10px;">
+                    <input type="hidden" name="boss_id" value="{{ candidate }}">
+                    <button class="action-btn" type="submit" style="width: 100%; font-size: 16px; font-weight: bold; background: #8a3324; border-color: #ff5252;">
+                        Confront {{ b.title }}
+                    </button>
+                </form>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</body>
+</html>

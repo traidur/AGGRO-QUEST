@@ -49,20 +49,28 @@ Bag/Quest-Log blocks -- one copy instead of four. -->
             {% endfor %}
         </div>
     </div>
+    {% if hero.bounty_credits %}
+    <div class="sidebar-stat-line" style="align-items: center;">
+        <span style="color:#ffb74d; font-weight:bold;" title="Bounty Credits (Boss / Satchel)">Credits ({{ hero.bounty_credits }})</span>
+        <div class="resource-tokens">
+            {% for _ in range(hero.bounty_credits) %}
+                <div class="token-xp" style="background:#ffb74d; border-color:#ffa726; animation-delay: {{ loop.index0 * 0.02 }}s;"></div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
     <div class="sidebar-stat-line"><span>Turn</span><strong>{{ hero.turns }}</strong></div>
 
     {% set match = get_class_matchup(hero.class_name, hero.xp) %}
     {% if match %}
     <div class="sidebar-section-hdr">Class Guide</div>
     <div class="guide-block guide-best">
-        <strong>BEST AGAINST</strong>
-        {{ get_role_icon(match.best_1) }} {{ match.best_1 }} ({{ match.best_1_cost }}%)<br>
-        {{ get_role_icon(match.best_2) }} {{ match.best_2 }} ({{ match.best_2_cost }}%)
+        <strong>FAVORED</strong>
+        {% for e in match.favored %}{{ get_role_icon(e.mob) }} {{ e.name }} ({{ e.cost }}%){% if not loop.last %}<br>{% endif %}{% endfor %}
     </div>
     <div class="guide-block guide-worst">
-        <strong>WORST AGAINST</strong>
-        {{ get_role_icon(match.worst_1) }} {{ match.worst_1 }} ({{ match.worst_1_cost }}%)<br>
-        {{ get_role_icon(match.worst_2) }} {{ match.worst_2 }} ({{ match.worst_2_cost }}%)
+        <strong>STRUGGLES</strong>
+        {% for e in match.struggles %}{{ get_role_icon(e.mob) }} {{ e.name }} ({{ e.cost }}%){% if not loop.last %}<br>{% endif %}{% endfor %}
     </div>
     {% endif %}
 

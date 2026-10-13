@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>QUEST — Phase 1 Breached: Unleashed Boss Form!</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Crimson+Pro:ital,wght@0,400;0,600;1,400&family=Barlow+Condensed:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='cards.css') }}">
+    <style>
+        .transition-container { max-width: 850px; margin: 0 auto; padding: 24px; text-align: center; }
+        .breach-banner {
+            background: linear-gradient(135deg, #3e1b0b 0%, #1a0b06 100%);
+            border: 2px solid #ff7043; border-radius: 8px; padding: 24px; margin-bottom: 24px;
+            box-shadow: 0 0 24px rgba(255, 112, 67, 0.4);
+        }
+        .log-table { width: 100%; border-collapse: collapse; margin: 20px 0; background: #1a1a1a; border-radius: 6px; }
+        .log-table th, .log-table td { padding: 10px; border-bottom: 1px solid #333; text-align: center; font-size: 14px; }
+        .log-table th { background: #26211c; color: var(--accent-gold); font-family: 'Cinzel', serif; }
+        .p2-preview {
+            background: #201a18; border: 2px solid #b71c1c; border-radius: 8px; padding: 20px;
+            text-align: left; margin-bottom: 24px;
+        }
+        .rule-notice {
+            background: rgba(255, 215, 0, 0.1); border: 1px solid var(--accent-gold); border-radius: 6px;
+            padding: 12px; margin-bottom: 24px; font-size: 14px; color: #ffd700; text-align: left;
+        }
+    </style>
+</head>
+<body>
+    {% include "_hero_sidebar.html" %}
+    <div class="main-content transition-container">
+        <div class="breach-banner">
+            <h1 style="font-family: 'Cinzel', serif; color: #ffd700; margin: 0 0 8px 0; font-size: 32px;">
+                ⚡ PHASE 1 BREACHED!
+            </h1>
+            <div style="font-size: 18px; color: #ffab91; font-family: 'Cinzel', serif;">
+                {{ boss.p1.name }} has been shattered!
+            </div>
+            <p style="color: #ddd; margin: 12px 0 0 0;">
+                The gate defenses buckle, but the Gatekeeper unleashes its radiant core for Phase 2!
+            </p>
+        </div>
+
+        <h3>Phase 1 Combat Summary (Rounds 1–3)</h3>
+        <table class="log-table">
+            <thead>
+                <tr>
+                    <th>Round</th>
+                    <th>Hero Card</th>
+                    <th>Damage Dealt</th>
+                    <th>Boss ATK/BLK</th>
+                    <th>Damage Taken</th>
+                    <th>Hero HP Left</th>
+                    <th>Boss HP Left</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in log_rows %}
+                <tr>
+                    <td>Rnd {{ row.round_num }}</td>
+                    <td><strong>{{ row.card }}</strong></td>
+                    <td style="color: #81c784; font-weight: bold;">⚔️ {{ row.dmg_dealt }}</td>
+                    <td>{{ row.mob_atk }} / {{ row.mob_blk }}</td>
+                    <td style="color: #e57373; font-weight: bold;">💔 {{ row.dmg_taken }}</td>
+                    <td>{{ row.hp_after|round(1) }}</td>
+                    <td>{{ row.mob_hp_after|round(1) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <div class="rule-notice">
+            <strong>⚠️ Continuous 6-Round Combat Rules:</strong>
+            <ul style="margin: 6px 0 0 0; padding-left: 20px;">
+                <li>Your surviving HP (<strong>{{ hero.hp|round(1) }} / {{ hero.max_hp|round(1) }}</strong>) carries over directly into Phase 2. No resting, food, or consumables between phases.</li>
+                <li>Any equipment activated in Phase 1 remains tapped/exhausted.</li>
+                <li>Your 6-card class deck is reshuffled and a fresh 4-card hand is drawn for Rounds 4–6.</li>
+            </ul>
+        </div>
+
+        <div class="p2-preview">
+            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                <h3 style="font-family: 'Cinzel', serif; color: #ff5252; margin: 0;">
+                    PHASE 2: {{ boss.p2.name }}
+                </h3>
+                <span style="font-family: 'Cinzel', serif; color: #ffd700; font-size: 16px;">
+                    HP: {{ boss.p2.hp }}
+                </span>
+            </div>
+            <div style="margin-top: 12px; font-size: 14px;">
+                {% for i in range(3) %}
+                <div style="display: flex; justify-content: space-between; margin-bottom: 6px; border-bottom: 1px solid #332211; padding-bottom: 4px;">
+                    <span>Round {{ i + 4 }}: <strong>{{ boss.p2.abilities[i] }}</strong></span>
+                    <span style="font-weight: bold; color: {% if boss.p2.types[i] == 'ranged' %}#69ccf0{% else %}#ff7043{% endif %};">
+                        {{ '🏹' if boss.p2.types[i] == 'ranged' else '⚔️' }} {{ boss.p2.pattern[i][0] }} ATK / 🛡️ {{ boss.p2.pattern[i][1] }} BLK
+                    </span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <form method="POST" action="/boss/phase2_start">
+            <button class="action-btn" type="submit" style="font-size: 20px; padding: 16px 32px; background: #b71c1c; border-color: #ff5252; font-weight: bold;">
+                Face Unleashed Form (Rounds 4–6) ➔
+            </button>
+        </form>
+    </div>
+</body>
+</html>

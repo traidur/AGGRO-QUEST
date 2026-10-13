@@ -216,6 +216,7 @@ class HeroBoardState:
     locked: list
     equipment: dict = field(default_factory=dict) # slot -> recipe name
     equipment_used: set = field(default_factory=set) # set of slots used this trip
+    equipment_broken: set = field(default_factory=set) # set of slots broken on death (face-down)
     pvp_whetstone_active: bool = False  # Whetstone used this PvP duel -- separate from
     # equipment_used (a trip-level Durability tracker for equipped gear, not a place to stash
     # unrelated per-duel consumable flags). NOTE: task #61 ("Build Whetstone's class-agnostic
@@ -225,6 +226,9 @@ class HeroBoardState:
     gold: int = 0
     xp: int = 0
     tokens: int = 0
+    bounty_credits: int = 0  # Courier's Satchel / Boss Trophy Bounty Credits
+    scout_tokens: int = 0  # Pathfinder intelligence tokens to draw 2 and pick 1
+    repair_gold_spent: int = 0  # Cumulative Gold spent at Blacksmith to repair broken gear
     active_quests: list = field(default_factory=list)
     acquired: set = field(default_factory=set)
     consumables_used: dict = field(default_factory=lambda: {"food": 0, "potion": 0})

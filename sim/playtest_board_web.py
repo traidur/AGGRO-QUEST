@@ -82,6 +82,7 @@ import sim_pvp as PvP
 import class_mob_matchup_chart as MC
 import equipment_data as EQ
 import spice_data as SD
+import boss_data as BD
 from board_state import HeroBoardState
 
 app = Flask(__name__, template_folder="playtest_board_web_templates")
@@ -127,22 +128,14 @@ def get_item_count(slot):
     return 1
 
 
-def _matchup_summary(per_mob):
-    """per_mob: {mob_name: (cost_pct, win_pct)} for one class -- collapses to the
-    best_1/best_2/worst_1/worst_2 shape the Class Guide modal renders."""
-    by_cost = sorted(per_mob.items(), key=lambda kv: kv[1][0])
-    (b1, (b1c, _)), (b2, (b2c, _)) = by_cost[0], by_cost[1]
-    (w2, (w2c, _)), (w1, (w1c, _)) = by_cost[-2], by_cost[-1]
-    return {"best_1": b1, "best_1_cost": round(b1c, 1), "best_2": b2, "best_2_cost": round(b2c, 1),
-            "worst_1": w1, "worst_1_cost": round(w1c, 1), "worst_2": w2, "worst_2_cost": round(w2c, 1)}
-
-
 # Computed once at import time (real solver output, not hand-typed -- checkpointed 2026-08-26,
 # replacing a frozen, already-stale hardcoded block a prior pass had baked in directly here).
-# See class_mob_matchup_chart.py's own docstring for why "fully upgraded kit" rather than any
-# one hero's exact current deck, and why Level 1 vs Level 2 needs two separate tables at all.
+# Favored/Struggles (2026-10-12) come from MC.class_guide, the same call
+# pnp-tool/export_tracker_boards.py makes, so the printed board and this guide cannot drift. See
+# class_mob_matchup_chart.py's docstring for why "fully upgraded kit" rather than any one hero's
+# exact current deck, and why Level 1 vs Level 2 needs two separate tables at all.
 _MATCHUP_BY_LEVEL = {
-    level: {cls.lower(): _matchup_summary(per_mob) for cls, per_mob in MC.matchup_table(level=level).items()}
+    level: {cls.lower(): guide for cls, guide in MC.class_guide(level=level).items()}
     for level in (1, 2)
 }
 
@@ -272,7 +265,8 @@ def inject_globals():
             1: "The Smugglers' Roost",
             2: "Port Ironguard",
             3: "The Vanguard Camp",
-            4: "The Vanguard Camp"
+            4: "The Vanguard Camp",
+            5: "High Hearth",
         },
         get_class_matchup=get_class_matchup,
         get_mob_flavor=lambda mob_name, level: (
@@ -751,7 +745,7 @@ def town():
             zone_id = hero.position[0] if isinstance(hero.position, tuple) else 1
             gain = (4 + SD.zone_level_for_zone(zone_id)) * satchel_count
             hero.gold += gain
-            hero.tokens += satchel_count
+            hero.bounty_credits += satchel_count
             M._remove_loot(hero.bag, hero.locked, "couriers_satchel", satchel_count)
             _flash(f"Delivered {satchel_count} Courier's Satchel: +{gain} Gold, +{satchel_count} Bounty Credit!")
         _S["town_entered"] = True
@@ -933,6 +927,22 @@ def travel_action():
         BE.apply_travel_action(hero, action, class_name, board, rng, M.RISK_TOLERANCE_BASE, True)
         _S["phase"] = "trainer"
         return redirect(url_for("trainer"))
+
+    if action["type"] == "challenge_boss":
+        use_scout = action.get("use_scout_token", False) and hero.scout_tokens > 0
+        if use_scout:
+            hero.scout_tokens -= 1
+            _, candidates = BD.draw_bosses(rng, scout_token=True)
+            _S["pending_kind"] = "boss_scout_pick"
+            _S["pending_boss_candidates"] = candidates
+            _S["pending_landmark"] = action.get("landmark_node")
+            _S["phase"] = "boss_scout_pick"
+            return redirect(url_for("boss_scout_pick"))
+        else:
+            _, candidates = BD.draw_bosses(rng, scout_token=False)
+            boss_id = candidates[0]
+            _S["pending_landmark"] = action.get("landmark_node")
+            return redirect(url_for("boss_start", boss_id=boss_id))
 
     # use_food / use_potion / use_scroll / use_smoke_bomb / flight_path / enter_zone --
     # no combat, resolves in one shot.
@@ -1448,6 +1458,270 @@ def combat_plan_continue():
         _flash(msg)
     _S["phase"] = next_phase
     return redirect(url_for(next_phase))
+
+
+# ---------------------------------------------------------------------------
+# Zone 4 Tier Gate Boss Trio Routes
+# ---------------------------------------------------------------------------
+
+def _validate_boss_sequence(class_name, hand, boss_id, phase_num, hero_hp, sequence, stance_sequence, equipment_sequence=None, hero=None):
+    mod = M.CARD_SOURCE[class_name]
+    swaps = BE._level2_swaps_for(class_name, hero.acquired) if hero else {}
+    with LV.leveled_kit(mod, swaps):
+        pattern, mob_hp = BD.get_phase_pattern_hp(boss_id, phase_num, class_name)
+        active_eq = {k: v for k, v in hero.equipment.items() if k not in hero.equipment_broken} if hero else None
+        state = E.new_pull_with_hp(class_name, f"{boss_id}_p{phase_num}", hand, pattern, mob_hp, hero_hp,
+                                   equipment=active_eq,
+                                   equipment_used=set(hero.equipment_used) if hero else None)
+        decide_fn = make_sequence_decide_fn(sequence, stance_sequence, equipment_sequence)
+        try:
+            while state.outcome is None:
+                actions = E.get_legal_actions(state)
+                action = decide_fn(state, actions)
+                state = E.apply_action(state, action)
+            return None
+        except ValueError as e:
+            return f"That plan isn't legal: {e}."
+
+
+def _build_boss_combat_log(class_name, hand, boss_id, phase_num, hero_hp, sequence, stance_sequence, equipment_sequence=None, hero=None, eq_state=None):
+    mod = M.CARD_SOURCE[class_name]
+    swaps = BE._level2_swaps_for(class_name, hero.acquired) if hero else {}
+    with LV.leveled_kit(mod, swaps):
+        pattern, mob_hp = BD.get_phase_pattern_hp(boss_id, phase_num, class_name)
+        active_eq = {k: v for k, v in hero.equipment.items() if k not in hero.equipment_broken} if hero else None
+        state = E.new_pull_with_hp(class_name, f"{boss_id}_p{phase_num}", hand, pattern, mob_hp, hero_hp,
+                                   equipment=active_eq, eq_state=dict(eq_state or {}),
+                                   equipment_used=set(hero.equipment_used) if hero else None)
+        decide_fn = make_sequence_decide_fn(sequence, stance_sequence, equipment_sequence)
+        rows = []
+        while state.outcome is None:
+            actions = E.get_legal_actions(state)
+            action = decide_fn(state, actions)
+            round_pattern = pattern[state.round_num]
+            state = E.apply_action(state, action)
+            eq_names = []
+            for s in action.get("equipment", []):
+                if hero and hero.equipment and s in hero.equipment and isinstance(hero.equipment[s], dict):
+                    eq_names.append(hero.equipment[s].get("name", s))
+                else:
+                    eq_names.append(s.title())
+            rows.append(dict(
+                round_num=(phase_num - 1) * 3 + state.round_num,
+                card=action["card"],
+                variant=action["variant"] if action["variant"] != action["card"] else None,
+                stance=action.get("stance"),
+                equipment=eq_names,
+                mob_atk=round_pattern[0], mob_blk=round_pattern[1],
+                raw_dmg=action["raw_dmg"], block=action["block"], heal=action["heal"],
+                dmg_dealt=action["dmg_dealt"], dmg_taken=action["dmg_taken"],
+                hp_after=state.hero_hp, mob_hp_after=state.mob_hp_remaining,
+            ))
+        return rows, state.outcome
+
+
+@app.route("/boss/scout_pick")
+def boss_scout_pick():
+    if _S.get("board") is None:
+        return redirect(url_for("index"))
+    candidates = _S.get("pending_boss_candidates", [])
+    if not candidates:
+        return redirect(url_for("travel"))
+    hero = _S["board"].heroes[0]
+    return render_template("boss_scout_pick.html", hero=hero, candidates=candidates, bosses=BD.BOSSES)
+
+
+@app.route("/boss/scout_pick/choose", methods=["POST"])
+def boss_scout_pick_choose():
+    boss_id = request.form.get("boss_id")
+    if boss_id not in BD.BOSSES:
+        return redirect(url_for("travel"))
+    return redirect(url_for("boss_start", boss_id=boss_id))
+
+
+@app.route("/boss/start/<boss_id>")
+def boss_start(boss_id):
+    if _S.get("board") is None or boss_id not in BD.BOSSES:
+        return redirect(url_for("travel"))
+    hero = _S["board"].heroes[0]
+    class_name = _S["class_names"][0]
+    rng = _S["rng"]
+
+    # Landmark encounter preparation: Hero starts at full Max HP
+    hero.hp = hero.max_hp
+    hand = _draw_hero_hand(hero, class_name, rng)
+
+    _S["pending_boss"] = {
+        "boss_id": boss_id,
+        "phase": 1,
+        "p1_log_rows": [],
+        "p2_log_rows": [],
+    }
+    _S["pending_kind"] = "boss_phase_1"
+    _S["pending_hand"] = hand
+    _S["phase"] = "boss_plan"
+    return redirect(url_for("boss_plan"))
+
+
+@app.route("/boss_plan")
+def boss_plan():
+    if _S.get("board") is None or not _S.get("pending_boss"):
+        return redirect(url_for("travel"))
+    hero = _S["board"].heroes[0]
+    class_name = _S["class_names"][0]
+    boss_info = _S["pending_boss"]
+    boss_id = boss_info["boss_id"]
+    phase_num = boss_info["phase"]
+    boss = BD.BOSSES[boss_id]
+    phase_data = boss["p1"] if phase_num == 1 else boss["p2"]
+    hand = _S["pending_hand"]
+
+    hand_opts = _hand_options(class_name, hand, hero=hero)
+    has_stance = (class_name == "warrior")
+
+    eq_opts = []
+    if hero.equipment:
+        for slot, recipe in hero.equipment.items():
+            if slot not in hero.equipment_broken and slot not in hero.equipment_used:
+                eq_opts.append({
+                    "slot": slot,
+                    "name": recipe.get("name", slot.title()) if isinstance(recipe, dict) else slot.title(),
+                    "rider": recipe.get("rider", "") if isinstance(recipe, dict) else "",
+                })
+
+    return render_template(
+        "boss_plan.html",
+        hero=hero,
+        class_name=class_name,
+        boss=boss,
+        boss_id=boss_id,
+        phase_num=phase_num,
+        phase_data=phase_data,
+        hand_opts=hand_opts,
+        has_stance=has_stance,
+        equipment_options=eq_opts,
+        flash=_pop_flash(),
+    )
+
+
+@app.route("/boss_plan/submit", methods=["POST"])
+def boss_plan_submit():
+    if _S.get("board") is None or not _S.get("pending_boss"):
+        return redirect(url_for("travel"))
+    hero = _S["board"].heroes[0]
+    class_name = _S["class_names"][0]
+    rng = _S["rng"]
+    boss_info = _S["pending_boss"]
+    boss_id = boss_info["boss_id"]
+    phase_num = boss_info["phase"]
+    boss = BD.BOSSES[boss_id]
+
+    _S["pending_hand"] = _normalize_hand(_S["pending_hand"], class_name, hero.acquired)
+    hand = _S["pending_hand"]
+
+    sequence, stance_sequence, equipment_sequence, error = _parse_combat_plan(request.form, class_name, hand, hero=hero)
+    if error is None:
+        error = _validate_boss_sequence(class_name, hand, boss_id, phase_num, hero.hp, sequence, stance_sequence,
+                                        equipment_sequence=equipment_sequence, hero=hero)
+    if error:
+        _flash(error)
+        return redirect(url_for("boss_plan"))
+
+    eq_state = boss_info.get("eq_state", {})
+    log_rows, log_outcome = _build_boss_combat_log(class_name, hand, boss_id, phase_num, hero.hp,
+                                                   sequence, stance_sequence, equipment_sequence=equipment_sequence,
+                                                   hero=hero, eq_state=eq_state)
+    decide_fn = make_sequence_decide_fn(sequence, stance_sequence, equipment_sequence)
+
+    mod = M.CARD_SOURCE[class_name]
+    with LV.leveled_kit(mod, BE._level2_swaps_for(class_name, hero.acquired)):
+        pattern, mob_hp = BD.get_phase_pattern_hp(boss_id, phase_num, class_name)
+        active_eq = {k: v for k, v in hero.equipment.items() if k not in hero.equipment_broken}
+        pull_state = E.new_pull_with_hp(class_name, f"{boss_id}_p{phase_num}", hand, pattern, mob_hp, hero.hp,
+                                        equipment=active_eq, eq_state=eq_state,
+                                        equipment_used=hero.equipment_used, max_rounds=3)
+        while pull_state.outcome is None:
+            actions = E.get_legal_actions(pull_state)
+            action = decide_fn(pull_state, actions)
+            pull_state = E.apply_action(pull_state, action)
+
+    hero.hp = pull_state.hero_hp
+    if phase_num == 1:
+        hero.turns += 1
+
+    if phase_num == 1:
+        boss_info["p1_log_rows"] = log_rows
+        boss_info["state1"] = pull_state
+        boss_info["eq_state"] = pull_state.eq_state
+
+        if pull_state.outcome == "loss" or hero.hp <= 0:
+            res = BE.finalize_boss_combat(hero, boss_id, "death_p1", state1=pull_state)
+            _S["boss_result"] = {"outcome": "death_p1", "boss_id": boss_id, "log_rows": log_rows}
+            _S["phase"] = "boss_result"
+            return redirect(url_for("boss_result"))
+
+        p1_win = (pull_state.outcome == "win" or pull_state.mob_hp_remaining <= 0)
+        if not p1_win:
+            res = BE.finalize_boss_combat(hero, boss_id, "damage_fail_p1", state1=pull_state)
+            _S["boss_result"] = {"outcome": "damage_fail_p1", "boss_id": boss_id, "log_rows": log_rows}
+            _S["phase"] = "boss_result"
+            return redirect(url_for("boss_result"))
+
+        # Phase 1 WIN! Show Unleashed Boss transition screen
+        _S["phase"] = "boss_transition"
+        return render_template("boss_transition.html", hero=hero, boss_id=boss_id,
+                               boss=boss, log_rows=log_rows, state1=pull_state)
+
+    else:
+        # Phase 2
+        all_logs = boss_info.get("p1_log_rows", []) + log_rows
+        state1 = boss_info.get("state1")
+
+        if pull_state.outcome == "loss" or hero.hp <= 0:
+            res = BE.finalize_boss_combat(hero, boss_id, "death_p2", state1=state1, state2=pull_state)
+            _S["boss_result"] = {"outcome": "death_p2", "boss_id": boss_id, "log_rows": all_logs}
+            _S["phase"] = "boss_result"
+            return redirect(url_for("boss_result"))
+
+        p2_win = (pull_state.outcome == "win" or pull_state.mob_hp_remaining <= 0)
+        if p2_win:
+            res = BE.finalize_boss_combat(hero, boss_id, "triumph", state1=state1, state2=pull_state)
+            _S["boss_result"] = {"outcome": "triumph", "boss_id": boss_id, "log_rows": all_logs}
+            _S["phase"] = "boss_result"
+            return redirect(url_for("boss_result"))
+        else:
+            res = BE.finalize_boss_combat(hero, boss_id, "timeout_p2", state1=state1, state2=pull_state)
+            _S["boss_result"] = {"outcome": "timeout_p2", "boss_id": boss_id, "log_rows": all_logs}
+            _S["phase"] = "boss_result"
+            return redirect(url_for("boss_result"))
+
+
+@app.route("/boss/result")
+def boss_result():
+    if _S.get("board") is None or not _S.get("boss_result"):
+        return redirect(url_for("travel"))
+    hero = _S["board"].heroes[0]
+    result_data = _S["boss_result"]
+    boss = BD.BOSSES[result_data["boss_id"]]
+    return render_template("boss_result.html", hero=hero, outcome=result_data["outcome"],
+                           boss=boss, log_rows=result_data["log_rows"])
+
+
+@app.route("/boss/phase2_start", methods=["POST"])
+def boss_phase2_start():
+    if _S.get("board") is None or not _S.get("pending_boss"):
+        return redirect(url_for("travel"))
+    hero = _S["board"].heroes[0]
+    class_name = _S["class_names"][0]
+    rng = _S["rng"]
+
+    # Reshuffle class deck and draw fresh 4 cards
+    hand = _draw_hero_hand(hero, class_name, rng)
+    _S["pending_boss"]["phase"] = 2
+    _S["pending_kind"] = "boss_phase_2"
+    _S["pending_hand"] = hand
+    _S["phase"] = "boss_plan"
+    return redirect(url_for("boss_plan"))
 
 
 # ---------------------------------------------------------------------------
