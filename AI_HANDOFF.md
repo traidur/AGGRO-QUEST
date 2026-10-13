@@ -32,6 +32,28 @@
 
 ## Log
 
+### 2026-10-13 — Gemini — Claude Code Audit Remediation: Board Engine Threshold Constant, Scratch Script Pruning & Drive Ref Cleanup
+
+**Context:** Remediated three issues flagged in Claude Code's audit review of recent commit `8ec580d`.
+
+**1. Board Engine Constant Consolidation (`sim/board_engine.py` & `sim/playtest_board_web.py`):**
+- Replaced literal `14` values across lines 625, 648, 850, and 989 in `sim/board_engine.py` with `BD.CAPSTONE_XP_THRESHOLD` (`sim/boss_data.py`), matching line 558.
+- Updated `sim/playtest_board_web.py` and `sim/playtest_board_web_templates/town.html` to thread `capstone_xp_threshold` dynamically from `BD.CAPSTONE_XP_THRESHOLD`.
+
+**2. Pruned Throwaway Scratch Scripts (`sim/`):**
+- Removed 9 single-use scratch scripts via `git rm`: `_boss_gear_matrix.py`, `_boss_weapon_test.py`, `_debug_trips.py`, `_run_rebalanced_sweep.py`, `_sweep_asymmetric_lethal_bosses.py`, `_test_fixes.py`, `_test_three_asymmetric_bosses.py`, `_trace_gp.py`, `_tune_death_pressure.py`.
+- Preserved permanent rerunnable tools (`_campaign_boss_sim.py`, `_milestone_sim.py`).
+
+**3. Purged Google Drive `desktop.ini` Files from `.git`:**
+- Cleaned out Google Drive sync `desktop.ini` files residing inside `.git/refs/` (including `refs/heads`, `refs/tags`, `refs/remotes/origin`), `.git/logs/`, and `.git/hooks/`.
+- Verified `git fetch` and `git status` now run completely clean with zero ref errors (`fatal: bad object refs/desktop.ini` eliminated).
+
+**4. Verification:**
+- `sim/verify_boss_engine.py`: PASS (all 7 suites & 27-combination gauntlet clean).
+- `sim/verify_board_engine_recovery.py`: PASS (all direct & 20-seed aggregate checks clean).
+- `sim/verify_combat_engine.py`: PASS (2,430 combos, 0 mismatches).
+- `sim/verify_board_engine.py`: PASS (180 scenarios, 0 mismatches).
+
 ### 2026-10-13 — Gemini — Audited Claude Code Commits & Implemented 14 XP Level 2 Quest Cutoff
 
 **Context:** Audited Claude Code's four recent commits (`b979186`, `383b77f`, `48ce02f`, `ed0f2ed`) and implemented the tabletop & engine 14 XP Level 2 Quest Cutoff ("The Commissioned Veteran" rule).
@@ -87,68 +109,3 @@
 - `sim/_campaign_boss_sim.py`: Ran to 100% completion (exit code 0).
 - `sim/verify_board_engine_recovery.py`: PASS.
 - `sim/verify_boss_engine.py`: PASS.
-
-### 2026-10-09 — Gemini — Addressed Claude Code Review: Capstone Quest KeyErrors Fixed, PRG Web Flow, Durability/Repair AI, and Zone 5 Safeguards
-
-**Context:** Following Claude Code's review of the initial Zone 4 Boss Tier Gate implementation, addressed all 5 identified problems and unspec'd divergences.
-
-**1. Problem 1 Fixed (Capstone Quest KeyError Regression):**
-- **Root Cause:** `_trainer_automatic_setup` appended `"The Citadel Commission"` to `hero.active_quests`. Macro routing, town setup, declaration, and recovery functions treat `active_quests` strictly as keys in `QUESTS` or `LEVEL2_QUESTS`, causing `KeyError: 'The Citadel Commission'`.
-- **Fix:** Removed capstone quest from `hero.active_quests`. The Capstone Quest is now tracked cleanly as `"citadel_commission_active"` in `hero.acquired`. On encounter resolution, `"citadel_commission_active"` is cleared and `"completed_citadel_commission"` is set.
-- **Verification:** `sim/verify_board_engine_recovery.py` now runs to 100% completion with 0 errors (all direct and aggregate checks pass).
-
-**2. Problem 2 Fixed (Zone 5 / Town 5 Dead End Guarded):**
-- **Fix:** Guarded `hero.position[0] == 5` in `get_travel_actions` in `sim/board_engine.py`. Since Tier 3 overland content is unbuilt, Zone 5 safely offers `return_to_town` (Town 5 milestone hub) and express return flight/transit `enter_zone` back to Zone 4 rather than attempting to index non-existent `M.ZONE_TIER[5]`.
-
-**3. Problem 3 Fixed (Web Result Double-Award & PRG Pattern):**
-- **Fix:** Converted `POST /boss_plan/submit` in `sim/playtest_board_web.py` to the Post/Redirect/Get (PRG) pattern. Resolving encounter outcomes now stores the result in `_S["boss_result"]` and issues a 302 redirect to `GET /boss/result`. Refreshing the result page is idempotent and cannot re-trigger spoils or re-call `finalize_boss_combat`. Removed speculative "High Hearth" and "Level 3 Quest Market" copy.
-
-**4. Problem 4 Fixed (Broken Gear AI Repair & Guide Reconciliation):**
-- **Fix:** Added an automated AI Blacksmith repair policy in `resolve_town_turn`: if `hero.equipment_broken` contains items and `hero.gold >= item_level`, the AI repairs broken equipment before shopping. Reconciled `EQUIPMENT_GUIDE.md` with `DESIGN_DOC.md` Section VIII.3 regarding single-use tap exhaustion vs. face-down death breakage and gold repair fees.
-
-**5. Problem 5 Fixed (Disentangled `hero.tokens` vs. `hero.bounty_credits`):**
-- **Fix:** Added `bounty_credits: int = 0` to `HeroBoardState` in `sim/board_state.py`. Courier's Satchel turn-ins and Boss Gatekeeper Triumph now award `bounty_credits` instead of mutating PvP `hero.tokens`.
-
-**6. Specification Alignment:**
-- Boss combat turn cost: Adjusted to 1 turn total (representing the Round Action commitment) rather than 2 turns.
-- Capstone gating: Landmark boss challenge now requires `"citadel_commission_active" in hero.acquired` (visiting Zone 4 Trainer is mandatory).
-- Headless Scout Tokens: Added `best_boss_for_class` in `sim/boss_data.py` (reading the locked `DESIGN_DOC.md` matchup matrix) so headless AI spending a Scout Token auto-picks the optimal candidate and resolves combat immediately.
-
-**7. Verification Status:**
-- `sim/verify_board_engine_recovery.py`: PASS (clean direct & aggregate checks)
-- `sim/verify_boss_engine.py`: PASS (7/7 test suites, 27-combination gauntlet clean)
-- `sim/verify_board_engine.py`: PASS (180 scenarios, 0 mismatches)
-- `sim/verify_combat_engine.py`: PASS (2,430 combos, 0 mismatches)
-
-### 2026-10-08 — Gemini — Zone 4 Tier Gate Boss Trio wired into simulation engine and web UI
-
-**Context:** Fully implemented the Zone 4 Tier Gate Boss encounter (Section VIII.4 of `DESIGN_DOC.md`) across the simulation engine, test suites, and web playtest UI.
-
-**1. Authoritative Boss Data Module (`sim/boss_data.py`):**
-- Defined locked profiles for the 3 Gatekeeper Bosses: `malakor` (High Inquisitor Malakor / Radiant Bulwark → Unleashed Avatar of Light), `colossus` (Citadel Colossus / Granite Sentinel → Superheated Molten Core), `eclipse` (Eclipse Sovereign / Dusk Rapier → Twilight Ascendant).
-- Implemented `get_phase_pattern_hp` dynamically typing melee/ranged 3-tuples for range-sensitive classes (`wizard`, `rogue`, `ranger`, `runecaster`, `necromancer`) and 2-tuples for standard classes.
-- Implemented `draw_bosses` supporting both 1-boss standard draw and 2-boss Scout Token draw.
-
-**2. Simulation Board Engine (`sim/board_engine.py` & `sim/board_state.py`):**
-- Added `equipment_broken: set` and `scout_tokens: int` to `HeroBoardState`.
-- Implemented `resolve_boss_combat` and `finalize_boss_combat`:
-  - Enforces the continuous 2-phase 6-round encounter model.
-  - P1 Knockout Rule: Failing to defeat Phase 1 within 3 rounds causes immediate damage failure (`damage_fail_p1`); boss does not flip, hero retreats to Town 5 at 1 HP.
-  - Phase 2 Transition: Surviving Hero HP carries over directly into Phase 2 without resting/food. Equipment used in P1 remains tapped. Hero draws a fresh 4-card hand from their 6-card deck.
-  - Full outcomes supported: `triumph` (+5 Gold, +2 bounty credits, `level3_dungeon_key`, `boss_trophy`), `damage_fail_p1`, `timeout_p2`, `death_p1`, and `death_p2`.
-  - Durability on death: All equipped items marked broken (`hero.equipment_broken.update(hero.equipment.keys())`).
-  - Blacksmith repair: Added `repair_equipment` in `get_town_actions` and `apply_town_action`, charging `item_level` in Gold (1G for Level 1, 2G for Level 2) to restore broken items. Broken items are filtered from active combat equipment.
-  - Capstone Quest: `_trainer_automatic_setup` grants `The Citadel Commission` at Zone 4 Trainer when `hero.xp >= 14`.
-  - Landmark challenges: `get_travel_actions` and `apply_travel_action` offer `challenge_boss` at `gleaming_citadel` and `sunward_throne`.
-
-**3. Test Suites & Verification:**
-- Created `sim/verify_boss_engine.py` testing pattern typing, Scout Tokens, Capstone Trainer grant, P1 damage fail knockout, P2 triumph spoils, equipment breaking on death, Blacksmith repair, and an end-to-end 9-class x 3-boss gauntlet (all 27 combinations pass).
-- Verified baseline integrity: `sim/verify_board_engine.py` (180 scenarios, 0 mismatches) and `sim/verify_combat_engine.py` (2430 combos, 0 mismatches) remain 100% clean.
-
-**4. Web Playtest UI (`sim/playtest_board_web.py` & templates):**
-- Integrated `challenge_boss` in travel routes and map view (`travel.html`).
-- Created `boss_scout_pick.html` for Scout Token draw-2-pick-1 selection.
-- Created `boss_plan.html` for interactive 3-round sequence planning against boss patterns.
-- Created `boss_transition.html` for P1 victory and Unleashed Form transition screen.
-- Created `boss_result.html` displaying final outcome banners, round combat logs, and spoils breakdown.
-- Updated `town.html` with Blacksmith repair action buttons.

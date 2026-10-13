@@ -751,7 +751,7 @@ def town():
         _S["town_entered"] = True
     actions = BE.get_town_actions(hero, _S["purchase_queues"][0], _S["board"])
     return render_template("town.html", hero=hero, actions=list(enumerate(actions)), board=_S["board"],
-                            flash=_pop_flash())
+                            flash=_pop_flash(), capstone_xp_threshold=BD.CAPSTONE_XP_THRESHOLD)
 
 
 @app.route("/town/action", methods=["POST"])

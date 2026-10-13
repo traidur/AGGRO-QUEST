@@ -622,7 +622,7 @@ def _town_automatic_setup(hero, class_name, strategy, rng, board, restock=True, 
             # _trip_chain -- see that function's own comment for the full finding). No market
             # here means no refill opens at THIS turn-in; deliberately not deciding whether a
             # non-market Town should refill from somewhere else instead.
-            market = board.town_markets.get(zone_id) if (refill_quests and hero.xp < 14) else None
+            market = board.town_markets.get(zone_id) if (refill_quests and hero.xp < BD.CAPSTONE_XP_THRESHOLD) else None
             if market is not None:
                 while len(newly_active) < len(turned_in) and market:
                     newly_active.append(market.pop(0))
@@ -645,7 +645,7 @@ def _town_automatic_setup(hero, class_name, strategy, rng, board, restock=True, 
         board.draw_unique_quest(board.town_markets[zone_id], 3 - len(board.town_markets[zone_id]), rng)
     if not hero.active_quests and zone_id in valid_quest_zones:
         if pool is M.LEVEL2_QUESTS:
-            if refill_quests and hero.xp < 14:
+            if refill_quests and hero.xp < BD.CAPSTONE_XP_THRESHOLD:
                 hero.active_quests = []
                 while len(hero.active_quests) < M.ACTIVE_QUEST_COUNT and board.town_markets[zone_id]:
                     hero.active_quests.append(board.town_markets[zone_id].pop(0))
@@ -847,7 +847,7 @@ def get_town_actions(hero, purchase_queue, board=None):
 
     if not at_trainer:
         if board and zone_id in (3, 4) and len(hero.active_quests) < M.ACTIVE_QUEST_COUNT:
-            if M.LEVEL2_XP_THRESHOLD <= hero.xp < 14:
+            if M.LEVEL2_XP_THRESHOLD <= hero.xp < BD.CAPSTONE_XP_THRESHOLD:
                 for quest in board.town_markets.get(zone_id, []):
                     actions.append({"type": "take_quest", "quest_name": quest})
 
@@ -986,7 +986,7 @@ def apply_town_action(hero, action, purchase_queue, board=None, rng=None):
         return False
 
     if action["type"] == "take_quest":
-        if hero.xp >= 14:
+        if hero.xp >= BD.CAPSTONE_XP_THRESHOLD:
             return False
         zone_id, _node = hero.position
         quest = action["quest_name"]
