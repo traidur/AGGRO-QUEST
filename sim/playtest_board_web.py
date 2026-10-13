@@ -83,6 +83,7 @@ import class_mob_matchup_chart as MC
 import equipment_data as EQ
 import spice_data as SD
 import boss_data as BD
+import kill_quests as KQ
 from board_state import HeroBoardState
 
 app = Flask(__name__, template_folder="playtest_board_web_templates")
@@ -171,9 +172,73 @@ def get_quest_progress(hero, quest):
         if quest in M.LEVEL2_QUESTS: pool = M.LEVEL2_QUESTS
         elif quest in M.QUESTS: pool = M.QUESTS
         else: return ""
-    count = M._accessible_count(hero.bag, hero.locked, quest)
     req = pool[quest]["required"]
+    if KQ.is_kill(pool[quest]):
+        return f" ({KQ.progress(hero, quest, pool[quest])}/{req} Kills)"
+    count = M._accessible_count(hero.bag, hero.locked, quest)
     return f" ({count}/{req} Collected)"
+
+
+# ---------------------------------------------------------------------------
+# Kill quests (DESIGN_DOC.md Section VI, locked 2026-10-12) -- solo games only. The kill cards
+# are injected into macro_sim.QUESTS by KQ.enable(), which the competitive engine does not model
+# (no draft contention, no per-hero kill claims), so kill mode is switched on only while a solo
+# game is loaded; see _sync_kill_mode.
+# ---------------------------------------------------------------------------
+
+_KILL_MODE = None   # the live KQ.enable() context manager, or None
+
+
+def _sync_kill_mode():
+    global _KILL_MODE
+    want = _S.get("mode") == "solo" and _S.get("board") is not None
+    if want and _KILL_MODE is None:
+        _KILL_MODE = KQ.enable(starter=False)   # the web draft screen sets the hero's quests itself
+        _KILL_MODE.__enter__()
+    elif not want and _KILL_MODE is not None:
+        _KILL_MODE.__exit__(None, None, None)
+        _KILL_MODE = None
+
+
+def _kill_clause_label(flt, class_name):
+    """('Grunt'), ('Favored: Name, Name') -- the Class Guide names, so the card matches the board."""
+    if flt[0] == "role":
+        return flt[1].title()
+    entries = _MATCHUP_BY_LEVEL[1].get(class_name.lower(), {}).get(flt[0], [])
+    names = ", ".join(e["name"] for e in entries)
+    return f"{flt[0].title()} ({names})" if names else flt[0].title()
+
+
+def get_quest_view(hero, quest):
+    """Template-facing description of one quest-log card: kind, where to go, and for a kill card
+    its clauses with filled/needed counts. Loot cards just carry their node location."""
+    pool = M.LEVEL2_QUESTS if quest in M.LEVEL2_QUESTS and quest not in M.QUESTS else M.QUESTS
+    q = pool.get(quest)
+    if q is not None and KQ.is_kill(q):
+        filled = KQ._filled(hero, quest, q)
+        return dict(kind="kill", title=quest,
+                    clauses=[dict(label=_kill_clause_label(flt, hero.class_name), need=need, filled=filled[i])
+                             for i, (flt, need) in enumerate(q["clauses"])],
+                    done=KQ.progress(hero, quest, q) >= q["required"])
+    return dict(kind="loot", title=quest.replace("_", " ").title(), clauses=[], done=False)
+
+
+def _kill_snapshot(hero):
+    return {k: list(v) for k, v in hero.kill_progress.items()}
+
+
+def _kill_messages(hero, before):
+    """Flash lines for every kill card whose progress moved since `before` (a _kill_snapshot)."""
+    msgs = []
+    for name in hero.active_quests:
+        q = M.QUESTS.get(name)
+        if q is None or not KQ.is_kill(q):
+            continue
+        if before.get(name, [0] * len(q["clauses"])) != KQ._filled(hero, name, q):
+            have, need = KQ.progress(hero, name, q), q["required"]
+            tail = " Complete - turn it in at Town." if have >= need else ""
+            msgs.append(f"Kill quest {name}: {have}/{need}.{tail}")
+    return msgs
 
 
 def get_item_icon(item_name):
@@ -278,6 +343,7 @@ def inject_globals():
         get_item_icon=get_item_icon,
         has_item_art=has_item_art,
         get_quest_progress=get_quest_progress,
+        get_quest_view=get_quest_view,
         get_recipes=EQ.get_recipes_for_class,
         get_equip_text=_get_equip_text,
         get_hero_upgrades=get_hero_upgrades,
@@ -723,7 +789,52 @@ def start():
     _S.update(mode="solo", board=board, class_names={0: class_name}, controllers={0: "human"},
               purchase_queues=purchase_queues, rng=rng, phase="town", town_entered=False,
               active_hero_idx=0)
+    _sync_kill_mode()
+    # Level 1 Quest Draft (DESIGN_DOC.md Section VI, solo = the P=1 row): lay out 3 loot + 2 kill
+    # cards, the hero takes 2 loot + 1 kill before Round 1.
+    loot_pool = [n for n, q in M.QUESTS.items() if not KQ.is_kill(q)]
+    _S["draft"] = dict(loot=rng.sample(loot_pool, 3), kill=rng.sample(list(KQ.CARDS), 2))
+    return redirect(url_for("draft"))
+
+
+@app.route("/draft")
+def draft():
+    if _S.get("board") is None:
+        return redirect(url_for("index"))
+    if not _S.get("draft"):
+        return redirect(url_for("town"))
+    hero = _S["board"].heroes[0]
+    node_of = {v[1]: k for k, v in M.NODES.items()}
+    loot = [dict(name=n, title=n.replace("_", " ").title(), req=M.QUESTS[n]["required"],
+                 where=node_of[n].replace("_", " ").title(), zone=M.NODE_ZONE[node_of[n]],
+                 xp=M.QUESTS[n]["base_xp"], ladder=M.QUESTS[n]["gold_ladder"])
+            for n in _S["draft"]["loot"]]
+    kill = [dict(name=n, req=KQ.CARDS[n]["required"], xp=KQ.CARDS[n]["base_xp"],
+                 ladder=KQ.CARDS[n]["gold_ladder"],
+                 clauses=[dict(label=_kill_clause_label(flt, hero.class_name), need=need)
+                          for flt, need in KQ.CARDS[n]["clauses"]])
+            for n in _S["draft"]["kill"]]
+    return render_template("draft.html", hero=hero, loot=loot, kill=kill, flash=_pop_flash())
+
+
+@app.route("/draft/pick", methods=["POST"])
+def draft_pick():
+    if _S.get("board") is None or not _S.get("draft"):
+        return redirect(url_for("index"))
+    d = _S["draft"]
+    loot = request.form.getlist("loot")
+    kill = request.form.get("kill")
+    if len(set(loot)) != 2 or any(n not in d["loot"] for n in loot) or kill not in d["kill"]:
+        _flash("Pick exactly 2 loot quests and 1 kill quest.")
+        return redirect(url_for("draft"))
+    _S["board"].heroes[0].active_quests = loot + [kill]
+    _S["draft"] = None
     return redirect(url_for("town"))
+
+
+@app.before_request
+def _kill_mode_before_request():
+    _sync_kill_mode()
 
 
 # ---------------------------------------------------------------------------
@@ -734,6 +845,8 @@ def start():
 def town():
     if _S["board"] is None:
         return redirect(url_for("index"))
+    if _S.get("draft"):
+        return redirect(url_for("draft"))
     hero = _S["board"].heroes[0]
     class_name = _S["class_names"][0]
     if not _S["town_entered"]:
@@ -946,9 +1059,12 @@ def travel_action():
 
     # use_food / use_potion / use_scroll / use_smoke_bomb / flight_path / enter_zone --
     # no combat, resolves in one shot.
+    kills_before = _kill_snapshot(hero)
     result = BE.apply_travel_action(hero, action, class_name, board, rng, M.RISK_TOLERANCE_BASE, True)
     if result.get("outcome") in ("win", "flee", "no_room"):
         _flash(_outcome_message("instant", result, mob_level=_mob_level_for_pending(action)))
+        for msg in _kill_messages(hero, kills_before):
+            _flash(msg)
     elif result.get("outcome") == "healed":
         _flash(f"HP now {hero.hp:.0f}/{hero.max_hp:.0f}.")
     return redirect(url_for("travel"))
@@ -1386,6 +1502,7 @@ def combat_plan_submit():
                                                sequence, stance_sequence, equipment_sequence=equipment_sequence, hero=hero)
     decide_fn = make_sequence_decide_fn(sequence, stance_sequence, equipment_sequence)
 
+    kills_before = _kill_snapshot(hero)
     if kind == "declare":
         result = BE.apply_travel_action(hero, pending, class_name, board, rng,
                                          M.RISK_TOLERANCE_BASE, True, decide_fn=decide_fn, hand=hand)
@@ -1440,6 +1557,7 @@ def combat_plan_submit():
                         hero.pending_loot.append(bonus_card)
                         next_flashes.append(f"The Dead Scout's Map guided you to bonus loot (Bag Full): {bonus_card.replace('_', ' ').title()}!")
         next_flashes.append(_outcome_message(kind, result, mob_level=_mob_level_for_pending(pending)))
+        next_flashes.extend(_kill_messages(hero, kills_before))
         _S["pending_next_phase"] = "travel"
     _S["pending_next_flashes"] = next_flashes
 
@@ -1779,42 +1897,41 @@ def party_start():
     _S.update(mode="competitive", board=board, class_names=class_names, controllers=controllers,
               labels=labels, purchase_queues=purchase_queues, rng=rng,
               human_count=sum(1 for c in controllers.values() if c == "human"), round_num=0)
-    return _cmp_begin_round()
+    return _cmp_begin_visits(list(range(len(specs))), stage="setup")
 
 
-def _cmp_begin_round():
-    """Start-of-round: resolve every AI hero's Town/Trainer visit instantly, queue up humans
-    still standing in either. Mirrors run_competitive_chain's own Town/Trainer-phase loop
-    (per-hero, independent, never contested) but splits out human turns into real pages.
-    Dispatches per-hero on hero.position's own "town"/"trainer" marker (checkpointed
-    2026-08-24, Class Trainer split from Town into its own turn-costing node type) rather than
-    assuming Town -- a hero can arrive at either from a previous round's declared
-    return_to_town/visit_trainer."""
-    _S["round_num"] += 1
+# A round is one declared Action per hero (DESIGN_DOC Section VII, locked): Preparation and free
+# movement are chained before it, and a Town/Trainer visit IS the Action for whoever declared it, so
+# its business runs after the declarations resolve. The opening Town visit is setup, before Round 1,
+# and costs no turn. These are the same rules run_competitive_chain follows.
+
+def _cmp_begin_visits(visitor_idxs, stage):
+    """Run the Town/Trainer visit for each hero in visitor_idxs: AI heroes instantly (the shared
+    BE.resolve_visit), humans queued onto /cmp/town or /cmp/trainer. stage is "setup" (the
+    opening visit before Round 1) or "round" (visits declared this round); it picks where
+    _cmp_after_town goes once the queue is empty."""
     board = _S["board"]
     town_pending = []
-    for hero_idx, hero in enumerate(board.heroes):
-        at_trainer = hero.position[1] == "trainer"
-        if hero.position[1] not in ("town", "trainer"):
-            continue
+    for hero_idx in visitor_idxs:
+        hero = board.heroes[hero_idx]
         if _S["controllers"][hero_idx] == "ai":
-            if at_trainer:
-                BE.enter_trainer(hero, _S["class_names"][hero_idx])
-            else:
-                BE.enter_town(hero, _S["class_names"][hero_idx], _S["strategy"], _S["rng"], _S["board"])
-            while True:
-                actions = BE.get_town_actions(hero, _S["purchase_queues"][hero_idx], _S["board"])
-                buyable = next((a for a in actions if a["type"] == "buy"), None)
-                leave_type = "leave_trainer" if at_trainer else "leave_town"
-                chosen = buyable if buyable else next(a for a in actions if a["type"] == leave_type)
-                if not BE.apply_town_action(hero, chosen, _S["purchase_queues"][hero_idx], _S["board"], _S["rng"]):
-                    break
+            BE.resolve_visit(hero, _S["class_names"][hero_idx], _S["strategy"], _S["rng"], board,
+                              _S["purchase_queues"][hero_idx])
+            if stage == "setup":
+                hero.turns = 0
         else:
             town_pending.append(hero_idx)
+    _S["cmp_visit_stage"] = stage
     _S["cmp_town_pending"] = town_pending
     _S["cmp_town_entered"] = {}
     _S["cmp_trainer_entered"] = {}
     return _cmp_after_town()
+
+
+def _cmp_begin_round():
+    """Round start: every hero declares (Preparation + free movement, then one Action)."""
+    _S["round_num"] += 1
+    return _cmp_begin_declare()
 
 
 def _cmp_after_town():
@@ -1824,7 +1941,18 @@ def _cmp_after_town():
         at_trainer = _S["board"].heroes[hero_idx].position[1] == "trainer"
         _S["phase"] = "cmp_trainer" if at_trainer else "cmp_town"
         return redirect(url_for("cmp_trainer" if at_trainer else "cmp_town"))
-    return _cmp_begin_declare()
+    if _S.get("cmp_visit_stage") == "setup":
+        return _cmp_begin_round()
+    return _cmp_round_done()
+
+
+def _cmp_visit_left(hero_idx):
+    """A human just left Town/Trainer: pop them off the queue, and un-charge the turn if this was
+    the opening (pre-Round-1) visit."""
+    _S["cmp_town_pending"].pop(0)
+    if _S.get("cmp_visit_stage") == "setup":
+        _S["board"].heroes[hero_idx].turns = 0
+    return _cmp_after_town()
 
 
 @app.route("/cmp/town")
@@ -1851,8 +1979,7 @@ def cmp_town_action():
         return redirect(url_for("cmp_town"))
     still_in_town = BE.apply_town_action(hero, actions[idx], _S["purchase_queues"][hero_idx], _S["board"], _S["rng"])
     if not still_in_town:
-        _S["cmp_town_pending"].pop(0)
-        return _cmp_after_town()
+        return _cmp_visit_left(hero_idx)
     return redirect(url_for("cmp_town"))
 
 
@@ -1883,29 +2010,21 @@ def cmp_trainer_action():
         return redirect(url_for("cmp_trainer"))
     still_at_trainer = BE.apply_town_action(hero, actions[idx], _S["purchase_queues"][hero_idx], _S["board"], _S["rng"])
     if not still_at_trainer:
-        _S["cmp_town_pending"].pop(0)
-        return _cmp_after_town()
+        return _cmp_visit_left(hero_idx)
     return redirect(url_for("cmp_trainer"))
 
 
 def _cmp_begin_declare():
-    """Every field hero (not in Town) submits one Travel declaration this round, in priority-
-    token order -- AI resolves instantly via the SAME board_engine._choose_field_action the CLI
-    and run_competitive_chain both already use; a human pauses on cmp_declare. Non-field heroes
-    submit a harmless return_to_town no-op (matches advance_board's own contract: every hero in
-    board.heroes needs an entry, not just field-active ones)."""
+    """Every hero declares exactly one Action this round, in priority-token order -- AI resolves
+    instantly via BE.choose_round_action (the SAME call run_competitive_chain makes: chain free
+    Preparation/movement, then one Action); a human pauses on cmp_declare, where free actions
+    apply on the spot and only the first real Action is recorded."""
     board = _S["board"]
-    field_idxs = [i for i, h in enumerate(board.heroes) if h.position[1] not in ("town", "trainer")]
+    field_idxs = list(range(len(board.heroes)))
     _S["cmp_field_idxs"] = field_idxs
     _S["cmp_quest_pools"] = {i: _current_quest_pool(board.heroes[i]) for i in field_idxs}
     _S["cmp_claimed_this_round"] = set()
-    order = BE._priority_order(board)
-    _S["cmp_declare_order"] = [i for i in order if i in field_idxs]
-    for hero_idx in range(len(board.heroes)):
-        if hero_idx not in field_idxs:
-            still_town = board.heroes[hero_idx].position[1] == "town"
-            BE.declare_for_hero(board, hero_idx,
-                                 {"type": "return_to_town" if still_town else "visit_trainer"})
+    _S["cmp_declare_order"] = list(BE._priority_order(board))
     return _cmp_process_declare_queue()
 
 
@@ -1915,9 +2034,9 @@ def _cmp_process_declare_queue():
     while _S["cmp_declare_order"]:
         hero_idx = _S["cmp_declare_order"][0]
         if _S["controllers"][hero_idx] == "ai":
-            action = BE._choose_field_action(hero_idx, board, _S["class_names"], _S["cmp_quest_pools"],
-                                              rng, _S["cmp_claimed_this_round"],
-                                              purchase_queues=_S["purchase_queues"])
+            action = BE.choose_round_action(hero_idx, board, _S["class_names"], _S["cmp_quest_pools"],
+                                             rng, _S["cmp_claimed_this_round"],
+                                             purchase_queues=_S["purchase_queues"])
             if action["type"] == "declare_node":
                 _S["cmp_claimed_this_round"].add(action["node_name"])
             BE.declare_for_hero(board, hero_idx, action)
@@ -1952,6 +2071,12 @@ def cmp_declare_action():
     if not (0 <= idx < len(actions)):
         return redirect(url_for("cmp_declare"))
     action = actions[idx]
+    if action["type"] in BE.FREE_ACTION_TYPES:
+        # Preparation / free movement: not the round's Action. Apply it now and stay on this page
+        # (the menu is rebuilt from the new position/bag).
+        BE.apply_travel_action(hero, action, _S["class_names"][hero_idx], board, _S["rng"],
+                                M.RISK_TOLERANCE_BASE, True)
+        return redirect(url_for("cmp_declare"))
     if action["type"] == "declare_node":
         _S["cmp_claimed_this_round"].add(action["node_name"])
     BE.declare_for_hero(board, hero_idx, action)
@@ -2255,7 +2380,11 @@ def _cmp_process_resolve_queue():
         _S["pending_hand"] = hand
         _S["phase"] = "cmp_combat_plan"
         return redirect(url_for("cmp_combat_plan"))
-    return _cmp_round_done()
+    # Everything declared has resolved; now the Town/Trainer visits (a visit is that hero's Action).
+    declared = _S["cmp_declarations_resolved"] or {}
+    order = BE._priority_order(board)
+    return _cmp_begin_visits([i for i in order if declared.get(i, {}).get("type") in BE.VISIT_ACTION_TYPES],
+                              stage="round")
 
 
 @app.route("/cmp/scouted_pick")
@@ -2397,8 +2526,7 @@ def cmp_combat_plan_submit():
 
 def _cmp_round_done():
     board = _S["board"]
-    for zone_id, level in _S["cmp_touched_zones"]:
-        B.discard_zone(board, zone_id, level)
+    BE.cleanup_zones(board)
     board.priority_token_holder = (board.priority_token_holder + 1) % len(board.heroes)
     board.pending_declarations.clear()
     _S["phase"] = "cmp_round_result"

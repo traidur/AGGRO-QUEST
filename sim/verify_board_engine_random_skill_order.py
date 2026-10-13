@@ -39,7 +39,7 @@ def run_direct_checks(verbose=True):
     # position must be (zone, "trainer"), not "town", for get_town_actions to offer any.
     hero = HeroBoardState(class_name="warrior", hp=18.0, max_hp=18.0, position=(2, "trainer"),
                            bag=[None, None], locked=[False, False], gold=100,
-                           acquired={"mandatory"}, skill_purchase_order=[2, 0, 1])
+                           xp=M.LEVEL2_XP_THRESHOLD, acquired={"mandatory"}, skill_purchase_order=[2, 0, 1])
     actions = BE.get_town_actions(hero, purchase_queue)
     skill_actions = [a for a in actions if a.get("kind") == "skill"]
     check("exactly one skill offered with a shuffled order set", len(skill_actions) == 1, skill_actions)
@@ -58,7 +58,7 @@ def run_direct_checks(verbose=True):
     # use) sees every affordable, eligible skill at once, exactly like before this change.
     hero_old = HeroBoardState(class_name="warrior", hp=18.0, max_hp=18.0, position=(2, "trainer"),
                                bag=[None, None], locked=[False, False], gold=100,
-                               acquired={"mandatory"})
+                               xp=M.LEVEL2_XP_THRESHOLD, acquired={"mandatory"})
     actions_old = BE.get_town_actions(hero_old, purchase_queue)
     skill_actions_old = [a for a in actions_old if a.get("kind") == "skill"]
     check("no skill_purchase_order set -> all 3 skills offered at once (old behavior preserved)",
@@ -74,7 +74,7 @@ def run_direct_checks(verbose=True):
     # skill_0 still only ever gets bought once its own shuffled turn is up, just on the next call.
     hero3 = HeroBoardState(class_name="warrior", hp=18.0, max_hp=18.0, position=(2, "town"),
                             bag=[None, None], locked=[False, False], gold=100,
-                            acquired={"mandatory"}, skill_purchase_order=[1, 2, 0])
+                            xp=M.LEVEL2_XP_THRESHOLD, acquired={"mandatory"}, skill_purchase_order=[1, 2, 0])
     gold_after, trainer_turn = M._walk_purchase_queue(
         purchase_queue, hero3.acquired, hero3.bag, hero3.locked, 2, hero3.gold, "save",
         skill_purchase_order=hero3.skill_purchase_order)

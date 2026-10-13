@@ -1376,11 +1376,12 @@ def declare_for_hero(board, hero_idx, action):
     declare_for_hero to submit it); advance_board waits until every hero in board.heroes has an
     entry here before resolving anything.
 
-    Scope note: only Travel-seam actions (get_travel_actions/apply_travel_action's vocabulary)
-    go through this barrier. Town visits are handled separately, exactly as they already are
-    for solo mode (enter_town + a get_town_actions/apply_town_action loop whenever a hero's
-    position lands on "town") -- Town "has unlimited capacity and is never contested... it's a
-    hub, not a fight" (board_state.py's own docstring), so it never needs a barrier at all."""
+    Declare exactly ONE Action per hero per round (DESIGN_DOC Section VII): a Node pull, a Border
+    crossing, Town (return_to_town) or Class Trainer (visit_trainer). Preparation (use_food/
+    use_potion/use_beast_egg) and free movement (enter_zone, flight_path) are not declared --
+    apply them directly first (FREE_ACTION_TYPES; choose_round_action does this for the AI).
+    Town/Trainer "has unlimited capacity and is never contested" (board_state.py), so those
+    declarations need no contention handling; their business runs after advance_board."""
     board.pending_declarations[hero_idx] = action
 
 
@@ -1449,6 +1450,16 @@ def _resolve_contested_declarations(board, rng):
     return declarations
 
 
+def cleanup_zones(board):
+    """Phase 6 Cleanup (DESIGN_DOC Section VII): every unbeaten Mob Card in an occupied Zone is swept
+    to its level's discard pile and nothing persists. "Occupied" has to include a Zone a hero only
+    passed through (free movement deals it on entry, see get_travel_actions) -- discarding just the
+    Zones where a Node was declared would leave browsed Zones holding last round's cards."""
+    for zone_id, zone_board in board.zones.items():
+        if zone_board.dealt:
+            B.discard_zone(board, zone_id, TIER_TO_LEVEL[M.ZONE_TIER[zone_id]])
+
+
 def advance_board(board, class_names, rng, risk_tolerance_base, risk_only_as_last_resort,
                    decide_fns=None, declarations=None):
     """The Move-and-declare barrier's second half -- resolves contested Nodes and every hero's
@@ -1464,8 +1475,11 @@ def advance_board(board, class_names, rng, risk_tolerance_base, risk_only_as_las
        Discard deferred (defer_zone_discard=True) until every hero touching a given Zone this
        round has resolved -- doing it per-action the way solo mode always has would wipe a
        second hero's own still-pending dealt mob out from under them mid-round.
-    3. Discards every Zone any hero declared into this round (end-of-turn cleanup, step 5),
-       advances the priority token one seat, and clears pending_declarations for next round.
+    3. Sweeps every dealt Zone (Phase 6 Cleanup, see cleanup_zones), advances the priority token
+       one seat, and clears pending_declarations for next round.
+
+    A declared return_to_town / visit_trainer only MOVES the hero here; the visit's business is
+    the caller's to run afterwards (resolve_visit), because it is that hero's Action this round.
 
     Explicitly NOT handled by this first slice (real, documented gaps, not oversights):
     simultaneous Border-crossing arrivals at the same border+target_zone this round (Scouted
@@ -1504,20 +1518,15 @@ def advance_board(board, class_names, rng, risk_tolerance_base, risk_only_as_las
     if declarations is None:
         declarations = _resolve_contested_declarations(board, rng)
 
-    touched_zone_levels = set()
     results = {}
     for hero_idx, action in declarations.items():
         hero = board.heroes[hero_idx]
-        zone_or_border, _node = hero.position
-        if isinstance(zone_or_border, int) and action["type"] in ("declare_node", "use_scroll", "use_smoke_bomb"):
-            touched_zone_levels.add((zone_or_border, TIER_TO_LEVEL[M.ZONE_TIER[zone_or_border]]))
         results[hero_idx] = apply_travel_action(hero, action, class_names[hero_idx], board, rng,
                                                   risk_tolerance_base, risk_only_as_last_resort,
                                                   defer_zone_discard=True,
                                                   decide_fn=decide_fns.get(hero_idx))
 
-    for zone_id, level in touched_zone_levels:
-        B.discard_zone(board, zone_id, level)
+    cleanup_zones(board)
 
     board.priority_token_holder = (board.priority_token_holder + 1) % len(board.heroes)
     board.pending_declarations.clear()
@@ -2309,6 +2318,57 @@ def _trainer_has_business(hero, class_name, purchase_queue):
     return False
 
 
+def ai_town_walk(hero, purchase_queue, board, rng, at_trainer=False):
+    """The competitive AI's Town/Trainer shopping walk, shared by run_competitive_chain and the
+    web party driver (_cmp_begin_round) so the two cannot drift. Policy, in order, in Town:
+    (1) take Level 2 quests on offer and craft any recipe that beats the equipped item in its
+    slot; (2) sell trade goods and gathering materials until the Bag has 3 free slots; (3) buy
+    from the Purchase Queue and top up Food. The Trainer only buys.
+
+    Step (2) is the fix for the competitive stall found 2026-10-13: the old walk never crafted or
+    sold, so gathering materials and trinkets filled all 9 Bag slots, _choose_field_action's
+    bag-full branch sent the hero back to Town every round, and Town did nothing about it, which
+    froze heroes at ~6 XP for hundreds of rounds. It mirrors _campaign_boss_sim.perform_town_prep
+    (craft first, then vendor when fewer than 3 slots are free)."""
+    leave_type = "leave_trainer" if at_trainer else "leave_town"
+
+    def step(pick):
+        """Apply whatever `pick` chooses; False once it has nothing left to do (or the action
+        ended the visit), which is what stops each loop below."""
+        chosen = pick(get_town_actions(hero, purchase_queue, board))
+        return chosen is not None and bool(apply_town_action(hero, chosen, purchase_queue, board, rng))
+
+    if not at_trainer:
+        def take_or_craft(actions):
+            take = next((a for a in actions if a["type"] == "take_quest"), None)
+            if take:
+                return take
+            for a in actions:
+                if a["type"] == "craft_equipment":
+                    cur = hero.equipment.get(a["recipe"]["slot"])
+                    if cur is None or a["recipe"].get("grade", 0) > cur.get("grade", 0):
+                        return a
+            return None
+        while step(take_or_craft):
+            pass
+
+        def sell_for_room(actions):
+            if sum(1 for s in hero.bag if s is None) >= 3:
+                return None
+            return next((a for a in actions if a["type"] == "sell"), None)
+        while step(sell_for_room):
+            pass
+
+    while True:
+        actions = get_town_actions(hero, purchase_queue, board)
+        buyable = next((a for a in actions if a["type"] == "buy"), None)
+        buy_food = None if at_trainer else next(
+            (a for a in actions if a["type"] == "buy_consumable" and a["item_name"] == "food"), None)
+        chosen = buyable or buy_food or next(a for a in actions if a["type"] == leave_type)
+        if not apply_town_action(hero, chosen, purchase_queue, board, rng):
+            break
+
+
 def _choose_field_action(hero_idx, board, class_names, quest_pools, rng, claimed_this_round,
                           purchase_queues=None):
     """AI decision for one hero's Move-and-declare choice this round (task #65) -- a
@@ -2454,6 +2514,47 @@ def _choose_field_action(hero_idx, board, class_names, quest_pools, rng, claimed
     return next(a for a in actions if a["type"] == "return_to_town")
 
 
+# Travel-seam actions that are NOT the round's Action: Preparation (item use, DESIGN_DOC Section
+# VII Phase 1) and free movement (Golden Rule 1; Flight Paths are free movement too). A hero may
+# chain any number of these before declaring the one real Action.
+FREE_ACTION_TYPES = frozenset({"use_food", "use_potion", "use_beast_egg", "enter_zone", "flight_path"})
+# The declared Actions that are a Town/Trainer visit rather than a Node pull; the visit's business
+# resolves in the same round (Section VII Phase 3).
+VISIT_ACTION_TYPES = frozenset({"return_to_town", "visit_trainer"})
+
+
+def choose_round_action(hero_idx, board, class_names, quest_pools, rng, claimed_this_round,
+                         purchase_queues=None, max_free=10):
+    """The AI's whole Round-structured decision for one hero (DESIGN_DOC Section VII, locked): chain
+    Preparation and free movement, then return the ONE Action to declare. Wraps _choose_field_action,
+    which picks a single travel action at a time and does not know which of them are free: free
+    ones (FREE_ACTION_TYPES) are applied right away -- they are private, never contested, and change
+    only this hero's own position/bag -- and the next pick is made from the new state. The first
+    non-free pick is returned undeclared. A round is one Action, so eating, walking into a zone or
+    taking a Flight Path never costs one."""
+    hero = board.heroes[hero_idx]
+    for _ in range(max_free):
+        action = _choose_field_action(hero_idx, board, class_names, quest_pools, rng, claimed_this_round,
+                                       purchase_queues=purchase_queues)
+        if action["type"] not in FREE_ACTION_TYPES:
+            return action
+        apply_travel_action(hero, action, class_names[hero_idx], board, rng,
+                             M.RISK_TOLERANCE_BASE, True)
+    return {"type": "return_to_town"}   # unreachable in practice; a visit is always legal
+
+
+def resolve_visit(hero, class_name, strategy, rng, board, purchase_queue):
+    """A declared return_to_town / visit_trainer's business, AI-automatic: the visit's turn (one per
+    visit, charged by enter_town / enter_trainer) and the shared shopping walk. Dispatches on the
+    position marker apply_travel_action set when the declaration resolved."""
+    if hero.position[1] == "trainer":
+        enter_trainer(hero, class_name)
+        ai_town_walk(hero, purchase_queue, board, rng, at_trainer=True)
+    else:
+        enter_town(hero, class_name, strategy, rng, board)
+        ai_town_walk(hero, purchase_queue, board, rng)
+
+
 def run_competitive_chain(class_names_list, strategy, rng, max_rounds,
                            risk_tolerance_base=M.RISK_TOLERANCE_BASE, risk_only_as_last_resort=True):
     """First driver that actually plays a competitive N=2-4 game through declare_for_hero/
@@ -2461,15 +2562,13 @@ def run_competitive_chain(class_names_list, strategy, rng, max_rounds,
     end to end, not just in isolation. class_names_list is a plain list, 2-4 entries (any class
     mix); every hero starts in Zone 1's Town, matching run_solo_chain's own starting loadout.
 
-    Round structure, matching OPEN_QUESTIONS.md's locked turn-phase order: each outer round
-    first resolves a full Town visit (independently, no barrier -- Town "is never contested,"
-    board_state.py's own docstring) for any hero currently standing there, THEN runs one
-    Move-and-declare cycle for whoever's now out in the field. advance_board requires an entry
-    in pending_declarations for EVERY hero in board.heroes, not just field-active ones (that
-    contract was already built and verified in task #64, not changed here) -- so a hero who
-    just resolved their Town visit, or who's dead-and-respawning, submits a harmless
-    return_to_town no-op this round instead (their position is already Town, so it changes
-    nothing; matches the barrier's own existing shape rather than requiring a change to it).
+    Round structure follows DESIGN_DOC Section VII (locked; conformed 2026-10-13): one round is
+    one declared Action per hero, so a round IS a turn. Every hero, in priority order, chains
+    Preparation and free movement (choose_round_action) and declares exactly one Action; the
+    barrier resolves; heroes who declared Town/Trainer then run that visit (resolve_visit) as
+    their Action. Eating, walking and Flight Paths never cost a round. The opening Town visit
+    happens before Round 1 and costs no turn, and anything bought is not usable until the next
+    round's Preparation.
 
     AI declaration order follows the priority token each round (see _choose_field_action's own
     docstring for the resolved contested-Node logic this enables) -- computed BEFORE calling
@@ -2512,51 +2611,34 @@ def run_competitive_chain(class_names_list, strategy, rng, max_rounds,
     board = B.BoardState(mode="competitive", heroes=heroes, zones={}, level_decks=level_decks, loot_decks=loot_decks)
     board.setup_quests(rng, copies_per_quest=max(3, n))
 
-    for _round_num in range(max_rounds):
-        for hero_idx, hero in enumerate(board.heroes):
-            if hero.position[1] == "town":
-                enter_town(hero, class_names[hero_idx], strategy, rng, board)
-                while True:
-                    town_actions = get_town_actions(hero, purchase_queues[hero_idx], board)
-                    buyable = next((a for a in town_actions if a["type"] == "buy"), None)
-                    buy_food = next((a for a in town_actions if a["type"] == "buy_consumable" and a["item_name"] == "food"), None)
-                    take = next((a for a in town_actions if a["type"] == "take_quest"), None)
-                    chosen = take if take else (buyable if buyable else (buy_food if buy_food else next(a for a in town_actions if a["type"] == "leave_town")))
-                    still_in_town = apply_town_action(hero, chosen, purchase_queues[hero_idx], board, rng)
-                    if not still_in_town:
-                        break
-            elif hero.position[1] == "trainer":
-                # Checkpointed 2026-08-24: Class Trainer split from Town into its own turn-
-                # costing node type -- a hero can arrive here via a previous round's declared
-                # visit_trainer (see _choose_field_action's own opportunistic check below), and
-                # this is the AI-automatic Trainer walk, get_town_actions/apply_town_action
-                # shared with Town, filtered by this "trainer" position marker.
-                enter_trainer(hero, class_names[hero_idx])
-                while True:
-                    trainer_actions = get_town_actions(hero, purchase_queues[hero_idx], board)
-                    buyable = next((a for a in trainer_actions if a["type"] == "buy"), None)
-                    chosen = buyable if buyable else next(a for a in trainer_actions if a["type"] == "leave_trainer")
-                    still_at_trainer = apply_town_action(hero, chosen, purchase_queues[hero_idx], board, rng)
-                    if not still_at_trainer:
-                        break
+    # The opening Town visit is setup, not a round (DESIGN_DOC Section VII: Round 1 is the first
+    # Deal), so it costs no turn.
+    for hero_idx, hero in enumerate(board.heroes):
+        resolve_visit(hero, class_names[hero_idx], strategy, rng, board, purchase_queues[hero_idx])
+        hero.turns = 0
 
-        field_idxs = [i for i, h in enumerate(board.heroes) if h.position[1] not in ("town", "trainer")]
-        quest_pools = {i: (M.LEVEL2_QUESTS if board.heroes[i].xp >= M.LEVEL2_XP_THRESHOLD else M.QUESTS)
-                       for i in field_idxs}
+    for _round_num in range(max_rounds):
+        quest_pools = {i: (M.LEVEL2_QUESTS if h.xp >= M.LEVEL2_XP_THRESHOLD else M.QUESTS)
+                       for i, h in enumerate(board.heroes)}
+        order = _priority_order(board)
         claimed_this_round = set()
-        for hero_idx in [i for i in _priority_order(board) if i in field_idxs]:
-            action = _choose_field_action(hero_idx, board, class_names, quest_pools, rng, claimed_this_round,
-                                           purchase_queues=purchase_queues)
+        for hero_idx in order:
+            action = choose_round_action(hero_idx, board, class_names, quest_pools, rng, claimed_this_round,
+                                          purchase_queues=purchase_queues)
             if action["type"] == "declare_node":
                 claimed_this_round.add(action["node_name"])
             declare_for_hero(board, hero_idx, action)
-        for hero_idx in range(n):
-            if hero_idx not in field_idxs:
-                declare_for_hero(board, hero_idx, {"type": "return_to_town" if board.heroes[hero_idx].position[1] == "town" else "visit_trainer"})
+        visitors = [i for i in order if board.pending_declarations[i]["type"] in VISIT_ACTION_TYPES]
 
         results = advance_board(board, class_names, rng, risk_tolerance_base, risk_only_as_last_resort)
 
-        for hero_idx in field_idxs:
+        # Town/Trainer business is the visiting hero's Action this round (Phase 3), so it happens
+        # here, in priority order (the L2 quest market is shared), not at the top of the next round.
+        for hero_idx in visitors:
+            resolve_visit(board.heroes[hero_idx], class_names[hero_idx], strategy, rng, board,
+                           purchase_queues[hero_idx])
+
+        for hero_idx in range(n):
             hero = board.heroes[hero_idx]
             result = results[hero_idx]
             if result.get("outcome") == "scouted_pull_reveal":

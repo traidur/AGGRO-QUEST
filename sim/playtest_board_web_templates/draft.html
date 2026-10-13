@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>QUEST - Quest Draft</title>
+
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Crimson+Pro:ital,wght@0,400;0,600;1,400&family=Barlow+Condensed:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .draft-wrap { max-width: 760px; margin: 0 auto; }
+        .draft-row { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 18px; }
+        .draft-card { flex: 1 1 200px; border: 1px solid var(--border-color, #4a2e15); border-radius: 8px;
+                      padding: 12px 14px; cursor: pointer; background: rgba(0,0,0,0.25); display: block; }
+        .draft-card input { margin-right: 6px; }
+        .draft-card:has(input:checked) { border-color: #ffd700; background: rgba(255,215,0,0.08); }
+        .draft-card .title { font-family: 'Cinzel', serif; color: #e8d0a9; font-size: 16px; }
+        .draft-card .meta { font-size: 13px; color: #aaccff; margin-top: 4px; }
+        .draft-card .clause { font-size: 14px; margin-top: 4px; }
+        .draft-note { font-size: 14px; color: var(--text-muted, #aaa); font-style: italic; }
+    </style>
+</head>
+<body>
+    <div class="draft-wrap">
+    <h1>Level 1 Quest Draft</h1>
+    <p class="draft-note">
+        {{ hero.class_name|title }}, choose your starting quests: <strong>2 loot quests</strong> (any two, even from
+        the same Zone) and <strong>1 kill quest</strong>. Cards not laid out are out of play. Your 3 quests are
+        worth 6 XP together - reaching 6 XP is reaching Level 2.
+    </p>
+    {% for msg in flash %}<div class="flash">{{ msg }}</div>{% endfor %}
+
+    <form method="POST" action="/draft/pick">
+        <h2>Loot quests - pick 2</h2>
+        <div class="draft-row">
+            {% for q in loot %}
+            <label class="draft-card">
+                <input type="checkbox" name="loot" value="{{ q.name }}">
+                <span class="title">{{ q.title }}</span>
+                <div class="meta">Zone {{ q.zone }} - {{ q.where }}</div>
+                <div class="clause">Collect {{ q.req }} - {{ q.xp }} XP</div>
+                <div class="meta">Gold {{ q.ladder|join(' / ') }}</div>
+            </label>
+            {% endfor %}
+        </div>
+
+        <h2>Kill quests - pick 1</h2>
+        <div class="draft-row">
+            {% for q in kill %}
+            <label class="draft-card">
+                <input type="radio" name="kill" value="{{ q.name }}" required>
+                <span class="title">{{ q.name }}</span>
+                {% for c in q.clauses %}<div class="clause">{{ c.need }} x {{ c.label }}</div>{% endfor %}
+                <div class="meta">No Bag space. Any outright win counts. {{ q.xp }} XP</div>
+                <div class="meta">Gold {{ q.ladder|join(' / ') }}</div>
+            </label>
+            {% endfor %}
+        </div>
+
+        <button type="submit">Start Questing</button>
+    </form>
+    </div>
+</body>
+</html>

@@ -728,11 +728,15 @@ Major Town hubs (Town 2 and Town 4) feature a rotating Armory selling pre-forged
 
 This is the definitive, chronological flow of a single Game Round.
 
+A Round is one declared Action per hero, so one Round is one turn per hero (OPEN_QUESTIONS.md, "What a turn is"). Preparation and movement never cost one.
+
+**Before Round 1:** each hero's opening Town visit (Level 1 Quest Draft, starting purchases) is setup. It is not a Round and costs no turn.
+
 ### Phase 1: The Deal & Preparation
 - **The Deal:** Only occupied Zones are dealt to. (If a hero is standing on a Border Node, *both* Zones connected to that border are dealt to).
   - Every Node in an occupied Zone is dealt 1 fresh Mob Card face-up.
   - If a Node does *not* currently have a Gathering Token, 1 fresh Gathering Token (Herb, Ore, Skin) is dealt to it.
-- **Preparation:** Now that players can see the exact board state, they may use items from their bag (e.g., healing with Potions, buffing with a Whetstone) before deciding where to commit.
+- **Preparation:** Now that players can see the exact board state, they may use items from their bag (e.g., healing with Potions, buffing with a Whetstone) before deciding where to commit. Preparation is free and uses only what is already in the bag: anything bought in Town or at a Trainer later this Round is first usable in the next Round's Preparation.
 
 ### Phase 2: Move & Declare
 - **Movement is free.** Moving your pawn to any reachable node does not cost an Action.
