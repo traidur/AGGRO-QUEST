@@ -681,12 +681,17 @@ draft with exactly 3 quests: **2 loot quests and 1 kill quest**. The draft runs 
    Dying never erases progress, and a death still applies the 2-stage decay.
 6. **Completing.** When every clause is filled the quest is complete; turn it in at Town like any
    other quest.
-7. **XP and Gold.** At Level 1 every kill quest is **2 XP** with the **4/2/1/0** ladder, so
-   difficulty is tuned through the count, the filter and the target's danger. At Level 2 and later
-   XP and Gold follow the quest's measured cost (pending).
-8. **Level 1 kill pool.** About 9 cards: one per standard role (the role is named on the card) plus
-   *Kill 2 Favored*, *Kill 1 Favored + 1 Struggles* and *Kill 1 Struggles*. The kill count on each
-   card is pending measurement (`OPEN_QUESTIONS.md`).
+7. **XP and Gold.** At Level 1 every kill quest is **2 XP** with a **2/1/0/0** Gold ladder
+   (loot quests keep 4/2/1/0; revised 2026-10-12). The smaller ladder is deliberate: a kill quest
+   takes no Bag space and usually finishes on the same trip as the hero's loot quests, so the hero
+   skips a Town visit, and the smaller ladder keeps total Gold earned level with a loot third quest
+   (measured, see `OPEN_QUESTIONS.md`). Difficulty is tuned through the count, the filter and the
+   target's danger. At Level 2 and later XP and Gold follow the quest's measured cost (pending).
+8. **Level 1 kill pool (counts locked 2026-10-12).** 9 cards: *Kill 3* of each of the six roles (the
+   role is named on the card), *Kill 5 Favored*, *Kill 5 Struggles* and *Kill 1 Favored + 4
+   Struggles*. At most 5 boxes on any card. Counts were set so a kill card taken as the third quest
+   matches a loot third quest (the average of one Zone 1 and one Zone 2 loot quest) on turns to
+   6 XP and on Gold earned; derivation and the residual gap are in `OPEN_QUESTIONS.md`.
 
 **Class Guide: Favored and Struggles (locked 2026-10-12).** Each class's Class Guide (on its hero
 tracker board and in the web Class Guide) lists, per level, **Favored** — the class's 2 best mobs —

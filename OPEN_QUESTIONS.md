@@ -360,9 +360,9 @@ pays for eating the worse matchup). Not evaluated whether that is enough.
 ### Kill quests and the Level 1 Quest Draft — tuning and open items (raised 2026-10-12)
 
 Rules are locked in `DESIGN_DOC.md` Section VI. Still open, mostly measurement:
-- **Level 1 kill counts.** The count on each of the ~9 kill cards (6 roles + 3 matchup cards) must
-  land at parity with a 2-loot quest, with XP (2) and the 4/2/1/0 ladder pinned. Drafters take the
-  cheapest card, so the *spread* between cards matters more than the average.
+- **Level 1 kill counts and ladder: set 2026-10-12** (see Resolved). Still open: the *spread*
+  between cards (drafters take the cheapest, and only Grunt/Enforcer were re-measured after the
+  Trainer fix), the Gold-spent and Food/Potion gap below, and the multi-hero case.
 - **Kill quests' structural advantage.** They use no Bag slots and lose no progress on death, which
   loot quests do not enjoy; with rewards pinned, the requirement has to carry that cost. Measure the
   *marginal* cost of a kill quest riding along with loot pulls, not only its standalone cost.
@@ -407,10 +407,44 @@ worth keeping:
 - **Colors.** Slot colors exist only to tell loot tokens apart, so kill cards have none.
 - **No pass action.** The Deal is the round clock for every occupied Zone; waiting a round just
   costs the round. A pass would only help hunters in a multiplayer game, so it was not added.
-- **Level 1 pins.** Kill quests are 2 XP and 4/2/1/0 at Level 1, so difficulty is tuned through
-  count, filter and target danger. From Level 2 on, XP is the free dial.
+- **Level 1 pins.** Kill quests are 2 XP at Level 1 (Gold ladder 2/1/0/0, revised below), so
+  difficulty is tuned through count, filter and target danger. From Level 2 on, XP is the free dial.
 - **Favored/Struggles definition.** Absolute (lowest/highest cost%), lost hand = 100%, non-Elites only;
   ties resolved by tail risk, then diversity. The relative alternative is parked above.
+
+### Level 1 kill quest counts and Gold ladder (Resolved 2026-10-12)
+
+Goal: a kill card taken as the third quest should cost a hero what a loot third quest costs, at the
+same checkpoint (6 XP). Reference = the average of one Zone 1 and one Zone 2 loot third quest on top
+of two Zone 1 loot quests. Measured with `sim/kill_quest_measure.py` (turns) and the Gold ledger
+(earned, spent, in hand), solo, border-hunting bot, 9 classes x 20 chains:
+
+| Third card | Turns to 6 XP | Gold earned | Gold spent | In hand | Food/Potions used |
+|---|---|---|---|---|---|
+| Loot reference (avg Z1, Z2) | 10.3 | 16.6 | 4.0 | 12.6 | 2.3 |
+| Kill 3 Grunt, 2/1/0/0 | 9.5 | 16.4 | 1.2 | 15.2 | 1.1 |
+| Kill 3 Enforcer, 2/1/0/0 | 10.3 | 16.5 | 2.6 | 13.9 | 1.4 |
+| Kill 5 Favored, 2/1/0/0 | 10.0 | 16.9 | 1.2 | 15.8 | 1.2 |
+| Kill 5 Struggles, 2/1/0/0 | 10.7 | 16.7 | 3.2 | 13.6 | 1.5 |
+| Kill 1 Favored + 4 Struggles, 2/1/0/0 | 9.6 | 16.0 | 2.5 | 13.5 | 1.3 |
+
+- **Counts.** Turns alone set them: role 3 (the other four roles were measured only before the
+  Trainer fix below: six-role average 9.7 turns at 3, 11.5 at 4), Favored 5, Struggles 5, 1 Favored +
+  4 Struggles. Cards never exceed 5 boxes (a 3+3 card was rejected as too large).
+- **Why the ladder is 2/1/0/0, not 4/2/1/0.** At 4/2/1/0 a kill third quest earned 1 to 2 Gold more
+  than a loot one. The reason is structural: kill quests take no Bag slot and ride along on the same
+  trip as the loot quests, so the hero skips a Town visit (loot third quests always cost a second
+  trip) and its quest decay. Counts cannot fix that, because adding boxes slows the card without
+  forcing the second trip. 2/1/0/0 puts earned Gold within 0.6 of the loot reference; 1/0/0/0 overshoots.
+- **Residual gap, accepted for now.** Kill cards still spend 0.8 to 2.8 less Gold and use about one
+  fewer Food/Potion than a loot third quest, and hold 1 to 3 more Gold in hand, for the same reason
+  (one fewer restock). Favored and Grunt are the easiest. This is the price of the no-Bag-slot design.
+- **Simulator fix the same day.** The solo engine let a Level 1 hero buy a purchased (Level 2+)
+  skill at the Zone 2 Trainer for 8 Gold before reaching 6 XP. Now gated on 6 XP in the solo
+  auto-walk, the human Town menu and the competitive Trainer check; 20 of 24 reference chains
+  changed. Earlier solo timing numbers (including the draft-vs-random start comparison) predate the
+  fix and need re-running. The frozen `macro_sim._trip_chain` baseline was not checked.
+- **Scope.** Solo only. Competition for mobs and the 2P+1 / P+1 draft are not modeled.
 
 ### Town Quest Markets & Visible Breadcrumbing (Resolved 2026-08-27)
 
